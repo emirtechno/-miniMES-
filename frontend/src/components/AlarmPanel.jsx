@@ -1,44 +1,80 @@
-import { AlertTriangle, Clock3, ShieldCheck } from 'lucide-react';
+import React from 'react';
+import { AlertTriangle, CheckCircle, Trash2 } from 'lucide-react';
 
-const AlarmPanel = ({ alarms, onAcknowledge }) => {
+function AlarmPanel({ alarms, onAcknowledge, onDelete }) {
   return (
     <section className="custom-card">
       <div className="card-header">
-        <AlertTriangle size={20} />
-        <span>Alarm ve Duruş Takibi</span>
+        <AlertTriangle style={{ color: '#ef4444' }} size={20} />
+        <span>Alarm ve Duruş Takibi ({alarms.length})</span>
       </div>
 
-      <div className="grid-two">
-        {alarms.map((alarm) => (
-          <div key={alarm.id} className={`alarm-card ${alarm.status === 'Açık' ? 'alarm-open' : 'alarm-ack'}`}>
-            <div className="alarm-header">
-              <div>
-                <div className="alarm-title">{alarm.title}</div>
-                <div className="alarm-subtitle">{alarm.station}</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
+        {alarms.map((alarm, idx) => {
+          const alarmId = alarm.id ?? alarm.Id ?? alarm.alarmId ?? alarm.AlarmId;
+          return (
+            <div
+              key={alarmId || idx}
+              style={{
+                borderLeft: `5px solid ${alarm.status === 'Onaylandı' ? '#10b981' : '#ef4444'}`,
+                background: '#fff',
+                border: '1px solid #e2e8f0',
+                borderRadius: '8px',
+                padding: '16px',
+                position: 'relative'
+              }}
+            >
+              {/* Kart Üst Başlık ve Silme Butonu */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <h4 style={{ margin: '0 0 6px 0', fontSize: '1rem' }}>{alarm.title}</h4>
+                
+                {onDelete && (
+                  <button
+                    type="button"
+                    onClick={() => onDelete(alarm)}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#94a3b8',
+                      cursor: 'pointer',
+                      padding: '2px',
+                      borderRadius: '4px'
+                    }}
+                    title="Alarmı Sil"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
               </div>
-              <span className={`badge ${alarm.severity === 'Kritik' ? 'badge-nok' : alarm.severity === 'Uyarı' ? 'badge-warning' : 'badge-neutral'}`}>
-                {alarm.severity}
-              </span>
+
+              <p style={{ margin: '0 0 8px 0', fontSize: '0.85rem', color: '#64748b' }}>{alarm.station}</p>
+              <p style={{ margin: '0 0 12px 0', fontSize: '0.9rem', color: '#334155' }}>{alarm.description}</p>
+              
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px' }}>
+                <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
+                  {alarm.time ? new Date(alarm.time).toLocaleString('tr-TR') : ''}
+                </span>
+                
+                {alarm.status === 'Açık' && onAcknowledge ? (
+                  <button
+                    type="button"
+                    onClick={() => onAcknowledge(alarmId)}
+                    className="btn-primary"
+                    style={{ background: '#ef4444', borderColor: '#ef4444', padding: '6px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                  >
+                    <CheckCircle size={14} />
+                    Onayla
+                  </button>
+                ) : (
+                  <span style={{ fontSize: '0.8rem', color: '#10b981', fontWeight: 600 }}>Onaylandı</span>
+                )}
+              </div>
             </div>
-
-            <div className="alarm-meta">
-              <span><Clock3 size={14} /> {alarm.time}</span>
-              <span>{alarm.status}</span>
-            </div>
-
-            <div className="alarm-description">{alarm.description}</div>
-
-            {alarm.status === 'Açık' && (
-              <button className="btn-primary" style={{ marginTop: '10px', height: '36px' }} onClick={() => onAcknowledge(alarm.id)}>
-                <ShieldCheck size={16} />
-                Onayla
-              </button>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
     </section>
   );
-};
+}
 
 export default AlarmPanel;

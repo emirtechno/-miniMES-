@@ -21,14 +21,15 @@ const WORKORDER_FALLBACK_URLS = [
 // ==========================================
 // 🏭 ÜRETİM SERVİSLERİ (PRODUCTION)
 // ==========================================
+
 export const fetchProductionRecords = async () => {
   const response = await axios.get(URETIM_API_URL);
-  return response.data;
+  return response.data?.success ? response.data.data : (response.data || []);
 };
 
 export const fetchDeletedProductionRecords = async () => {
   const response = await axios.get(`${URETIM_API_URL}/deleted`);
-  return response.data;
+  return response.data?.success ? response.data.data : (response.data || []);
 };
 
 export const createProductionRecord = async (payload) => {
@@ -51,6 +52,12 @@ export const restoreProductionRecord = async (id) => {
   return response.data;
 };
 
+export const hardDeleteProductionRecord = async (id) => {
+  if (!id) throw new Error("Kayıt ID bulunamadı.");
+  const response = await axios.delete(`${URETIM_API_URL}/hard-delete/${id}`);
+  return response.data;
+};
+
 // ==========================================
 // 🚨 ALARM SERVİSLERİ
 // ==========================================
@@ -59,6 +66,19 @@ export const fetchAlarms = async () => {
   for (const url of ALARM_FALLBACK_URLS) {
     try {
       const response = await axios.get(url);
+      return response.data?.success ? response.data.data : response.data;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError;
+};
+
+export const createAlarm = async (payload) => {
+  let lastError;
+  for (const url of ALARM_FALLBACK_URLS) {
+    try {
+      const response = await axios.post(url, payload);
       return response.data;
     } catch (err) {
       lastError = err;
@@ -80,14 +100,20 @@ export const acknowledgeAlarm = async (id) => {
   throw lastError;
 };
 
-export const createAlarm = async (payload) => {
+// Alarm Silme (Hata ve Fallback Kontrollü)
+export const deleteAlarm = async (id) => {
+  if (!id) throw new Error("Alarm ID bulunamadı.");
+  
   let lastError;
-  for (const url of ALARM_FALLBACK_URLS) {
+  for (const base of ALARM_FALLBACK_URLS) {
     try {
-      const response = await axios.post(url, payload);
+      const response = await axios.delete(`${base}/${id}`);
       return response.data;
     } catch (err) {
       lastError = err;
+      if (err.response) {
+        throw err;
+      }
     }
   }
   throw lastError;
@@ -101,7 +127,7 @@ export const fetchWorkOrders = async () => {
   for (const url of WORKORDER_FALLBACK_URLS) {
     try {
       const response = await axios.get(url);
-      return response.data;
+      return response.data?.success ? response.data.data : response.data;
     } catch (err) {
       lastError = err;
     }

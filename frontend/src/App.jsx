@@ -41,6 +41,8 @@ import {
   acknowledgeAlarm,
   createAlarm,
   restoreProductionRecord,
+  deleteAlarm,
+  hardDeleteProductionRecord,
   updateProductionRecord,
   fetchWorkOrders,
   createWorkOrder,
@@ -116,25 +118,12 @@ function MainLayout() {
   // ==========================================
   const isCurrentUserActive = currentUser?.status === 'Aktif';
 
-  // 1. Üretim Kaydı Ekleme (Aktif + Operatör veya Tam Yetki)
   const canAddRecord = isCurrentUserActive && ['Üretim Girişi', 'Tam Yetki'].includes(currentUser.permission);
-
-  // 2. Kalite Durumu Değiştirme (Aktif + Kalite Onayı veya Tam Yetki)
   const canChangeQuality = isCurrentUserActive && ['Kalite Onayı', 'Tam Yetki'].includes(currentUser.permission);
-
-  // 3. Kayıt Silme ve Geri Yükleme (Aktif + Tam Yetki)
   const canDeleteRecord = isCurrentUserActive && currentUser.permission === 'Tam Yetki';
-
-  // 4. Raporları Görüntüleme (Aktif + Kalite, Saha Müdürü, Bakım)
   const canViewReports = isCurrentUserActive && ['Kalite', 'Saha Müdürü', 'Bakım'].includes(currentUser.role);
-
-  // 5. İş Emri Yönetimi (Aktif + Saha Müdürü / Tam Yetki)
   const canManageWorkOrders = isCurrentUserActive && (currentUser.role === 'Saha Müdürü' || currentUser.permission === 'Tam Yetki');
-
-  // 6. Alarm Oluşturma ve Onaylama (Aktif + Kalite veya Saha Müdürü)
   const canManageAlarms = isCurrentUserActive && ['Kalite', 'Saha Müdürü'].includes(currentUser.role);
-
-  // 7. Kullanıcı Rol Yönetimi (Aktif + Saha Müdürü)
   const canManageUsers = isCurrentUserActive && currentUser.role === 'Saha Müdürü';
 
   const permissionText = !isCurrentUserActive 
@@ -172,7 +161,7 @@ function MainLayout() {
     try {
       setDeletedLoading(true);
       const data = await fetchDeletedProductionRecords();
-      setDeletedRecords(Array.isArray(data) ? data.filter((r) => (r?.isDeleted ?? r?.IsDeleted ?? false)) : []);
+      setDeletedRecords(Array.isArray(data) ? data : []);
       setDeletedError(null);
     } catch (err) {
       setDeletedError('Silinen kayıtlar alınamadı.');
@@ -322,33 +311,40 @@ function MainLayout() {
       alert('Seçili kullanıcı şu anda üretim kaydı ekleyemez.');
       return;
     }
-    if (urun20liKod.length !== 20 || isNaN(urun20liKod)) {
-      alert("Hata: 20'li Ürün Kodu tam 20 haneli sayı olmalıdır!");
-      urunInputRef.current?.focus();
-      return;
-    }
-    if (malzeme12liKod.length !== 12 || isNaN(malzeme12liKod)) {
-      alert("Hata: 12'li Malzeme Kodu tam 12 haneli sayı olmalıdır!");
-      malzemeInputRef.current?.focus();
-      return;
-    }
+
     try {
-      await createProductionRecord({
+      const res = await createProductionRecord({
         urun20liKod,
         malzeme12liKod,
         istasyonAdi: istasyonAdi || 'Montaj_Hatti_01',
         kaliteDurumu,
         uretimTarihi: new Date().toISOString()
       });
-      setUrun20liKod('');
-      setMalzeme12liKod('');
-      setIstasyonAdi('');
-      setKaliteDurumu('OK');
-      await fetchRecords();
-      await fetchDeletedRecords();
-      urunInputRef.current?.focus();
+
+      if (res.success) {
+        setUrun20liKod('');
+        setMalzeme12liKod('');
+        setIstasyonAdi('');
+        setKaliteDurumu('OK');
+        await fetchRecords();
+        await fetchDeletedRecords();
+        urunInputRef.current?.focus();
+      } else {
+        const errorList = res.errors && res.errors.length > 0 ? `\n\n• ${res.errors.join('\n• ')}` : '';
+        alert(`Kayıt Eklenemedi: ${res.message}${errorList}`);
+      }
     } catch (err) {
-      alert('Kayıt eklenirken hata oluştu!');
+      if (err.response && err.response.data) {
+        const apiErr = err.response.data;
+        if (apiErr.errors && apiErr.errors.length > 0) {
+          alert(`Validasyon Hatası:\n\n• ` + apiErr.errors.join('\n• '));
+        } else {
+          alert(`Hata: ${apiErr.message || 'Kayıt eklenirken bir sorun oluştu.'}`);
+        }
+      } else {
+        alert('Sunucu ile bağlantı kurulamadı!');
+      }
+      console.error(err);
     }
   };
 
@@ -359,25 +355,97 @@ function MainLayout() {
     }
     if (!window.confirm(`ID: ${id} kaydını silmek istediğinize emin misiniz?`)) return;
     try {
-      await deleteProductionRecord(id);
-      await fetchRecords();
-      await fetchDeletedRecords();
+      const res = await deleteProductionRecord(id);
+      if (res.success !== false) {
+        await fetchRecords();
+        await fetchDeletedRecords();
+      } else {
+        alert(`Silme Başarısız: ${res.message}`);
+      }
     } catch (err) {
       alert('Silme işlemi başarısız!');
     }
   };
 
-  const handleRestore = async (id) => {
+  // --- ALARM SİLME HANDLER ---
+  const handleDeleteAlarm = async (alarmOrId) => {
+    const id = typeof alarmOrId === 'object' 
+      ? (alarmOrId.id ?? alarmOrId.Id ?? alarmOrId.alarmId ?? alarmOrId.AlarmId) 
+      : alarmOrId;
+
+    if (!canManageAlarms) {
+      alert('Alarm silme yetkiniz bulunmamaktadır.');
+      return;
+    }
+
+    if (!id) {
+      alert('Hata: Silinecek alarmın ID bilgisi okunamadı!');
+      return;
+    }
+
+    if (!window.confirm('Bu alarmı silmek istediğinize emin misiniz?')) return;
+    
+    try {
+      await deleteAlarm(id);
+      await loadAlarms(); // Silme başarılı olunca listeyi yenile
+    } catch (err) {
+      alert(`Alarm silinirken hata oluştu: ${err.response?.data?.message || err.message}`);
+      console.error(err);
+    }
+  };
+
+  const handleHardDelete = async (recordOrId) => {
+    const id = typeof recordOrId === 'object' ? (recordOrId.id || recordOrId.Id) : recordOrId;
+
+    if (!canDeleteRecord) {
+      alert('Kalıcı silme işlemi için Tam Yetki gereklidir.');
+      return;
+    }
+
+    if (!id) {
+      alert('Hata: Silinecek kaydın ID bilgisi okunamadı!');
+      return;
+    }
+
+    if (!window.confirm(`ID: ${id} kaydı veritabanından KALICI OLARAK silinecektir. Bu işlem geri alınamaz! Onaylıyor musunuz?`)) return;
+
+    try {
+      const res = await hardDeleteProductionRecord(id);
+      if (res && res.success !== false) {
+        await fetchDeletedRecords();
+      } else {
+        alert(`Kalıcı Silme Başarısız: ${res?.message || 'Sunucu hatası'}`);
+      }
+    } catch (err) {
+      alert(`Kalıcı silme işlemi başarısız: ${err.response?.data?.message || err.message}`);
+      console.error(err);
+    }
+  };
+
+  const handleRestore = async (recordOrId) => {
+    const id = typeof recordOrId === 'object' ? (recordOrId.id || recordOrId.Id) : recordOrId;
+
     if (!canDeleteRecord) {
       alert('Silinen kaydı geri yüklemek için Tam Yetki gereklidir.');
       return;
     }
+
+    if (!id) {
+      alert('Hata: Geri yüklenecek kaydın ID bilgisi okunamadı!');
+      return;
+    }
+
     try {
-      await restoreProductionRecord(id);
-      await fetchRecords();
-      await fetchDeletedRecords();
+      const res = await restoreProductionRecord(id);
+      if (res && res.success !== false) {
+        await fetchRecords();
+        await fetchDeletedRecords();
+      } else {
+        alert(`Geri Yükleme Başarısız: ${res?.message || 'Sunucu hatası'}`);
+      }
     } catch (err) {
-      alert('Geri yükleme işlemi başarısız!');
+      alert(`Geri yükleme işlemi başarısız: ${err.response?.data?.message || err.message}`);
+      console.error(err);
     }
   };
 
@@ -388,12 +456,16 @@ function MainLayout() {
     }
     const newStatus = record.kaliteDurumu === 'OK' ? 'NOK' : 'OK';
     try {
-      await updateProductionRecord(record.id, {
+      const res = await updateProductionRecord(record.id, {
         ...record,
         kaliteDurumu: newStatus
       });
-      await fetchRecords();
-      await fetchDeletedRecords();
+      if (res.success !== false) {
+        await fetchRecords();
+        await fetchDeletedRecords();
+      } else {
+        alert(`Güncelleme Başarısız: ${res.message}`);
+      }
     } catch (err) {
       alert('Güncelleme başarısız!');
     }
@@ -795,7 +867,6 @@ function MainLayout() {
           {/* 📋 KALİTE VE RAPORLAR SEKMESİ */}
           <Route path="/kalite" element={
             <>
-              {/* İş emri takip formu yetki durumu verilerek çağrılıyor */}
               <WorkOrderBoard
                 workOrders={workOrders}
                 formValues={workOrderForm}
@@ -854,7 +925,11 @@ function MainLayout() {
                     </div>
                   )}
 
-                  <AlarmPanel alarms={alarms} onAcknowledge={canManageAlarms ? handleAcknowledgeAlarm : undefined} />
+                  <AlarmPanel 
+                    alarms={alarms} 
+                    onAcknowledge={canManageAlarms ? handleAcknowledgeAlarm : undefined} 
+                    onDelete={canManageAlarms ? handleDeleteAlarm : undefined} 
+                  />
                   <TraceabilityPanel batches={batches} />
                 </>
               ) : (
