@@ -4,6 +4,20 @@ const API_BASE_URL = (import.meta.env.VITE_MES_API_URL || 'http://localhost:5850
 const URETIM_API_URL = `${API_BASE_URL}/Uretim`;
 const ALARM_API_URL = `${API_BASE_URL}/Alarm`;
 const WORKORDER_API_URL = `${API_BASE_URL}/WorkOrder`;
+const BATCH_API_URL = `${API_BASE_URL}/Batch`;
+
+axios.interceptors.request.use((config) => {
+  const token = localStorage.getItem('mm_access_token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+export const login = async (username, password) => {
+  const response = await axios.post(`${API_BASE_URL}/Auth/login`, { username, password });
+  return response.data;
+};
 
 // Fallbacks for environments where IIS Express or Kestrel port differs
 const ALARM_FALLBACK_URLS = [
@@ -159,4 +173,23 @@ export const advanceWorkOrder = async (id) => {
     }
   }
   throw lastError;
+};
+
+export const fetchBatches = async () => {
+  const response = await axios.get(BATCH_API_URL);
+  return response.data?.success ? response.data.data : (response.data || []);
+};
+
+
+// MAKİNE METRİKLERİ VE TELEMETRİ
+
+export const fetchMachineMetrics = async () => {
+  const response = await axios.get('http://localhost:5000/api/MachineMetrics');
+  return response.data?.success ? response.data.data : (response.data || []);
+};
+
+// OEE Metrik Servisi
+export const fetchLatestOee = async (stationId) => {
+  const response = await axios.get(`http://localhost:5000/api/Oee/latest/${stationId}`);
+  return response.data;
 };

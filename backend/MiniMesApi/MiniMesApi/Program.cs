@@ -1,4 +1,7 @@
+using System.Text;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using MiniMesApi.Models;
 using MiniMesApi.Middlewares;
 using FluentValidation;
@@ -7,11 +10,13 @@ using MiniMesApi.Validators;
 // ... diğer servisler ...
 
 var builder = WebApplication.CreateBuilder(args);
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+    ?? throw new InvalidOperationException("Cors:AllowedOrigins yapılandırılmalıdır.");
 
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowReactApp",
-        policy => policy.AllowAnyOrigin()
+        policy => policy.WithOrigins(allowedOrigins)
                         .AllowAnyHeader()
                         .AllowAnyMethod());
 });
@@ -20,13 +25,33 @@ builder.Services.AddCors(options =>
 builder.Services.AddDbContext<MesDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+var jwtKey = builder.Configuration["Jwt:Key"]
+    ?? throw new InvalidOperationException("Jwt:Key yapılandırılmalıdır.");
+var jwtIssuer = builder.Configuration["Jwt:Issuer"]
+    ?? throw new InvalidOperationException("Jwt:Issuer yapılandırılmalıdır.");
+var jwtAudience = builder.Configuration["Jwt:Audience"]
+    ?? throw new InvalidOperationException("Jwt:Audience yapılandırılmalıdır.");
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options => options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidIssuer = jwtIssuer,
+        ValidateAudience = true,
+        ValidAudience = jwtAudience,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
+        ClockSkew = TimeSpan.Zero
+    });
+
 // --- JSON Naming Policy Ayarı (PascalCase / Birebir İsimlendirme) ---
 builder.Services.AddControllers();
 
 builder.Services.AddEndpointsApiExplorer();
 
-// --- Validator Kısımları
-
+// --- OeeSimulation Kısımları
+builder.Services.AddHostedService<MiniMesApi.Services.OeeSimulationService>();
 
 // FluentValidation Servis Kaydı
 builder.Services.AddValidatorsFromAssemblyContaining<CreateUretimKayitDtoValidator>();
@@ -48,7 +73,7 @@ builder.Services.AddSwaggerGen(options =>
 
 var app = builder.Build();
 
-// --- ÖNEMLİ: Kendi Exception Middleware'imizi En Başa Ekliyoruz ---
+// --- ÖNEMLİ:Exception Middleware ---  
 app.UseMiddleware<ExceptionMiddleware>();
 
 using (var scope = app.Services.CreateScope())
@@ -122,6 +147,7 @@ if (app.Environment.IsDevelopment())
     });
 }
 
+app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 

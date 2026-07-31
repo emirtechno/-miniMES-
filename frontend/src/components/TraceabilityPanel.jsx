@@ -1,4 +1,4 @@
-import { PackageSearch, ScanLine } from 'lucide-react';
+import { PackageSearch } from 'lucide-react';
 
 const TraceabilityPanel = ({ batches }) => {
   return (

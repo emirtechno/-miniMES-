@@ -1,7 +1,6 @@
 import { CheckCircle2, Trash2, XCircle, Search, Filter, FileSpreadsheet, Eye } from 'lucide-react';
 
 const ProductionTable = ({
-  records,
   loading,
   error,
   filteredRecords,

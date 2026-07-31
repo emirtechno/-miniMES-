@@ -8,6 +8,7 @@ namespace MiniMesApi.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Microsoft.AspNetCore.Authorization.Authorize]
     public class UretimController : ControllerBase
     {
         private readonly MesDbContext _context;
@@ -100,6 +101,7 @@ namespace MiniMesApi.Controllers
 
         // 4. Yeni Üretim Kaydı Ekle (POST: api/Uretim)
         [HttpPost]
+        [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin,Operator")]
         public async Task<IActionResult> UretimEkle([FromBody] CreateUretimKayitDto yeniDto)
         {
             // FluentValidation Doğrulaması
@@ -147,6 +149,7 @@ namespace MiniMesApi.Controllers
 
         // 5. Üretim Kaydını Güncelle (PUT: api/Uretim/5)
         [HttpPut("{id}")]
+        [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
         public async Task<IActionResult> UretimGuncelle(int id, [FromBody] CreateUretimKayitDto guncelDto)
         {
             var validationResult = await _validator.ValidateAsync(guncelDto);
@@ -183,6 +186,7 @@ namespace MiniMesApi.Controllers
 
         // 6. Soft Delete ile Sil (DELETE: api/Uretim/5)
         [HttpDelete("{id}")]
+        [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
         public async Task<IActionResult> UretimSil(int id)
         {
             var uretimKayit = await _context.UretimKayitlari.FindAsync(id);
@@ -198,6 +202,7 @@ namespace MiniMesApi.Controllers
         }
 
         [HttpDelete("hard-delete/{id}")]
+        [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
 public async Task<IActionResult> HardDelete(int id)
 {
     try
@@ -214,9 +219,9 @@ public async Task<IActionResult> HardDelete(int id)
 
         return Ok(new ApiResponse<string> { Success = true, Message = "Kayıt kalıcı olarak silindi." });
     }
-    catch (Exception ex)
+    catch (Exception)
     {
-        return StatusCode(500, new ApiResponse<string> { Success = false, Message = "Kalıcı silme sırasında hata oluştu.", Errors = new List<string> { ex.Message } });
+        return StatusCode(500, ApiResponse<string>.FailResult("Kalıcı silme sırasında beklenmeyen bir hata oluştu."));
     }
 }
 
@@ -243,6 +248,7 @@ public async Task<IActionResult> HardDelete(int id)
 
         // 8. Silinen Kayıtları Geri Yükle (PUT: api/Uretim/restore/5)
         [HttpPut("restore/{id}")]
+        [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
         public async Task<IActionResult> RestoreUretim(int id)
         {
             var uretimKayit = await _context.UretimKayitlari.FindAsync(id);

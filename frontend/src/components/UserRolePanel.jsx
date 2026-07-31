@@ -1,4 +1,4 @@
-import { Users, Lock, RefreshCw } from 'lucide-react';
+import { Users, RefreshCw } from 'lucide-react';
 
 const roles = ['Operatör', 'Kalite', 'Saha Müdürü', 'Bakım'];
 const permissions = ['Üretim Girişi', 'Kalite Onayı', 'Rapor Görüntüleme', 'Tam Yetki'];
