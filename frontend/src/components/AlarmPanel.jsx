@@ -1,4 +1,3 @@
-import React from 'react';
 import { AlertTriangle, CheckCircle, Trash2 } from 'lucide-react';
 
 function AlarmPanel({ alarms, onAcknowledge, onDelete }) {

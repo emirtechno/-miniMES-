@@ -19,5 +19,6 @@ namespace MiniMesApi.Models
         public DbSet<Station> Stations { get; set; }
         public DbSet<User> Users { get; set; }
         public DbSet<TraceabilityLog> TraceabilityLogs { get; set; }
+        public DbSet<MachineMetric> MachineMetrics { get; set; }
     }
 }

@@ -1,0 +1,32 @@
+using System;
+using System.ComponentModel.DataAnnotations;
+
+namespace MiniMesApi.Models
+{
+    public class MachineMetric
+    {
+        [Key]
+        public int Id { get; set; }
+
+        [Required]
+        public string StationId { get; set; } = string.Empty;
+
+        // Planlanan Toplam Çalışma Süresi (Saniye)
+        public double PlannedProductionSeconds { get; set; }
+
+        // Toplam Duruş Süresi (Saniye)
+        public double DowntimeSeconds { get; set; }
+
+        // Parça Başına Olması Gereken İdeal Süre (Saniye)
+        public double IdealCycleTimeSeconds { get; set; }
+
+        // Üretilen Toplam Adet (Sağlam + Fire)
+        public int ActualProductionCount { get; set; }
+
+        // Sağlam Üretilen Adet (OK)
+        public int GoodProductionCount { get; set; }
+
+        // Kayıt Tarihi
+        public DateTime RecordedAt { get; set; } = DateTime.UtcNow;
+    }
+}

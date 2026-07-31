@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using MiniMesApi.Models;
 
@@ -10,13 +11,16 @@ namespace MiniMesApi.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize]
     public class AlarmController : ControllerBase
     {
         private readonly MesDbContext _context;
+        private readonly ILogger<AlarmController> _logger;
 
-        public AlarmController(MesDbContext context)
+        public AlarmController(MesDbContext context, ILogger<AlarmController> logger)
         {
             _context = context;
+            _logger = logger;
         }
 
         [HttpGet]
@@ -29,6 +33,7 @@ namespace MiniMesApi.Controllers
         }
 
         [HttpPost]
+        [Authorize(Roles = "Admin,Operator")]
         public async Task<ActionResult<Alarm>> CreateAlarm([FromBody] Alarm alarm)
         {
             if (alarm == null)
@@ -53,11 +58,13 @@ namespace MiniMesApi.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { error = "Server error while creating alarm.", detail = ex.Message });
+                _logger.LogError(ex, "Alarm oluşturulurken beklenmeyen hata oluştu.");
+                return Problem(statusCode: StatusCodes.Status500InternalServerError, title: "Alarm oluşturulamadı.");
             }
         }
 
         [HttpPut("acknowledge/{id}")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> AcknowledgeAlarm(int id)
         {
             try
@@ -74,7 +81,8 @@ namespace MiniMesApi.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { error = "Server error while acknowledging alarm.", detail = ex.Message });
+                _logger.LogError(ex, "{AlarmId} numaralı alarm onaylanırken beklenmeyen hata oluştu.", id);
+                return Problem(statusCode: StatusCodes.Status500InternalServerError, title: "Alarm onaylanamadı.");
             }
         }
 
@@ -82,6 +90,7 @@ namespace MiniMesApi.Controllers
         // 🚨 ALARM SİLME (DELETE) ENDPOINT'İ (EKLENDİ)
         // ==========================================
         [HttpDelete("{id}")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> DeleteAlarm(int id)
         {
             try
@@ -99,7 +108,8 @@ namespace MiniMesApi.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { error = "Server error while deleting alarm.", detail = ex.Message });
+                _logger.LogError(ex, "{AlarmId} numaralı alarm silinirken beklenmeyen hata oluştu.", id);
+                return Problem(statusCode: StatusCodes.Status500InternalServerError, title: "Alarm silinemedi.");
             }
         }
     }

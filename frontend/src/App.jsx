@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
+import MachineMetricsPanel from './components/MachineMetricsPanel';
 import * as XLSX from 'xlsx';
 import { 
   BarChart, 
@@ -46,10 +47,12 @@ import {
   updateProductionRecord,
   fetchWorkOrders,
   createWorkOrder,
-  advanceWorkOrder
+  advanceWorkOrder,
+  fetchBatches
 } from './services/api';
 
 import KpiCard from './components/KpiCard';
+import OeePanel from './components/OeePanel';
 import ProductionForm from './components/ProductionForm';
 import ProductionTable from './components/ProductionTable';
 import StationDetailPanel from './components/StationDetailPanel';
@@ -63,10 +66,6 @@ import LoginPage from './pages/LoginPage';
 function MainLayout() {
   const { users, activeUserId, setActiveUserId, currentUser, logout, isAuthenticated } = useAuth();
   const location = useLocation();
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
 
   const [records, setRecords] = useState([]);
   const [deletedRecords, setDeletedRecords] = useState([]);
@@ -95,17 +94,12 @@ function MainLayout() {
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [isFactorySimulationActive, setIsFactorySimulationActive] = useState(false);
   
-  const [workOrders, setWorkOrders] = useState([
-    { id: 1, orderNo: 'WO-1001', product: 'TV Panel', station: 'Montaj_Hatti_01', quantity: 120, status: 'Devam Ediyor' },
-    { id: 2, orderNo: 'WO-1002', product: 'Ana Kart', station: 'SMT_Dizgi_Hatti_01', quantity: 80, status: 'Bekliyor' },
-  ]);
+  const [workOrders, setWorkOrders] = useState([]);
   const [workOrderForm, setWorkOrderForm] = useState({ orderNo: '', product: '', station: '', quantity: '' });
   const [alarms, setAlarms] = useState([]);
-  const [batches] = useState([
-    { id: 1, lotNo: 'LOT-24001', product: 'TV Panel', station: 'Montaj_Hatti_01', status: 'Tamamlandı', updatedAt: '08:40' },
-    { id: 2, lotNo: 'LOT-24002', product: 'Ana Kart', station: 'SMT_Dizgi_Hatti_01', status: 'İşlemde', updatedAt: '08:25' },
-  ]);
+  const [batches, setBatches] = useState([]);
 
   // Manuel alarm form state
   const [manualTitle, setManualTitle] = useState('');
@@ -121,10 +115,10 @@ function MainLayout() {
   const canAddRecord = isCurrentUserActive && ['Üretim Girişi', 'Tam Yetki'].includes(currentUser.permission);
   const canChangeQuality = isCurrentUserActive && ['Kalite Onayı', 'Tam Yetki'].includes(currentUser.permission);
   const canDeleteRecord = isCurrentUserActive && currentUser.permission === 'Tam Yetki';
-  const canViewReports = isCurrentUserActive && ['Kalite', 'Saha Müdürü', 'Bakım'].includes(currentUser.role);
-  const canManageWorkOrders = isCurrentUserActive && (currentUser.role === 'Saha Müdürü' || currentUser.permission === 'Tam Yetki');
-  const canManageAlarms = isCurrentUserActive && ['Kalite', 'Saha Müdürü'].includes(currentUser.role);
-  const canManageUsers = isCurrentUserActive && currentUser.role === 'Saha Müdürü';
+  const canViewReports = isCurrentUserActive && ['Admin', 'Kalite', 'Saha Müdürü', 'Bakım'].includes(currentUser.role);
+  const canManageWorkOrders = isCurrentUserActive && (currentUser.role === 'Admin' || currentUser.role === 'Saha Müdürü' || currentUser.permission === 'Tam Yetki');
+  const canManageAlarms = isCurrentUserActive && ['Admin', 'Kalite', 'Saha Müdürü'].includes(currentUser.role);
+  const canManageUsers = isCurrentUserActive && ['Admin', 'Saha Müdürü'].includes(currentUser.role);
 
   const permissionText = !isCurrentUserActive 
     ? 'Kullanıcınız PASİF durumdadır. İşlem yapamazsınız.'
@@ -185,19 +179,98 @@ function MainLayout() {
     }
   };
 
+  const loadWorkOrders = async () => {
+    try {
+      const data = await fetchWorkOrders();
+      setWorkOrders(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const loadBatches = async () => {
+    try {
+      const data = await fetchBatches();
+      setBatches(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   useEffect(() => {
+    if (!isAuthenticated) return;
     fetchRecords();
     fetchDeletedRecords();
     loadAlarms();
-  }, []);
+    loadWorkOrders();
+    loadBatches();
+  }, [isAuthenticated]);
 
   useEffect(() => {
-    if (!autoRefresh) return;
+    if (!isAuthenticated || !autoRefresh) return;
     const interval = window.setInterval(() => {
       fetchRecords();
     }, 10000);
     return () => window.clearInterval(interval);
-  }, [autoRefresh]);
+  }, [autoRefresh, isAuthenticated]);
+
+  // 🏭 GERÇEK ZAMANLI FABRİKA SİMÜLASYONU (1 - 60 sn arası rastgele POST)
+  useEffect(() => {
+    let timeoutId;
+
+    const runSimulation = async () => {
+      // Eğer simülasyon kapalıysa veya kullanıcının yetkisi yoksa dur
+      if (!isFactorySimulationActive || !canAddRecord) return;
+
+      try {
+        // 1. Rastgele Veriyi Oluştur
+        const timestamp = Date.now().toString();
+        const random7 = Math.floor(1000000 + Math.random() * 9000000).toString();
+        const urunCode = timestamp + random7;
+        const random12 = Math.floor(100000000000 + Math.random() * 900000000000).toString();
+        
+        const sampleStations = [
+          'Montaj_Hatti_01', 'Test_Ve_Paketleme_Istasyonu', 'Montaj_Hatti_02',
+          'Montaj_3', 'Havuz_1', 'SMT_Dizgi_Hatti_01', 'Kalite_Kontrol_Noktasi'
+        ];
+        const randomStation = sampleStations[Math.floor(Math.random() * sampleStations.length)];
+        
+        // %85 ihtimalle OK, %15 ihtimalle NOK üretsin (Gerçekçi bir fabrika verimi)
+        const randomQuality = Math.random() > 0.15 ? 'OK' : 'NOK';
+
+        // 2. Doğrudan Backend'e POST at (SQL'e yazılır)
+        await createProductionRecord({
+          urun20liKod: urunCode,
+          malzeme12liKod: random12,
+          istasyonAdi: randomStation,
+          kaliteDurumu: randomQuality,
+          uretimTarihi: new Date().toISOString()
+        });
+
+        // 3. Başarılı olunca verileri yenile ki ekrandaki tüm grafikler güncellensin
+        fetchRecords();
+        
+      } catch (error) {
+        console.error("Simülasyon verisi gönderilirken hata:", error);
+      }
+
+      // 4. Döngüyü devam ettir: Bir sonraki işlem için 1.000 ms (1 sn) ile 60.000 ms (60 sn) arası rastgele süre seç
+      if (isFactorySimulationActive) {
+        const nextInterval = Math.floor(Math.random() * (60000 - 1000 + 1)) + 1000;
+        timeoutId = setTimeout(runSimulation, nextInterval);
+      }
+    };
+
+    // Simülasyon butonu açıldığında döngüyü başlat
+    if (isFactorySimulationActive) {
+      // İlk kaydı atmak için 1 ile 3 saniye arası bekleyip başlasın
+      const initialDelay = Math.floor(Math.random() * (3000 - 1000 + 1)) + 1000;
+      timeoutId = setTimeout(runSimulation, initialDelay);
+    }
+
+    // Component unmount olduğunda veya state değiştiğinde timeout'u temizle
+    return () => clearTimeout(timeoutId);
+  }, [isFactorySimulationActive, canAddRecord]); // fetchRecords'u buraya eklemiyoruz ki sonsuz döngü olmasın
 
   const createTestAlarm = async () => {
     if (!canManageAlarms) {
@@ -364,6 +437,7 @@ function MainLayout() {
       }
     } catch (err) {
       alert('Silme işlemi başarısız!');
+      console.error(err);
     }
   };
 
@@ -394,6 +468,8 @@ function MainLayout() {
     }
   };
 
+  // Kalıcı silme ekranı eklenene kadar bu işlem tetiklenmez.
+  // eslint-disable-next-line no-unused-vars
   const handleHardDelete = async (recordOrId) => {
     const id = typeof recordOrId === 'object' ? (recordOrId.id || recordOrId.Id) : recordOrId;
 
@@ -468,6 +544,7 @@ function MainLayout() {
       }
     } catch (err) {
       alert('Güncelleme başarısız!');
+      console.error(err);
     }
   };
 
@@ -494,10 +571,13 @@ function MainLayout() {
     return matchesSearch && matchesStation && matchesQuality;
   });
 
-  const totalCount = records.length;
-  const okCount = records.filter((r) => r.kaliteDurumu === 'OK').length;
-  const nokCount = records.filter((r) => r.kaliteDurumu === 'NOK').length;
-  const yieldRate = totalCount > 0 ? ((okCount / totalCount) * 100).toFixed(1) : 0;
+// Live metrics backend'den gelirse kullan, yoksa kayıtlar üzerinden hesapla
+const liveOk = records.liveMetrics?.totalOk ?? records.filter((r) => r.kaliteDurumu === 'OK').length;
+const liveNok = records.liveMetrics?.totalNok ?? records.filter((r) => r.kaliteDurumu === 'NOK').length;
+const totalCount = records.liveMetrics?.totalProduction ?? (liveOk + liveNok);
+const okCount = liveOk;
+const nokCount = liveNok;
+const yieldRate = totalCount > 0 ? ((okCount / totalCount) * 100).toFixed(1) : 0;
 
   const qualityChartData = [
     { name: 'OK (Başarılı)', value: okCount, color: '#10b981' },
@@ -513,35 +593,39 @@ function MainLayout() {
     };
   });
 
-  const handleWorkOrderSubmit = (e) => {
+  const handleWorkOrderSubmit = async (e) => {
     e.preventDefault();
     if (!canManageWorkOrders) {
       alert('İş emri oluşturma yetkiniz yok (Saha Müdürü yetkisi gereklidir).');
       return;
     }
-    const newOrder = {
-      id: Date.now(),
+    try {
+      await createWorkOrder({
       orderNo: workOrderForm.orderNo,
       product: workOrderForm.product,
       station: workOrderForm.station,
-      quantity: workOrderForm.quantity,
-      status: 'Bekliyor',
-    };
-    setWorkOrders((prev) => [newOrder, ...prev]);
-    setWorkOrderForm({ orderNo: '', product: '', station: '', quantity: '' });
+      quantity: Number(workOrderForm.quantity),
+      });
+      setWorkOrderForm({ orderNo: '', product: '', station: '', quantity: '' });
+      await loadWorkOrders();
+    } catch (err) {
+      alert('İş emri oluşturulamadı.');
+      console.error(err);
+    }
   };
 
-  const handleAdvanceWorkOrder = (id) => {
+  const handleAdvanceWorkOrder = async (id) => {
     if (!canManageWorkOrders) {
       alert('İş emri durumunu değiştirme yetkiniz yok.');
       return;
     }
-    setWorkOrders((prev) => prev.map((order) => {
-      if (order.id !== id) return order;
-      if (order.status === 'Bekliyor') return { ...order, status: 'Devam Ediyor' };
-      if (order.status === 'Devam Ediyor') return { ...order, status: 'Tamamlandı' };
-      return order;
-    }));
+    try {
+      await advanceWorkOrder(id);
+      await loadWorkOrders();
+    } catch (err) {
+      alert('İş emri durumu güncellenemedi.');
+      console.error(err);
+    }
   };
 
   const handleAcknowledgeAlarm = async (id) => {
@@ -571,6 +655,11 @@ function MainLayout() {
   const isDashboardActive = location.pathname === '/dashboard' || location.pathname === '/';
   const isStationsActive = location.pathname === '/istasyonlar';
   const isQualityActive = location.pathname === '/kalite';
+  const isMetricsActive = location.pathname === '/makine-metrikleri';
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
 
   return (
     <div className="app-container">
@@ -598,6 +687,14 @@ function MainLayout() {
               <span>Kalite Raporları</span>
             </Link>
           </li>
+          <li className={`menu-item ${isMetricsActive ? 'active' : ''}`}>
+            <Link to="/makine-metrikleri" style={{ textDecoration: 'none', color: 'inherit', display: 'flex', alignItems: 'center', gap: '12px', width: '100%' }}>
+              <Cpu size={20} />
+              <span>Makine Metrikleri</span>
+            </Link>
+          </li>
+
+          
         </ul>
       </aside>
 
@@ -608,10 +705,35 @@ function MainLayout() {
               {isDashboardActive && 'Üretim Takip ve Kontrol Paneli'}
               {isStationsActive && 'İstasyon Bazlı Üretim Performansı'}
               {isQualityActive && 'Kalite & Hata Analiz Raporları'}
+              {isMetricsActive && 'Makine Telemetri ve Periyodik Metrikler'}
             </h1>
             <p>Saha Canlı Akış Verileri ve İstasyon Yönetimi</p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            
+            {/* YENİ EKLENEN FABRİKA SİMÜLASYON BUTONU */}
+            <button
+              type="button"
+              onClick={() => setIsFactorySimulationActive((prev) => !prev)}
+              style={{
+                background: isFactorySimulationActive ? '#10b981' : '#fff',
+                color: isFactorySimulationActive ? '#fff' : '#10b981',
+                border: '1px solid #10b981',
+                borderRadius: '999px',
+                padding: '8px 12px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontWeight: 600,
+                transition: 'all 0.3s ease'
+              }}
+            >
+              <Activity size={16} />
+              {isFactorySimulationActive ? '🏭 Simülasyon: ÇALIŞIYOR' : '🏭 Simülasyonu Başlat'}
+            </button>
+
+            {/* MEVCUT BUTONLAR */}
             <button
               type="button"
               onClick={() => setAutoRefresh((prev) => !prev)}
@@ -680,6 +802,7 @@ function MainLayout() {
           </div>
         </header>
 
+
         <Routes>
           {/* 📊 ÜRETİM PANESİ */}
           <Route path="/dashboard" element={
@@ -690,6 +813,8 @@ function MainLayout() {
                 <KpiCard title="Hatalı (NOK)" value={nokCount} icon={XCircle} accent={{ bg: '#fee2e2', color: '#ef4444' }} valueColor="#ef4444" />
                 <KpiCard title="Verimlilik Oranı" value={`%${yieldRate}`} icon={Percent} accent={{ bg: '#fef3c7', color: '#f59e0b' }} valueColor="#f59e0b" />
               </section>
+
+              <OeePanel records={records} isSimulationActive={isFactorySimulationActive} />
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '20px', marginBottom: '24px' }}>
                 <div className="custom-card" style={{ marginBottom: 0, borderLeft: !isCurrentUserActive ? '5px solid #ef4444' : '5px solid #0284c7' }}>
@@ -750,6 +875,8 @@ function MainLayout() {
                 </section>
               </div>
 
+              
+
               <ProductionTable
                 records={records}
                 loading={loading}
@@ -771,6 +898,9 @@ function MainLayout() {
               />
             </>
           } />
+
+          <Route path="/makine-metrikleri" element={<MachineMetricsPanel />} />
+
 
           {/* 🛠️ İSTASYONLAR SEKMESİ */}
           <Route path="/istasyonlar" element={

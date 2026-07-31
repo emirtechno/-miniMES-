@@ -1,52 +1,53 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState } from 'react';
+import { login as requestLogin } from '../services/api';
 
 const AuthContext = createContext(null);
 
-const defaultUsers = [
-  { id: 1, name: 'Ahmet Yılmaz', role: 'Operatör', status: 'Aktif', permission: 'Üretim Girişi' },
-  { id: 2, name: 'Elif Demir', role: 'Kalite', status: 'Aktif', permission: 'Kalite Onayı' },
-  { id: 3, name: 'Mert Kaya', role: 'Saha Müdürü', status: 'Aktif', permission: 'Tam Yetki' },
-  { id: 4, name: 'Buse Aksoy', role: 'Bakım', status: 'Pasif', permission: 'Rapor Görüntüleme' },
-];
+const getStoredUser = () => {
+  try {
+    const user = JSON.parse(localStorage.getItem('mm_auth_user') || 'null');
+    const expiresAt = localStorage.getItem('mm_token_expires_at');
+    return user && expiresAt && new Date(expiresAt) > new Date() ? user : null;
+  } catch {
+    return null;
+  }
+};
 
 export const AuthProvider = ({ children }) => {
-  const [users, setUsers] = useState(() => {
-    try {
-      const stored = localStorage.getItem('mm_users');
-      return stored ? JSON.parse(stored) : defaultUsers;
-    } catch {
-      return defaultUsers;
+  const [currentUser, setCurrentUser] = useState(getStoredUser);
+  const [users, setUsers] = useState(() => getStoredUser() ? [getStoredUser()] : []);
+  const [activeUserId, setActiveUserId] = useState(() => getStoredUser()?.id ?? null);
+
+  const login = async (username, password) => {
+    const response = await requestLogin(username, password);
+    if (!response?.success || !response.data) {
+      throw new Error(response?.message || 'Giriş başarısız.');
     }
-  });
 
-  const [activeUserId, setActiveUserId] = useState(() => {
-    try {
-      const stored = localStorage.getItem('mm_activeUserId');
-      return stored ? parseInt(stored, 10) : 1;
-    } catch {
-      return 1;
-    }
-  });
+    const data = response.data;
+    const user = {
+      id: data.username,
+      name: data.displayName,
+      role: data.role,
+      permission: data.permission,
+      status: 'Aktif',
+    };
 
-  const [isAuthenticated, setIsAuthenticated] = useState(() => {
-    return localStorage.getItem('mm_isAuth') === 'true';
-  });
-
-  const currentUser = users.find((u) => u.id === activeUserId) || users[0];
-
-  useEffect(() => {
-    localStorage.setItem('mm_users', JSON.stringify(users));
-    localStorage.setItem('mm_activeUserId', String(activeUserId));
-    localStorage.setItem('mm_isAuth', String(isAuthenticated));
-  }, [users, activeUserId, isAuthenticated]);
-
-  const login = (userId) => {
-    setActiveUserId(userId);
-    setIsAuthenticated(true);
+    localStorage.setItem('mm_access_token', data.accessToken);
+    localStorage.setItem('mm_token_expires_at', data.expiresAtUtc);
+    localStorage.setItem('mm_auth_user', JSON.stringify(user));
+    setCurrentUser(user);
+    setUsers([user]);
+    setActiveUserId(user.id);
   };
 
   const logout = () => {
-    setIsAuthenticated(false);
+    localStorage.removeItem('mm_access_token');
+    localStorage.removeItem('mm_token_expires_at');
+    localStorage.removeItem('mm_auth_user');
+    setCurrentUser(null);
+    setUsers([]);
+    setActiveUserId(null);
   };
 
   return (
@@ -57,7 +58,7 @@ export const AuthProvider = ({ children }) => {
         currentUser,
         activeUserId,
         setActiveUserId,
-        isAuthenticated,
+        isAuthenticated: Boolean(currentUser),
         login,
         logout,
       }}
