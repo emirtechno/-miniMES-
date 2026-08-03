@@ -206,13 +206,17 @@ const MachineMetricsPanel = ({
                 ? 'Vardiya aktif ancak duruş/setup’ta — Live Stream duraklatıldı. Üretime dönünce akış devam eder.'
                 : 'Live Stream kapalı — Operatör Panelinden Vardiya Başlat ile telemetri motorunu açın.'}
           </span>
+          <p className="mt-2 mb-0 text-xs opacity-80">
+            * Sıcaklık / RPM / Titreşim alanları PLC kolonundan gelmez; MachineMetrics (duruş, Actual/Good, çevrim)
+            değerlerinden türetilmiş canlı göstergelerdir. Anomali eşikleri Andon alarmı üretebilir.
+          </p>
         </div>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
           {[
-            { label: 'Sıcaklık', value: `${telemetry.temperature}°C`, icon: Thermometer, tone: telemetry.temperature > 70 ? 'text-red-700' : 'text-amber-700' },
-            { label: 'RPM', value: telemetry.rpm, icon: Gauge, tone: 'text-sky-700' },
-            { label: 'Titreşim', value: `${telemetry.vibration} mm/s`, icon: Waves, tone: telemetry.vibration > 2.5 ? 'text-red-700' : 'text-slate-800' },
+            { label: 'Sıcaklık*', value: `${telemetry.temperature}°C`, icon: Thermometer, tone: telemetry.temperature > 70 ? 'text-red-700' : 'text-amber-700' },
+            { label: 'RPM*', value: telemetry.rpm, icon: Gauge, tone: 'text-sky-700' },
+            { label: 'Titreşim*', value: `${telemetry.vibration} mm/s`, icon: Waves, tone: telemetry.vibration > 2.5 ? 'text-red-700' : 'text-slate-800' },
             { label: 'Σ OK', value: okNok.ok, icon: Activity, tone: 'text-emerald-700' },
             { label: 'Σ NOK', value: okNok.nok, icon: Activity, tone: 'text-red-700' },
             { label: 'Σ Actual', value: okNok.total, icon: Cpu, tone: 'text-[color:var(--color-ink)]' },

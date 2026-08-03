@@ -73,11 +73,13 @@ if (jwt.Key.Length < 32)
 
 builder.Services.AddIdentityCore<ApplicationUser>(options =>
     {
-        options.Password.RequiredLength = 3;
+        // Factory-operator friendly: length + digit only (no symbol / case maze).
+        options.Password.RequiredLength = 6;
         options.Password.RequireDigit = true;
-        options.Password.RequireLowercase = true;
-        options.Password.RequireUppercase = true;
-        options.Password.RequireNonAlphanumeric = true;
+        options.Password.RequireLowercase = false;
+        options.Password.RequireUppercase = false;
+        options.Password.RequireNonAlphanumeric = false;
+        options.Password.RequiredUniqueChars = 1;
         options.Lockout.AllowedForNewUsers = true;
         options.Lockout.MaxFailedAccessAttempts = 5;
         options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
@@ -86,7 +88,8 @@ builder.Services.AddIdentityCore<ApplicationUser>(options =>
     .AddRoles<IdentityRole>()
     .AddSignInManager()
     .AddEntityFrameworkStores<MesDbContext>()
-    .AddDefaultTokenProviders();
+    .AddDefaultTokenProviders()
+    .AddErrorDescriber<TurkishIdentityErrorDescriber>();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -205,6 +208,7 @@ builder.Services.AddRateLimiter(options =>
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IAuditLogService, AuditLogService>();
+builder.Services.AddScoped<ILotTelemetrySync, LotTelemetrySync>();
 builder.Services.AddSingleton<IMesRealtimePublisher, MesRealtimePublisher>();
 builder.Services.AddSignalR();
 
@@ -297,10 +301,10 @@ if (!isTesting)
                             LotNo = "LOT-2026-001",
                             Product = "Montaj Kiti A",
                             Station = StationCatalog.AssemblyLine1,
-                            Status = BatchStatuses.Completed,
-                            TargetQuantity = 120,
-                            ProducedQuantity = 120,
-                            UpdatedAt = DateTimeOffset.UtcNow.AddHours(-6)
+                            Status = BatchStatuses.InProgress,
+                            TargetQuantity = 1000,
+                            ProducedQuantity = 0,
+                            UpdatedAt = DateTimeOffset.UtcNow.AddHours(-1)
                         },
                         new Batch
                         {
@@ -308,8 +312,8 @@ if (!isTesting)
                             Product = "Elektronik Kart B",
                             Station = StationCatalog.ElectronicsBoardAssembly,
                             Status = BatchStatuses.InProgress,
-                            TargetQuantity = 200,
-                            ProducedQuantity = 134,
+                            TargetQuantity = 1000,
+                            ProducedQuantity = 0,
                             UpdatedAt = DateTimeOffset.UtcNow.AddHours(-2)
                         },
                         new Batch
@@ -318,7 +322,7 @@ if (!isTesting)
                             Product = "Paketleme Ünitesi C",
                             Station = StationCatalog.PackagingLine1,
                             Status = BatchStatuses.Waiting,
-                            TargetQuantity = 80,
+                            TargetQuantity = 800,
                             ProducedQuantity = 0,
                             UpdatedAt = DateTimeOffset.UtcNow.AddMinutes(-45)
                         },
@@ -327,9 +331,9 @@ if (!isTesting)
                             LotNo = "LOT-2026-004",
                             Product = "Final Kontrol Lotu D",
                             Station = StationCatalog.FinalInspection,
-                            Status = BatchStatuses.Completed,
-                            TargetQuantity = 50,
-                            ProducedQuantity = 50,
+                            Status = BatchStatuses.Waiting,
+                            TargetQuantity = 500,
+                            ProducedQuantity = 0,
                             UpdatedAt = DateTimeOffset.UtcNow.AddHours(-1)
                         },
                         new Batch
@@ -338,8 +342,8 @@ if (!isTesting)
                             Product = "Montaj Kiti A",
                             Station = StationCatalog.AssemblyLine3,
                             Status = BatchStatuses.InProgress,
-                            TargetQuantity = 150,
-                            ProducedQuantity = 72,
+                            TargetQuantity = 1000,
+                            ProducedQuantity = 0,
                             UpdatedAt = DateTimeOffset.UtcNow.AddMinutes(-20)
                         }
                     );

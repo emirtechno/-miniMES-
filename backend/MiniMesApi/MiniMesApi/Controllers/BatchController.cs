@@ -57,29 +57,24 @@ public class BatchController : ControllerBase
     }
 
     /// <summary>
-    /// Recalculates ProducedQuantity from MachineMetrics GoodProductionCount (telemetry SSOT).
+    /// Normalize lot status from stored ProducedQuantity (advanced by Live Stream ticks).
+    /// Scales small demo targets so ~100–140 unit PLC ticks show meaningful progress.
     /// </summary>
     private async Task SyncProducedFromTelemetryAsync(List<Batch> batches, CancellationToken cancellationToken)
     {
         if (batches.Count == 0) return;
 
-        var stations = batches.Select(batch => batch.Station).Distinct().ToArray();
-        var goodByStation = await _context.MachineMetrics
-            .AsNoTracking()
-            .Where(metric => stations.Contains(metric.StationId))
-            .GroupBy(metric => metric.StationId)
-            .Select(group => new
-            {
-                Station = group.Key,
-                Good = group.Sum(metric => (long)metric.GoodProductionCount)
-            })
-            .ToDictionaryAsync(row => row.Station, row => row.Good, cancellationToken);
-
         var dirty = false;
         foreach (var batch in batches)
         {
-            var telemetryGood = goodByStation.GetValueOrDefault(batch.Station, 0);
-            var produced = (int)Math.Clamp(telemetryGood, 0, Math.Max(batch.TargetQuantity, 0));
+            // Legacy seeds used Target≈50–200; industrial ticks are ~120 — raise target for open lots.
+            if (batch.Status != BatchStatuses.Completed && batch.TargetQuantity > 0 && batch.TargetQuantity < 500)
+            {
+                batch.TargetQuantity = 1000;
+                dirty = true;
+            }
+
+            var produced = Math.Clamp(batch.ProducedQuantity, 0, Math.Max(batch.TargetQuantity, 0));
             var nextStatus = produced <= 0
                 ? BatchStatuses.Waiting
                 : produced >= batch.TargetQuantity
@@ -92,6 +87,10 @@ public class BatchController : ControllerBase
                 batch.Status = nextStatus;
                 batch.UpdatedAt = DateTimeOffset.UtcNow;
                 dirty = true;
+            }
+            else if (dirty)
+            {
+                batch.UpdatedAt = DateTimeOffset.UtcNow;
             }
         }
 

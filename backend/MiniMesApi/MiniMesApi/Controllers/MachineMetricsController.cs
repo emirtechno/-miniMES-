@@ -18,15 +18,18 @@ namespace MiniMesApi.Controllers
         private readonly MesDbContext _context;
         private readonly IValidator<CreateMachineMetricDto> _validator;
         private readonly IMesRealtimePublisher _realtime;
+        private readonly ILotTelemetrySync _lotSync;
 
         public MachineMetricsController(
             MesDbContext context,
             IValidator<CreateMachineMetricDto> validator,
-            IMesRealtimePublisher realtime)
+            IMesRealtimePublisher realtime,
+            ILotTelemetrySync lotSync)
         {
             _context = context;
             _validator = validator;
             _realtime = realtime;
+            _lotSync = lotSync;
         }
 
         /// <summary>
@@ -155,6 +158,8 @@ namespace MiniMesApi.Controllers
 
             _context.MachineMetrics.Add(metric);
             await _context.SaveChangesAsync(cancellationToken);
+
+            await _lotSync.ApplyGoodUnitsAsync(metric.StationId, metric.GoodProductionCount, cancellationToken);
 
             var oee = OeeCalculator.Calculate(metric);
             await _realtime.OeeUpdatedAsync([oee], cancellationToken);

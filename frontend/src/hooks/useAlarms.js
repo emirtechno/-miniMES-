@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   acknowledgeAlarm,
   createAlarm,
@@ -57,11 +57,13 @@ export function useAlarms({
   const [manualStation, setManualStation] = useState(DEFAULT_STATION);
   const [manualSeverity, setManualSeverity] = useState('Uyarı');
   const [manualDescription, setManualDescription] = useState('');
+  const lastTelemetryAlarmAtRef = useRef(0);
 
   const loadAlarms = useCallback(async (signal) => {
     try {
       setAlarmLoading(true);
-      const page = await fetchAlarms({ signal });
+      // Prefer open alarms for shop-floor lists; closed/resolved stay in DB for audit.
+      const page = await fetchAlarms({ signal, openOnly: true, limit: 50 });
       setAlarms(page.items);
       setAlarmError(null);
     } catch (err) {
@@ -86,6 +88,13 @@ export function useAlarms({
       notify(`Yeni alarm: ${alarm.title || alarm.Title}`, 'error');
     },
     onAlarmUpdated: (alarm) => {
+      const status = (alarm.status || alarm.Status || '').toLowerCase();
+      const closed = status === 'onaylandı' || status === 'çözüldü' || status === 'kapalı' || status === 'resolved';
+      if (closed) {
+        const id = alarm.id ?? alarm.Id;
+        setAlarms((current) => current.filter((item) => (item.id ?? item.Id) !== id));
+        return;
+      }
       setAlarms((current) => upsertAlarm(current, alarm));
     },
     onAlarmDeleted: (payload) => {
@@ -119,12 +128,20 @@ export function useAlarms({
     }
   }, [canCreateAlarms, connected, loadAlarms, notify]);
 
-  /** Raise Andon alarms from Live Stream anomaly detections (quiet, no toast spam). */
+  /** Raise Andon alarms from Live Stream anomalies — cooldown + open-only to avoid UI bloat. */
   const raiseTelemetryAlarms = useCallback(async (stationId, anomalies = []) => {
     if (!canCreateAlarms || !anomalies.length) return;
-    // At most one alarm per tick to avoid flooding Andon.
-    const anomaly = anomalies[Math.floor(Math.random() * anomalies.length)];
-    if (Math.random() > 0.55 && anomaly.kind !== 'vibration' && anomaly.kind !== 'nok') return;
+    const now = Date.now();
+    const lastAt = lastTelemetryAlarmAtRef.current || 0;
+    if (now - lastAt < 45000) return; // max ~1 auto-alarm / 45s
+    // Prefer critical / high-signal kinds; skip noisy soft thresholds most of the time.
+    const ranked = [...anomalies].sort((a, b) => {
+      const score = (item) => (item.kind === 'vibration' || item.kind === 'temperature' ? 2 : item.kind === 'downtime' ? 1 : 0);
+      return score(b) - score(a);
+    });
+    const anomaly = ranked[0];
+    if (anomaly.kind === 'nok' && Math.random() > 0.25) return;
+    lastTelemetryAlarmAtRef.current = now;
     await createAlarm({
       title: `Live Stream · ${anomaly.title}`,
       station: stationId || DEFAULT_STATION,

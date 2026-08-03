@@ -38,6 +38,8 @@ namespace MiniMesApi.Controllers
         public async Task<ActionResult<CursorPage<AlarmDto>>> GetAlarms(
             [FromQuery] int limit = 50,
             [FromQuery] string? cursor = null,
+            [FromQuery] string? status = null,
+            [FromQuery] bool openOnly = false,
             CancellationToken cancellationToken = default)
         {
             limit = Math.Clamp(limit, 1, 200);
@@ -47,6 +49,18 @@ namespace MiniMesApi.Controllers
             }
 
             var query = _context.Alarms.AsNoTracking();
+            if (openOnly)
+            {
+                query = query.Where(alarm =>
+                    alarm.Status != "Onaylandı"
+                    && alarm.Status != "Çözüldü"
+                    && alarm.Status != "Kapalı");
+            }
+            else if (!string.IsNullOrWhiteSpace(status))
+            {
+                query = query.Where(alarm => alarm.Status == status);
+            }
+
             if (!string.IsNullOrWhiteSpace(cursor))
             {
                 query = query.Where(alarm =>

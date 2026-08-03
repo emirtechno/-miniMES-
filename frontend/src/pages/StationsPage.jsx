@@ -129,9 +129,10 @@ const StationsPage = ({
               Fabrika İstasyonları
             </h2>
             <p className="mes-helper mt-1 mb-0 max-w-3xl">
-              Kartlar Live Stream telemetrisini yansıtır: sıcaklık, RPM, OK/NOK ve OEE.
+              Kartlar Live Stream telemetrisini yansıtır: OK/NOK ve OEE MachineMetrics özetinden;
+              sıcaklık / RPM / titreşim ise duruş–Actual/Good–çevrimden türetilmiş göstergelerdir (PLC kolonu değil).
               “Detayı Aç” Makine Metrikleri’ne istasyon filtresiyle gider.
-              <InfoTip text="Vardiya Başlat ile Live Stream açılır; duruş/setup sırasında akış duraklar." className="ml-1" />
+              <InfoTip text="Vardiya Başlat ile Live Stream açılır; duruş/setup sırasında akış duraklar. Sıcaklık/RPM/Titreşim deriveLiveTelemetry ile üretilir." className="ml-1" />
             </p>
           </div>
           <div className="flex flex-wrap gap-2">

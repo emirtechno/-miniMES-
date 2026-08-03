@@ -43,12 +43,36 @@ const unwrapPage = (response) => {
   };
 };
 
-const fetchPage = async (path, { cursor, limit = 50, signal } = {}) => {
+const fetchPage = async (path, { cursor, limit = 50, signal, ...extraParams } = {}) => {
   const response = await apiClient.get(path, {
-    params: { cursor: cursor || undefined, limit },
+    params: {
+      cursor: cursor || undefined,
+      limit,
+      ...extraParams,
+    },
     signal,
   });
   return unwrapPage(response);
+};
+
+export const localizeIdentityMessage = (message = '') => {
+  const map = [
+    [/Passwords must have at least one non alphanumeric character.*/i, 'Parola özel karakter içermelidir (!, ?, # vb.).'],
+    [/Passwords must have at least one digit.*/i, 'Parola en az bir rakam (0-9) içermelidir.'],
+    [/Passwords must have at least one lowercase.*/i, 'Parola en az bir küçük harf içermelidir.'],
+    [/Passwords must have at least one uppercase.*/i, 'Parola en az bir büyük harf içermelidir.'],
+    [/Passwords must be at least (\d+) characters.*/i, 'Parola en az $1 karakter olmalıdır.'],
+    [/PasswordRequiresNonAlphanumeric/i, 'Parola özel karakter içermelidir (!, ?, # vb.).'],
+    [/PasswordRequiresDigit/i, 'Parola en az bir rakam (0-9) içermelidir.'],
+    [/PasswordRequiresLower/i, 'Parola en az bir küçük harf içermelidir.'],
+    [/PasswordRequiresUpper/i, 'Parola en az bir büyük harf içermelidir.'],
+    [/PasswordTooShort/i, 'Parola çok kısa.'],
+  ];
+  let next = String(message);
+  for (const [pattern, replacement] of map) {
+    next = next.replace(pattern, replacement);
+  }
+  return next;
 };
 
 export const getApiErrorMessage = (error, fallback = 'İşlem tamamlanamadı.') => {
@@ -57,11 +81,15 @@ export const getApiErrorMessage = (error, fallback = 'İşlem tamamlanamadı.') 
     const validationErrors = Array.isArray(data.errors)
       ? data.errors
       : Object.values(data.errors).flat().filter(Boolean);
-    if (validationErrors.length) return validationErrors.join(' · ');
+    if (validationErrors.length) {
+      return validationErrors.map((item) => localizeIdentityMessage(item)).join(' · ');
+    }
   }
-  if (data?.detail) return data.detail;
-  if (data?.title && data.title !== 'One or more validation errors occurred.') return data.title;
-  if (data?.message) return data.message;
+  if (data?.detail) return localizeIdentityMessage(data.detail);
+  if (data?.title && data.title !== 'One or more validation errors occurred.') {
+    return localizeIdentityMessage(data.title);
+  }
+  if (data?.message) return localizeIdentityMessage(data.message);
   return error?.message || fallback;
 };
 
@@ -69,10 +97,15 @@ export const getApiErrorMessage = (error, fallback = 'İşlem tamamlanamadı.') 
 export const getApiValidationErrors = (error) => {
   const data = error?.response?.data;
   if (!data?.errors) return [];
-  if (Array.isArray(data.errors)) return data.errors.filter(Boolean);
+  if (Array.isArray(data.errors)) return data.errors.filter(Boolean).map(localizeIdentityMessage);
   return Object.entries(data.errors).flatMap(([field, messages]) => {
     const list = Array.isArray(messages) ? messages : [messages];
-    return list.filter(Boolean).map((message) => (field && field !== '' ? `${field}: ${message}` : message));
+    return list.filter(Boolean).map((message) => {
+      const localized = localizeIdentityMessage(message);
+      // Prefer message alone when field is an Identity code.
+      if (/^Password/i.test(field) || field === '') return localized;
+      return `${field}: ${localized}`;
+    });
   });
 };
 
@@ -179,6 +212,12 @@ export const fetchDowntimeReasons = async ({ signal } = {}) => {
 export const fetchLatestOee = async (stationId, { signal } = {}) => {
   const response = await apiClient.get(`/Oee/latest/${encodeURIComponent(stationId)}`, { signal });
   return response.data;
+};
+
+/** Bulk latest OEE for all stations — preferred by Andon (avoids N+1). */
+export const fetchLatestOeeAll = async ({ signal } = {}) => {
+  const response = await apiClient.get('/Oee/latest', { signal });
+  return Array.isArray(response.data) ? response.data : [];
 };
 
 export const fetchOeeStations = async ({ signal } = {}) => {
