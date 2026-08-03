@@ -9,13 +9,15 @@ namespace MiniMesApi.Validators
         public CreateUretimKayitDtoValidator()
         {
             RuleFor(x => x.Urun20liKod)
-                .NotEmpty().WithMessage("Ürün 20'li barkod alanı boş bırakılamaz.")
-                .Length(20).WithMessage("Ürün 20'li barkodu tam olarak 20 karakter olmalıdır.")
+                .NotEmpty().WithMessage("Ürün barkod alanı boş bırakılamaz.")
+                .MinimumLength(3).WithMessage("Ürün barkodu en az 3 karakter olmalıdır.")
+                .MaximumLength(20).WithMessage("Ürün barkodu en fazla 20 karakter olabilir.")
                 .Matches("^[0-9]+$").WithMessage("Ürün barkodu sadece rakamlardan oluşmalıdır.");
 
             RuleFor(x => x.Malzeme12liKod)
-                .NotEmpty().WithMessage("12'li malzeme kodu boş bırakılamaz.")
-                .Length(12).WithMessage("Malzeme kodu tam olarak 12 karakter olmalıdır.");
+                .NotEmpty().WithMessage("Malzeme kodu boş bırakılamaz.")
+                .MinimumLength(3).WithMessage("Malzeme kodu en az 3 karakter olmalıdır.")
+                .MaximumLength(12).WithMessage("Malzeme kodu en fazla 12 karakter olabilir.");
 
             RuleFor(x => x.IstasyonAdi)
                 .NotEmpty().WithMessage("İstasyon adı seçilmelidir.")
