@@ -1,178 +1,66 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Coffee, PlayCircle, StopCircle, Wrench } from 'lucide-react';
 import CardHeader from './CardHeader';
-import { createAlarm, fetchDowntimeReasons } from '../services/api';
-import { ACTIVE_STATION_DEFINITIONS, DEFAULT_STATION, getStationDisplayName } from '../constants/stations';
-
-const storageKey = (userId) => `mm_operator_shift_${userId || 'anon'}`;
-
-const defaultShift = (stationId) => ({
-  active: false,
-  onBreak: false,
-  stationId: stationId || DEFAULT_STATION,
-  startedAt: null,
-  breakReason: null,
-  breakStartedAt: null,
-});
+import ShiftStartModal from './ShiftStartModal';
+import { useShiftSession } from '../context/ShiftSessionContext';
+import { ACTIVE_STATION_DEFINITIONS, getStationDisplayName } from '../constants/stations';
+import { getShiftLabel } from '../constants/shifts';
 
 /**
- * Shop-floor shift controls with session persistence + downtime alarm sync.
+ * Shop-floor shift status card — start opens structured modal.
  */
-const OperatorShiftWidget = ({ user, notify, canCreateAlarms, stationId, onStationChange }) => {
-  const [shift, setShift] = useState(() => {
-    try {
-      const raw = sessionStorage.getItem(storageKey(user?.id));
-      const restored = raw ? { ...defaultShift(), ...JSON.parse(raw) } : defaultShift(stationId || DEFAULT_STATION);
-      if (stationId) restored.stationId = stationId;
-      return restored;
-    } catch {
-      return defaultShift(stationId || DEFAULT_STATION);
-    }
-  });
-  const [reasons, setReasons] = useState([]);
-  const [showBreakModal, setShowBreakModal] = useState(false);
-  const [selectedReason, setSelectedReason] = useState('CHANGEOVER');
-  const [busy, setBusy] = useState(false);
+const OperatorShiftWidget = ({ user, stationId, onStationChange }) => {
+  const {
+    shift,
+    elapsedLabel,
+    setupElapsedLabel,
+    startShift,
+    endShift,
+    setStationId,
+    resumeProduction,
+  } = useShiftSession();
+  const [showStartModal, setShowStartModal] = useState(false);
+  const [showEndConfirm, setShowEndConfirm] = useState(false);
 
-  useEffect(() => {
-    if (stationId && stationId !== shift.stationId && !shift.active) {
-      setShift((current) => ({ ...current, stationId }));
-    }
-  }, [stationId, shift.stationId, shift.active]);
-
-  useEffect(() => {
-    sessionStorage.setItem(storageKey(user?.id), JSON.stringify(shift));
-  }, [shift, user?.id]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    fetchDowntimeReasons({ signal: controller.signal })
-      .then((items) => {
-        const usable = (items || []).filter((item) => item.code && item.code !== 'NONE');
-        setReasons(usable);
-        if (usable[0]?.code) setSelectedReason(usable[0].code);
-      })
-      .catch(() => {
-        setReasons([
-          { code: 'CHANGEOVER', name: 'Model/hat değişimi', isPlanned: true },
-          { code: 'PLANNED_MAINTENANCE', name: 'Planlı bakım', isPlanned: true },
-          { code: 'BREAKDOWN', name: 'Arıza', isPlanned: false },
-          { code: 'MATERIAL_SHORTAGE', name: 'Malzeme eksikliği', isPlanned: false },
-          { code: 'NO_OPERATOR', name: 'Operatör yok / mola', isPlanned: false },
-        ]);
-      });
-    return () => controller.abort();
-  }, []);
-
-  const [nowTick, setNowTick] = useState(0);
-
-  useEffect(() => {
-    setNowTick(Date.now());
-    const timer = window.setInterval(() => setNowTick(Date.now()), 30000);
-    return () => window.clearInterval(timer);
-  }, []);
-
-  const elapsed = useMemo(() => {
-    if (!shift.active || !shift.startedAt) return '—';
-    const mins = Math.max(0, Math.floor((nowTick - new Date(shift.startedAt).getTime()) / 60000));
-    const h = Math.floor(mins / 60);
-    const m = mins % 60;
-    return `${h}sa ${m}dk`;
-  }, [shift.active, shift.startedAt, nowTick]);
-
-  const startShift = () => {
-    setShift((current) => ({
-      ...current,
-      active: true,
-      onBreak: false,
-      startedAt: new Date().toISOString(),
-      breakReason: null,
-      breakStartedAt: null,
-    }));
-    notify?.('Vardiya başlatıldı.', 'success');
-  };
-
-  const endShift = () => {
-    setShift((current) => ({
-      ...defaultShift(current.stationId),
-      stationId: current.stationId,
-    }));
-    notify?.('Vardiya sonlandırıldı.', 'info');
-  };
-
-  const reportBreak = async () => {
-    if (!shift.active) {
-      notify?.('Önce vardiyayı başlatın.', 'error');
-      return;
-    }
-    setBusy(true);
-    try {
-      const reason = reasons.find((item) => item.code === selectedReason);
-      if (canCreateAlarms) {
-        await createAlarm({
-          title: `Duruş Bildirimi — ${reason?.name || selectedReason}`,
-          station: shift.stationId,
-          severity: reason?.isPlanned ? 'Uyarı' : 'Yüksek',
-          description: `Operatör ${user?.name || user?.username || ''} duruş kaydı oluşturdu.`,
-        });
-      } else {
-        notify?.('Alarm yazma yetkisi yok — mola yerel olarak işaretlendi.', 'info');
-      }
-      setShift((current) => ({
-        ...current,
-        onBreak: true,
-        breakReason: selectedReason,
-        breakStartedAt: new Date().toISOString(),
-      }));
-      setShowBreakModal(false);
-      notify?.('Duruş / mola kaydı alındı.', 'success');
-    } catch (error) {
-      notify?.(error?.message || 'Duruş kaydı oluşturulamadı.', 'error');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const resumeFromBreak = () => {
-    setShift((current) => ({
-      ...current,
-      onBreak: false,
-      breakReason: null,
-      breakStartedAt: null,
-    }));
-    notify?.('Üretime geri dönüldü.', 'success');
-  };
+  const statusLabel = !shift.active
+    ? 'Pasif'
+    : shift.inSetup
+      ? 'Setup / Model Değişimi'
+      : shift.onBreak
+        ? 'Molada / Duruşta'
+        : 'Aktif';
 
   return (
     <section className="mes-surface p-5">
       <CardHeader
         icon={Wrench}
         title="Operatör Vardiya Kontrolü"
-        subtitle={`${user?.name || user?.username || 'Operatör'} · ${getStationDisplayName(shift.stationId)}`}
+        subtitle={
+          shift.active
+            ? `${shift.operatorName || user?.name || 'Operatör'} · ${getShiftLabel(shift.shiftCode)} · ${getStationDisplayName(shift.stationId)}`
+            : 'Vardiya başlatmak için formu doldurun'
+        }
         actions={(
           <>
             {!shift.active ? (
-              <button type="button" className="mes-btn-primary" onClick={startShift}>
+              <button type="button" className="mes-btn-primary" onClick={() => setShowStartModal(true)}>
                 <PlayCircle size={16} />
                 Vardiya Başlat
               </button>
             ) : (
-              <button type="button" className="mes-btn-danger" onClick={endShift}>
+              <button type="button" className="mes-btn-danger" onClick={() => setShowEndConfirm(true)}>
                 <StopCircle size={16} />
                 Vardiya Bitir
               </button>
             )}
-            {shift.active && !shift.onBreak && (
-              <button type="button" className="mes-btn-secondary" onClick={() => setShowBreakModal(true)}>
-                <Coffee size={16} />
-                Mola / Duruş Bildir
-              </button>
-            )}
-            {shift.active && shift.onBreak && (
-              <button type="button" className="mes-btn-primary" onClick={resumeFromBreak}>
+            {shift.active && (shift.onBreak || shift.inSetup) && (
+              <button type="button" className="mes-btn-primary" onClick={resumeProduction}>
                 <PlayCircle size={16} />
                 Üretime Dön
               </button>
+            )}
+            {shift.active && !shift.onBreak && !shift.inSetup && (
+              <span className="mes-pill-ok">Aktif</span>
             )}
           </>
         )}
@@ -181,23 +69,34 @@ const OperatorShiftWidget = ({ user, notify, canCreateAlarms, stationId, onStati
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-xl border border-[color:var(--color-line)] bg-slate-50/80 p-3">
           <div className="text-xs font-semibold uppercase tracking-wide text-[color:var(--color-muted)]">Durum</div>
-          <div className="mt-1 font-semibold">
-            {!shift.active ? 'Pasif' : shift.onBreak ? 'Molada / Duruşta' : 'Aktif Üretim'}
-          </div>
+          <div className="mt-1 font-semibold">{statusLabel}</div>
         </div>
         <div className="rounded-xl border border-[color:var(--color-line)] bg-slate-50/80 p-3">
-          <div className="text-xs font-semibold uppercase tracking-wide text-[color:var(--color-muted)]">Süre</div>
-          <div className="mt-1 font-semibold">{elapsed}</div>
+          <div className="text-xs font-semibold uppercase tracking-wide text-[color:var(--color-muted)]">Uptime</div>
+          <div className="mt-1 font-semibold">{elapsedLabel}</div>
+          {setupElapsedLabel && (
+            <div className="mt-1 text-xs text-amber-800">Setup: {setupElapsedLabel}</div>
+          )}
         </div>
-        <div className="rounded-xl border border-[color:var(--color-line)] bg-slate-50/80 p-3 sm:col-span-2">
+        <div className="rounded-xl border border-[color:var(--color-line)] bg-slate-50/80 p-3">
+          <div className="text-xs font-semibold uppercase tracking-wide text-[color:var(--color-muted)]">Operatör</div>
+          <div className="mt-1 font-semibold">{shift.active ? (shift.operatorName || '—') : '—'}</div>
+          {shift.operatorId && shift.active && (
+            <div className="text-xs text-[color:var(--color-muted)]">{shift.operatorId}</div>
+          )}
+          {shift.secondaryOperator && (
+            <div className="mt-1 text-xs text-sky-800">+ {shift.secondaryOperator.name}</div>
+          )}
+        </div>
+        <div className="rounded-xl border border-[color:var(--color-line)] bg-slate-50/80 p-3">
           <label className="text-xs font-semibold uppercase tracking-wide text-[color:var(--color-muted)]">Atanan İstasyon</label>
           <select
             className="mes-input mt-1"
-            value={shift.stationId}
+            value={shift.stationId || stationId}
             disabled={shift.active}
             onChange={(event) => {
               const next = event.target.value;
-              setShift((current) => ({ ...current, stationId: next }));
+              setStationId(next);
               onStationChange?.(next);
             }}
           >
@@ -208,21 +107,43 @@ const OperatorShiftWidget = ({ user, notify, canCreateAlarms, stationId, onStati
         </div>
       </div>
 
-      {showBreakModal && (
+      {shift.summary && !shift.active && (
+        <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+          Son vardiya özeti: {shift.summary.operatorName} · {shift.summary.durationMinutes} dk · Fire {shift.summary.scrapCount}
+        </div>
+      )}
+
+      <ShiftStartModal
+        open={showStartModal}
+        onClose={() => setShowStartModal(false)}
+        defaultOperatorName={user?.name || user?.username || ''}
+        defaultOperatorId={user?.username || ''}
+        defaultStationId={stationId || shift.stationId}
+        onSubmit={(payload) => {
+          startShift(payload);
+          onStationChange?.(payload.stationId);
+          setShowStartModal(false);
+        }}
+      />
+
+      {showEndConfirm && (
         <div className="modal-overlay" role="presentation">
           <div className="modal-card confirm-dialog" role="dialog" aria-modal="true">
-            <h3>Mola / Duruş Bildir</h3>
-            <p className="mes-helper">Neden seçin — kayıt alarm olarak kalite ekranına düşer.</p>
-            <select className="mes-input" value={selectedReason} onChange={(event) => setSelectedReason(event.target.value)}>
-              {reasons.map((reason) => (
-                <option key={reason.code} value={reason.code}>
-                  {reason.name}{reason.isPlanned ? ' (planlı)' : ''}
-                </option>
-              ))}
-            </select>
+            <h3>Vardiyayı Bitir?</h3>
+            <p className="mes-helper">Aktif oturum kapanacak. Fire: {shift.scrapCount || 0}</p>
             <div className="confirm-actions">
-              <button type="button" className="mes-btn-secondary" onClick={() => setShowBreakModal(false)}>Vazgeç</button>
-              <button type="button" className="mes-btn-primary" disabled={busy} onClick={reportBreak}>Kaydet</button>
+              <button type="button" className="mes-btn-secondary" onClick={() => setShowEndConfirm(false)}>Vazgeç</button>
+              <button
+                type="button"
+                className="mes-btn-danger"
+                onClick={() => {
+                  setShowEndConfirm(false);
+                  endShift();
+                }}
+              >
+                <Coffee size={16} />
+                Bitir
+              </button>
             </div>
           </div>
         </div>

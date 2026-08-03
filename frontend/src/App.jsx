@@ -21,11 +21,14 @@ import {
 import './App.css';
 import { useAuth } from './context/AuthContext';
 import { useNotify } from './context/NotificationContext';
+import { PersonaProvider, usePersona } from './context/PersonaContext';
+import { ShiftSessionProvider, useShiftSession } from './context/ShiftSessionContext';
 import { downloadWorkbook } from './utils/excelExport';
 import { getApiErrorMessage } from './services/api';
 
 import DetailModal from './components/DetailModal';
 import AppNavLinks from './components/AppNavLinks';
+import PersonaSwitcher from './components/PersonaSwitcher';
 import DashboardPage from './pages/DashboardPage';
 import LoginPage from './pages/LoginPage';
 import QualityPage from './pages/QualityPage';
@@ -43,11 +46,42 @@ import {
   DEFAULT_STATION,
   getStationDisplayName,
 } from './constants/stations';
+import { getShiftLabel } from './constants/shifts';
 
 function MainLayout() {
   const { currentUser, logout, isAuthenticated } = useAuth();
   const { notify, confirm } = useNotify();
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  const defaultPersona = currentUser?.roles?.includes('Operator') && !currentUser?.roles?.includes('Admin')
+    ? 'operator'
+    : 'admin';
+
+  return (
+    <PersonaProvider defaultPersona={defaultPersona}>
+      <ShiftSessionProvider
+        user={currentUser}
+        notify={notify}
+        canCreateAlarms={currentUser?.status === 'Aktif' && currentUser.permissions.includes('alarms.write')}
+      >
+        <MainLayoutShell
+          currentUser={currentUser}
+          logout={logout}
+          notify={notify}
+          confirm={confirm}
+        />
+      </ShiftSessionProvider>
+    </PersonaProvider>
+  );
+}
+
+function MainLayoutShell({ currentUser, logout, notify, confirm }) {
   const location = useLocation();
+  const { persona, setPersona, isOperatorPersona, isExecutivePersona } = usePersona();
+  const { shift, elapsedLabel } = useShiftSession();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -73,7 +107,7 @@ function MainLayout() {
   const canViewDeleted = hasPermission('deleted-records.read');
 
   const production = useProduction({
-    isAuthenticated,
+    isAuthenticated: true,
     canViewDeleted,
     canAddRecord,
     autoRefresh,
@@ -83,7 +117,7 @@ function MainLayout() {
   });
 
   const alarms = useAlarms({
-    isAuthenticated,
+    isAuthenticated: true,
     canCreateAlarms,
     canManageAlarms,
     notify,
@@ -91,7 +125,7 @@ function MainLayout() {
   });
 
   const workOrders = useWorkOrders({
-    isAuthenticated,
+    isAuthenticated: true,
     canManageWorkOrders,
     notify,
   });
@@ -179,13 +213,11 @@ function MainLayout() {
     }
   };
 
-  const isPlantManager = currentUser?.roles?.includes('Admin');
-  const isOperatorRole = currentUser?.roles?.includes('Operator') && !isPlantManager;
-  const homePath = isPlantManager ? '/fabrika' : isOperatorRole ? '/operator' : '/dashboard';
+  const homePath = isOperatorPersona ? '/operator' : '/fabrika';
 
   const navItems = [
-    ...(isPlantManager ? [{ to: '/fabrika', label: 'Fabrika Genel Bakış', icon: Building2, match: (path) => path === '/fabrika' }] : []),
-    ...((isOperatorRole || isPlantManager) ? [{ to: '/operator', label: 'Operatör Paneli', icon: HardHat, match: (path) => path === '/operator' }] : []),
+    ...(isExecutivePersona ? [{ to: '/fabrika', label: 'Fabrika Genel Bakış', icon: Building2, match: (path) => path === '/fabrika' }] : []),
+    { to: '/operator', label: 'Operatör Paneli', icon: HardHat, match: (path) => path === '/operator' },
     { to: '/dashboard', label: 'Üretim Paneli', icon: LayoutDashboard, match: (path) => path === '/dashboard' },
     { to: '/istasyonlar', label: 'İstasyonlar', icon: Cpu, match: (path) => path === '/istasyonlar' },
     { to: '/kalite', label: 'Kalite Raporları', icon: Activity, match: (path) => path === '/kalite' },
@@ -194,10 +226,6 @@ function MainLayout() {
     { to: '/kilavuz', label: 'Kullanım Kılavuzu', icon: BookOpen, match: (path) => path === '/kilavuz' },
     { to: '/sistem', label: 'Sistem Akışı', icon: Network, match: (path) => path === '/sistem' },
   ];
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
 
   const pageTitle = navItems.find((item) => item.match(location.pathname))?.label || 'VESTEL MES';
 
@@ -234,16 +262,21 @@ function MainLayout() {
 
       <main className="mes-main">
         <header className="mes-topbar">
-          <div className="flex min-w-0 items-center gap-3">
-            <button type="button" className="mes-btn-secondary md:hidden" onClick={() => setMobileNavOpen(true)} aria-label="Menüyü aç">
-              <Menu size={16} />
-            </button>
-            <div className="min-w-0">
-              <h1 className="font-display m-0 truncate text-xl font-semibold tracking-wide text-[color:var(--color-ink)]">
-                {pageTitle}
-              </h1>
-              <p className="m-0 text-xs text-[color:var(--color-muted)] md:text-sm">Saha canlı akış verileri ve istasyon yönetimi</p>
+          <div className="flex min-w-0 flex-1 flex-col gap-2">
+            <div className="flex min-w-0 items-center gap-3">
+              <button type="button" className="mes-btn-secondary md:hidden" onClick={() => setMobileNavOpen(true)} aria-label="Menüyü aç">
+                <Menu size={16} />
+              </button>
+              <div className="min-w-0">
+                <h1 className="font-display m-0 truncate text-xl font-semibold tracking-wide text-[color:var(--color-ink)]">
+                  {pageTitle}
+                </h1>
+                <p className="m-0 text-xs text-[color:var(--color-muted)] md:text-sm">
+                  {isOperatorPersona ? 'Shop-floor operatör görünümü' : 'Yönetici / Ana Merkez görünümü'}
+                </p>
+              </div>
             </div>
+            <PersonaSwitcher persona={persona} onSelect={setPersona} />
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -254,6 +287,11 @@ function MainLayout() {
               <Radio size={14} />
               {alarms.liveConnected ? 'Canlı' : 'Bağlantı Yok'}
             </span>
+            {shift.active && (
+              <span className="mes-pill-ok" title="Aktif vardiya">
+                {shift.operatorName || 'Operatör'} · {getShiftLabel(shift.shiftCode)} · {elapsedLabel}
+              </span>
+            )}
             <button
               type="button"
               onClick={() => setIsFactorySimulationActive((prev) => !prev)}
@@ -292,24 +330,21 @@ function MainLayout() {
           <Routes>
             <Route
               path="/fabrika"
-              element={isPlantManager ? (
+              element={(
                 <PlantOverviewPage
                   stationChartData={stationChartData}
                   records={production.records}
                   workOrders={workOrders.workOrders}
                 />
-              ) : (
-                <Navigate to={homePath} replace />
               )}
             />
 
             <Route
               path="/operator"
-              element={(isOperatorRole || isPlantManager) ? (
+              element={(
                 <OperatorDashboardPage
                   currentUser={currentUser}
                   notify={notify}
-                  canCreateAlarms={canCreateAlarms}
                   canSubmit={canAddRecord}
                   form={{
                     urun20liKod: production.form.urun20liKod,
@@ -329,8 +364,6 @@ function MainLayout() {
                   records={production.records}
                   workOrders={workOrders.workOrders}
                 />
-              ) : (
-                <Navigate to={homePath} replace />
               )}
             />
 
@@ -409,11 +442,11 @@ function MainLayout() {
               element={(
                 <QualityPage
                   workOrders={{
-                  items: workOrders.workOrders,
-                  onAdvance: workOrders.handleAdvanceWorkOrder,
-                  onCreateSample: workOrders.handleCreateSampleWorkOrder,
-                  creatingSample: workOrders.creatingSample,
-                }}
+                    items: workOrders.workOrders,
+                    onAdvance: workOrders.handleAdvanceWorkOrder,
+                    onCreateSample: workOrders.handleCreateSampleWorkOrder,
+                    creatingSample: workOrders.creatingSample,
+                  }}
                   alarms={{
                     items: alarms.alarms,
                     loading: alarms.alarmLoading,

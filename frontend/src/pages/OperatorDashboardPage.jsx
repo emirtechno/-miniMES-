@@ -1,25 +1,47 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ClipboardList, History, Package } from 'lucide-react';
 import OperatorShiftWidget from '../components/OperatorShiftWidget';
+import ShopFloorActionBar from '../components/ShopFloorActionBar';
 import ProductionForm from '../components/ProductionForm';
 import CardHeader from '../components/CardHeader';
+import { useShiftSession } from '../context/ShiftSessionContext';
 import { ACTIVE_STATION_DEFINITIONS, DEFAULT_STATION, getStationDisplayName } from '../constants/stations';
+import { getShiftLabel } from '../constants/shifts';
 
 /**
- * Operator-focused workspace: assigned station, active WO, counters, shift actions.
+ * Operator-focused workspace: assigned station, active WO, counters, HMI actions.
  */
 const OperatorDashboardPage = ({
   currentUser,
   notify,
-  canCreateAlarms,
   form,
   records = [],
   workOrders = [],
   canSubmit = true,
 }) => {
-  const [stationId, setStationId] = useState(form?.istasyonAdi || DEFAULT_STATION);
+  const {
+    shift,
+    elapsedLabel,
+    setStationId,
+    reportDowntime,
+    resumeProduction,
+    startSetup,
+    logScrap,
+    loginSecondaryOperator,
+    endShift,
+  } = useShiftSession();
+
+  const [stationId, setLocalStationId] = useState(form?.istasyonAdi || shift.stationId || DEFAULT_STATION);
+
+  useEffect(() => {
+    if (shift.stationId && shift.stationId !== stationId) {
+      setLocalStationId(shift.stationId);
+      form?.onChangeStation?.({ target: { value: shift.stationId } });
+    }
+  }, [shift.stationId]); // eslint-disable-line react-hooks/exhaustive-deps -- sync from shift session only
 
   const handleStationChange = (nextStationId) => {
+    setLocalStationId(nextStationId);
     setStationId(nextStationId);
     form?.onChangeStation?.({ target: { value: nextStationId } });
   };
@@ -41,11 +63,12 @@ const OperatorDashboardPage = ({
         <CardHeader
           icon={Package}
           title="Operatör Paneli"
-          subtitle="Sadece atanan istasyon, aktif iş emri ve hızlı vardiya aksiyonları"
+          subtitle="Atanan istasyon, aktif iş emri, vardiya ve saha HMI aksiyonları"
           actions={(
             <select
               className="mes-input h-10 w-auto min-w-[200px]"
               value={stationId}
+              disabled={shift.active}
               onChange={(e) => handleStationChange(e.target.value)}
             >
               {ACTIVE_STATION_DEFINITIONS.map((station) => (
@@ -54,7 +77,7 @@ const OperatorDashboardPage = ({
             </select>
           )}
         />
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-xl border border-[color:var(--color-line)] bg-slate-50 p-4">
             <div className="text-xs font-semibold uppercase tracking-wide text-[color:var(--color-muted)]">İstasyon</div>
             <div className="font-display mt-1 text-2xl font-semibold">{getStationDisplayName(stationId)}</div>
@@ -67,15 +90,39 @@ const OperatorDashboardPage = ({
             <div className="text-xs font-semibold uppercase tracking-wide text-red-800">NOK Sayacı</div>
             <div className="font-display mt-1 text-3xl font-semibold text-red-950">{nok}</div>
           </div>
+          <div className={`rounded-xl border p-4 ${shift.active ? 'border-sky-200 bg-sky-50/80' : 'border-[color:var(--color-line)] bg-slate-50'}`}>
+            <div className="text-xs font-semibold uppercase tracking-wide text-[color:var(--color-muted)]">Vardiya</div>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <span className={shift.active ? 'mes-pill-ok' : 'mes-pill-neutral'}>
+                {shift.active ? 'Aktif' : 'Pasif'}
+              </span>
+              <span className="text-sm font-semibold">{elapsedLabel}</span>
+            </div>
+            {shift.active && (
+              <div className="mt-1 text-xs text-slate-600">
+                {shift.operatorName} · {getShiftLabel(shift.shiftCode)}
+              </div>
+            )}
+          </div>
         </div>
       </section>
 
       <OperatorShiftWidget
         user={currentUser}
-        notify={notify}
-        canCreateAlarms={canCreateAlarms}
         stationId={stationId}
         onStationChange={handleStationChange}
+      />
+
+      <ShopFloorActionBar
+        shift={shift}
+        notify={notify}
+        onKeypadLogin={loginSecondaryOperator}
+        onDowntime={reportDowntime}
+        onScrap={logScrap}
+        onSetup={startSetup}
+        onEmergency={reportDowntime}
+        onEndShift={endShift}
+        onResume={resumeProduction}
       />
 
       <section className="mes-surface p-5">
