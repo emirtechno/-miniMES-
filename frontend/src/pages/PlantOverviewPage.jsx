@@ -25,7 +25,7 @@ const toneForOee = (value) => {
 /**
  * Plant manager command center: factory-wide OEE and multi-line status timeline.
  */
-const PlantOverviewPage = ({ stationChartData = [], records = [], workOrders = [] }) => {
+const PlantOverviewPage = ({ stationChartData = [], records = [], workOrders = [], liveStreaming = false }) => {
   const [oeeByStation, setOeeByStation] = useState({});
   const [focusStation, setFocusStation] = useState(DEFAULT_STATION);
 
@@ -70,7 +70,9 @@ const PlantOverviewPage = ({ stationChartData = [], records = [], workOrders = [
         <CardHeader
           icon={Factory}
           title="Fabrika Genel Bakış · Ana Merkez"
-          subtitle="Plant manager görünümü — hatlar arası OEE, durum şeridi ve hacim"
+          subtitle={liveStreaming
+            ? 'Live Stream açık — hatlar arası OEE, durum şeridi ve hacim telemetriden güncellenir'
+            : 'Plant manager görünümü — hatlar arası OEE, durum şeridi ve hacim (Vardiya Başlat ile Live Stream)'}
           actions={(
             <select className="mes-input h-10 w-auto min-w-[200px]" value={focusStation} onChange={(e) => setFocusStation(e.target.value)}>
               {ACTIVE_STATION_DEFINITIONS.map((station) => (

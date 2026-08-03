@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import MachineMetricsPanel from './components/MachineMetricsPanel';
 import {
@@ -80,21 +80,20 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
 
   const [selectedStationDetail, setSelectedStationDetail] = useState(DEFAULT_STATION);
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [isFactorySimulationActive, setIsFactorySimulationActive] = useState(false);
-  const [simulationStationId, setSimulationStationId] = useState(null);
 
   const isCurrentUserActive = currentUser?.status === 'Aktif';
   const hasPermission = (permission) => isCurrentUserActive && currentUser.permissions.includes(permission);
 
-  const canAddRecord = hasPermission('production.write');
+  const canIngestTelemetry = hasPermission('production.write');
   const canChangeQuality = hasPermission('production.manage');
-  const canDeleteRecord = hasPermission('production.manage');
-  const canHardDelete = hasPermission('production.hard-delete');
   const canManageWorkOrders = hasPermission('workorders.manage');
   const canCreateAlarms = hasPermission('alarms.write');
   const canManageAlarms = hasPermission('alarms.manage');
   const canManageUsers = hasPermission('users.manage');
-  const canViewDeleted = hasPermission('deleted-records.read');
+
+  // Shift drives Live Stream: active + producing (not on break / setup) → telemetry ticks.
+  const isFactorySimulationActive = Boolean(shift.active && !shift.onBreak && !shift.inSetup);
+  const simulationStationId = shift.active ? shift.stationId : null;
 
   const alarms = useAlarms({
     isAuthenticated: true,
@@ -104,21 +103,19 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
     confirm,
   });
 
-  const { createSimulationAlarm } = alarms;
-  const onSimulatedNok = useCallback(async (stationId) => {
-    await createSimulationAlarm(stationId);
-  }, [createSimulationAlarm]);
+  const { raiseTelemetryAlarms } = alarms;
+  const onSimulatedAnomalies = useCallback(async (stationId, anomalies) => {
+    await raiseTelemetryAlarms(stationId, anomalies);
+  }, [raiseTelemetryAlarms]);
 
   const production = useProduction({
     isAuthenticated: true,
-    canViewDeleted,
-    canAddRecord,
+    canIngestTelemetry,
     autoRefresh,
     factorySimulationActive: isFactorySimulationActive,
     simulationStationId,
-    onSimulatedNok: canCreateAlarms ? onSimulatedNok : undefined,
+    onSimulatedAnomalies: canCreateAlarms ? onSimulatedAnomalies : undefined,
     notify,
-    confirm,
   });
 
   const workOrders = useWorkOrders({
@@ -170,28 +167,6 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
 
   const pageTitle = navItems.find((item) => item.match(location.pathname))?.label || 'VESTEL MES';
 
-  const handleToggleSimulation = useCallback(() => {
-    setIsFactorySimulationActive((prev) => {
-      const next = !prev;
-      if (next) {
-        const params = new URLSearchParams(location.search);
-        const stationId = params.get('stationId');
-        setSimulationStationId(
-          location.pathname === '/makine-metrikleri' && stationId ? stationId : null,
-        );
-      } else {
-        setSimulationStationId(null);
-      }
-      return next;
-    });
-  }, [location.pathname, location.search]);
-
-  useEffect(() => {
-    if (!isFactorySimulationActive || location.pathname !== '/makine-metrikleri') return;
-    const stationId = new URLSearchParams(location.search).get('stationId');
-    setSimulationStationId(stationId && stationId !== 'Tümü' ? stationId : null);
-  }, [isFactorySimulationActive, location.pathname, location.search]);
-
   return (
     <div className="mes-shell">
       <aside className="mes-sidebar">
@@ -201,7 +176,7 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
         </div>
         <AppNavLinks items={navItems} />
         <p className="mt-auto px-2 text-xs leading-relaxed text-slate-500">
-          Saha paneli · Canlı OEE · Andon
+          Telemetri · Canlı OEE · Andon
         </p>
       </aside>
 
@@ -256,10 +231,14 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
                 {shift.operatorName || 'Operatör'} · {getShiftLabel(shift.shiftCode)} · {elapsedLabel}
               </span>
             )}
-            {isFactorySimulationActive && (
-              <span className="mes-pill-warn" title="Simülasyon Makine Metrikleri ekranından yönetilir">
+            {isFactorySimulationActive ? (
+              <span className="mes-pill-warn" title="Vardiya Live Stream motoru aktif">
                 <Activity size={14} />
-                Simülasyon
+                Live Stream
+              </span>
+            ) : (
+              <span className="mes-pill-neutral" title="Vardiya Başlat ile telemetri akışı açılır">
+                Stream Kapalı
               </span>
             )}
             <button
@@ -297,6 +276,7 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
                   stationChartData={stationChartData}
                   records={production.records}
                   workOrders={workOrders.workOrders}
+                  liveStreaming={isFactorySimulationActive}
                 />
               )}
             />
@@ -307,24 +287,10 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
                 <OperatorDashboardPage
                   currentUser={currentUser}
                   notify={notify}
-                  canSubmit={canAddRecord}
-                  form={{
-                    urun20liKod: production.form.urun20liKod,
-                    malzeme12liKod: production.form.malzeme12liKod,
-                    istasyonAdi: production.form.istasyonAdi,
-                    kaliteDurumu: production.form.kaliteDurumu,
-                    onChangeUrun: (event) => production.form.setUrun20liKod(event.target.value),
-                    onChangeMalzeme: (event) => production.form.setMalzeme12liKod(event.target.value),
-                    onChangeStation: (event) => production.form.setIstasyonAdi(event.target.value),
-                    onChangeQuality: (event) => production.form.setKaliteDurumu(event.target.value),
-                    onSubmit: production.form.onSubmit,
-                    onGenerateRandom: production.form.onGenerateRandom,
-                    urunInputRef: production.form.urunInputRef,
-                    malzemeInputRef: production.form.malzemeInputRef,
-                    canSubmit: canAddRecord,
-                  }}
                   records={production.records}
                   workOrders={workOrders.workOrders}
+                  batches={workOrders.batches}
+                  liveStreaming={isFactorySimulationActive}
                 />
               )}
             />
@@ -336,8 +302,8 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
               element={(
                 <MachineMetricsPanel
                   isFactorySimulationActive={isFactorySimulationActive}
-                  onToggleSimulation={handleToggleSimulation}
-                  canControlSimulation={canAddRecord}
+                  shiftStationId={shift.stationId}
+                  shiftActive={shift.active}
                   productionRecords={production.records}
                   batches={workOrders.batches}
                 />
@@ -357,6 +323,8 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
                   recentRecords={stationDetailRecords.slice(0, 6)}
                   stations={stationsList}
                   records={production.records}
+                  liveStreaming={isFactorySimulationActive}
+                  activeShiftStationId={simulationStationId}
                 />
               )}
             />
@@ -380,26 +348,15 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
                     onResolve: alarms.handleResolveAlarm,
                   }}
                   batches={workOrders.batches}
-                  deleted={{
-                    items: production.deletedRecords,
-                    loading: production.deletedLoading,
-                    error: production.deletedError,
-                    onRestore: production.handleRestore,
-                    onHardDelete: canHardDelete ? production.handleHardDelete : undefined,
-                  }}
                   production={{
                     records: production.records,
                     onToggleQuality: production.handleToggleQuality,
-                    onDelete: production.handleDelete,
                   }}
                   permissions={{
                     canManageWorkOrders,
                     canCreateAlarms,
                     canManageAlarms,
                     canManageUsers,
-                    canViewDeleted,
-                    canManageProduction: canDeleteRecord,
-                    canHardDelete,
                     canChangeQuality,
                   }}
                   alarmForm={alarms.alarmForm}

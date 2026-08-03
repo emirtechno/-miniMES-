@@ -1,4 +1,4 @@
-import { AlertTriangle, BellPlus, RefreshCw, Trash2, XCircle } from 'lucide-react';
+import { AlertTriangle, BellPlus, XCircle } from 'lucide-react';
 import AlarmPanel from '../components/AlarmPanel';
 import TraceabilityPanel from '../components/TraceabilityPanel';
 import UserRolePanel from '../components/UserRolePanel';
@@ -10,7 +10,6 @@ const QualityPage = ({
   workOrders,
   alarms,
   batches,
-  deleted,
   production,
   permissions,
   alarmForm,
@@ -36,7 +35,7 @@ const QualityPage = ({
           <CardHeader
             icon={BellPlus}
             title="Alarm Oluşturma"
-            subtitle="Test veya manuel shop-floor alarmı"
+            subtitle="Test veya manuel shop-floor alarmı (Live Stream anomali alarmlarını da Andon’a düşürür)"
             actions={(
               <button type="button" className="mes-btn-primary" onClick={alarms.onCreateTest} disabled={alarms.loading}>
                 <AlertTriangle size={16} />
@@ -73,45 +72,12 @@ const QualityPage = ({
 
       {permissions.canManageUsers && <UserRolePanel />}
 
-      {permissions.canViewDeleted && (
-        <section className="mes-surface p-5">
-          <CardHeader icon={RefreshCw} title={`Çöp Kutusu / Silinen Kayıtlar (${deleted.items.length})`} />
-          {deleted.loading && <p>Silinen kayıtlar yükleniyor...</p>}
-          {deleted.error && <p className="error">{deleted.error}</p>}
-          <div className="table-wrapper">
-            <table className="modern-table">
-              <thead>
-                <tr>
-                  <th>ID</th><th>Ürün</th><th>Malzeme</th><th>İstasyon</th><th>Aksiyon</th>
-                </tr>
-              </thead>
-              <tbody>
-                {deleted.items.map((record) => (
-                  <tr key={record.id}>
-                    <td>#{record.id}</td>
-                    <td>{record.urun20liKod}</td>
-                    <td>{record.malzeme12liKod}</td>
-                    <td>{getStationDisplayName(record.istasyonAdi)}</td>
-                    <td>
-                      <div className="mes-card-actions">
-                        <button type="button" className="mes-btn-secondary" onClick={() => deleted.onRestore(record.id)}>Geri Yükle</button>
-                        {deleted.onHardDelete && (
-                          <button type="button" className="mes-btn-danger" onClick={() => deleted.onHardDelete(record.id)}>
-                            <Trash2 size={16} /> Kalıcı Sil
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
-
       <section className="mes-surface p-5">
-        <CardHeader icon={XCircle} title={`NOK Kalite Kayıtları (${failedRecords.length})`} />
+        <CardHeader
+          icon={XCircle}
+          title={`NOK Telemetri Kayıtları (${failedRecords.length})`}
+          subtitle="Sensör olayları değişmez; yalnızca kalite sınıflandırması (NOK→OK) yetkili kullanıcı tarafından güncellenebilir"
+        />
         <div className="table-wrapper">
           <table className="modern-table">
             <thead>
@@ -129,15 +95,17 @@ const QualityPage = ({
                   <td>
                     {permissions.canChangeQuality ? (
                       <button type="button" className="mes-pill-nok" onClick={() => production.onToggleQuality(record)}>NOK → OK</button>
-                    ) : <span>Yetki Yok</span>}
-                    {permissions.canManageProduction && (
-                      <button type="button" className="mes-btn-ghost ml-2" onClick={() => production.onDelete(record.id)}>
-                        <Trash2 size={16} />
-                      </button>
-                    )}
+                    ) : <span className="text-xs text-[color:var(--color-muted)]">Salt okunur</span>}
                   </td>
                 </tr>
               ))}
+              {failedRecords.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-6 text-center text-sm text-[color:var(--color-muted)]">
+                    Açık NOK telemetri kaydı yok.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

@@ -16,7 +16,7 @@ const TraceabilityPanel = ({ batches = [] }) => (
     <CardHeader
       icon={PackageSearch}
       title="Parti / Lot İzlenebilirliği"
-      subtitle="Üretilen miktar istasyon üretim kayıtlarından otomatik hesaplanır"
+      subtitle="Üretilen miktar aktif istasyonun Live Stream OK sayaçlarından otomatik hesaplanır"
     />
 
     <div className="overflow-x-auto">
