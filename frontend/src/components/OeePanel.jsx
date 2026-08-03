@@ -2,32 +2,42 @@ import { useCallback, useState } from 'react';
 import { fetchLatestOee } from '../services/api';
 import { useNonOverlappingPolling } from '../hooks/useNonOverlappingPolling';
 import { useMesHub } from '../hooks/useMesHub';
-import { DEFAULT_STATION } from '../constants/stations';
+import { DEFAULT_STATION, getStationDisplayName } from '../constants/stations';
+import OeeInsight from './OeeInsight';
+import InfoTip from './InfoTip';
 
 const Gauge = ({ label, value, detail }) => {
   const isAvailable = typeof value === 'number' && !Number.isNaN(value);
   const normalizedValue = isAvailable ? Math.max(0, Math.min(value, 100)) : 0;
   const radius = 42;
   const circumference = 2 * Math.PI * radius;
-  const color = normalizedValue >= 85 ? '#10b981' : normalizedValue >= 60 ? '#f59e0b' : '#ef4444';
+  const color = normalizedValue >= 85 ? '#0f9f6e' : normalizedValue >= 60 ? '#c47f17' : '#d92d20';
 
   return (
-    <article className="oee-gauge">
-      <div className="oee-gauge-visual">
-        <svg viewBox="0 0 110 70" aria-hidden="true">
-          <path className="oee-gauge-track" d="M 13 58 A 42 42 0 0 1 97 58" />
+    <article className="rounded-xl border border-[color:var(--color-line)] bg-slate-50/60 px-3 py-3 text-center">
+      <div className="relative mx-auto h-[72px] w-[110px]">
+        <svg viewBox="0 0 110 70" aria-hidden="true" className="h-full w-full">
+          <path d="M 13 58 A 42 42 0 0 1 97 58" fill="none" stroke="#e2e8f0" strokeWidth="10" strokeLinecap="round" />
           {isAvailable && (
             <path
-              className="oee-gauge-value"
               d="M 13 58 A 42 42 0 0 1 97 58"
-              style={{ stroke: color, strokeDasharray: `${(circumference / 2) * (normalizedValue / 100)} ${circumference}` }}
+              fill="none"
+              stroke={color}
+              strokeWidth="10"
+              strokeLinecap="round"
+              style={{ strokeDasharray: `${(circumference / 2) * (normalizedValue / 100)} ${circumference}` }}
             />
           )}
         </svg>
-        <strong style={{ color: isAvailable ? color : '#94a3b8' }}>{isAvailable ? `%${normalizedValue.toFixed(1)}` : '—'}</strong>
+        <strong
+          className="absolute inset-x-0 bottom-0 font-display text-lg"
+          style={{ color: isAvailable ? color : '#94a3b8' }}
+        >
+          {isAvailable ? `%${normalizedValue.toFixed(1)}` : '—'}
+        </strong>
       </div>
-      <span>{label}</span>
-      <small>{detail}</small>
+      <div className="mt-1 text-sm font-semibold text-[color:var(--color-ink)]">{label}</div>
+      <small className="block text-xs text-[color:var(--color-muted)]">{detail}</small>
     </article>
   );
 };
@@ -60,15 +70,18 @@ const OeePanel = ({ stationId = DEFAULT_STATION }) => {
     : 'Bekleniyor...';
 
   return (
-    <section className="custom-card oee-panel">
-      <div className="card-header oee-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <section className="mes-surface p-5">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
         <div>
-          <span>OEE / Hat Verimliliği — {stationId}</span>
-          <small>Son Güncelleme: {lastUpdated}</small>
+          <h2 className="mes-section-title m-0 flex items-center gap-2">
+            OEE / Hat Verimliliği — {getStationDisplayName(stationId)}
+            <InfoTip text="OEE = Kullanılabilirlik × Performans × Kalite. Veriler API ve (açıksa) arka plan simülasyonundan gelir; SignalR ile canlı güncellenir." />
+          </h2>
+          <p className="mes-helper mt-1 mb-0">Son güncelleme: {lastUpdated}</p>
         </div>
       </div>
 
-      <div className="oee-grid">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Gauge
           label="Kullanılabilirlik"
           value={metric?.availability}
@@ -92,6 +105,8 @@ const OeePanel = ({ stationId = DEFAULT_STATION }) => {
           detail={`${metric?.scrapProduction ?? 0} fire`}
         />
       </div>
+
+      <OeeInsight metric={metric} />
     </section>
   );
 };

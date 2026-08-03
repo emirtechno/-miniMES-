@@ -118,13 +118,18 @@
 
 .andon-stations {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
 }
 
 .andon-station {
-  padding: 18px;
-  min-height: 220px;
+  padding: 16px;
+  min-height: 200px;
+}
+
+.andon-station h2 {
+  font-size: clamp(1rem, 1.6vw, 1.25rem);
+  margin: 0;
 }
 
 .andon-station.good { border-color: rgba(16, 185, 129, 0.45); }

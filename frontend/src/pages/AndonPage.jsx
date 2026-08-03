@@ -4,8 +4,10 @@ import { Activity, AlertTriangle, Factory, Radio } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { fetchAlarms, fetchLatestOee, fetchMachineMetrics } from '../services/api';
 import { useMesHub } from '../hooks/useMesHub';
-import { STATIONS } from '../constants/stations';
+import { ACTIVE_STATION_DEFINITIONS, getStationDisplayName } from '../constants/stations';
 import './AndonPage.css';
+
+const ANDON_STATIONS = ACTIVE_STATION_DEFINITIONS.map((station) => station.id);
 
 const severityTone = (severity) => {
   const value = (severity || '').toLowerCase();
@@ -39,7 +41,7 @@ const AndonPage = () => {
         setAlarms(alarmPage.items.filter((alarm) => (alarm.status || '').toLowerCase() !== 'onaylandı').slice(0, 8));
 
         const entries = await Promise.all(
-          STATIONS.map(async (stationId) => {
+          ANDON_STATIONS.map(async (stationId) => {
             try {
               const metric = await fetchLatestOee(stationId, { signal: controller.signal });
               return [stationId, metric];
@@ -93,7 +95,7 @@ const AndonPage = () => {
 
   const openAlarmCount = alarms.length;
   const averageOee = useMemo(() => {
-    const values = STATIONS
+    const values = ANDON_STATIONS
       .map((station) => oeeByStation[station]?.oee)
       .filter((value) => typeof value === 'number');
     if (!values.length) return null;
@@ -135,19 +137,19 @@ const AndonPage = () => {
         </article>
         <article>
           <small>İstasyon</small>
-          <strong>{STATIONS.length}</strong>
+          <strong>{ANDON_STATIONS.length}</strong>
         </article>
       </section>
 
       <section className="andon-stations">
-        {STATIONS.map((stationId) => {
+        {ANDON_STATIONS.map((stationId) => {
           const metric = oeeByStation[stationId];
           const oee = metric?.oee;
           const tone = oee == null ? 'idle' : oee >= 85 ? 'good' : oee >= 60 ? 'warn' : 'bad';
           return (
             <article key={stationId} className={`andon-station ${tone}`}>
               <header>
-                <h2>{stationId}</h2>
+                <h2>{getStationDisplayName(stationId)}</h2>
                 <span>{metric?.shiftName || metric?.shiftCode || '—'}</span>
               </header>
               <div className="andon-oee">

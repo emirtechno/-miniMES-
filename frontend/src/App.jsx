@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import MachineMetricsPanel from './components/MachineMetricsPanel';
 import {
@@ -10,6 +10,10 @@ import {
   LogOut,
   Monitor,
   Radio,
+  BookOpen,
+  Network,
+  Menu,
+  X,
 } from 'lucide-react';
 
 import './App.css';
@@ -24,15 +28,22 @@ import LoginPage from './pages/LoginPage';
 import QualityPage from './pages/QualityPage';
 import StationsPage from './pages/StationsPage';
 import AndonPage from './pages/AndonPage';
+import OperatorGuidePage from './pages/OperatorGuidePage';
+import SystemFlowPage from './pages/SystemFlowPage';
 import { useProduction } from './hooks/useProduction';
 import { useAlarms } from './hooks/useAlarms';
 import { useWorkOrders } from './hooks/useWorkOrders';
-import { DEFAULT_STATION } from './constants/stations';
+import {
+  ACTIVE_STATION_DEFINITIONS,
+  DEFAULT_STATION,
+  getStationDisplayName,
+} from './constants/stations';
 
 function MainLayout() {
   const { currentUser, logout, isAuthenticated } = useAuth();
   const { notify, confirm } = useNotify();
   const location = useLocation();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStation, setSelectedStation] = useState('Tümü');
@@ -90,10 +101,17 @@ function MainLayout() {
     notify,
   });
 
-  const stationsList = [...new Set(production.records.map((r) => r.istasyonAdi).filter(Boolean))];
+  const stationsList = useMemo(() => {
+    const fromRecords = production.records.map((r) => r.istasyonAdi).filter(Boolean);
+    return [...new Set([...ACTIVE_STATION_DEFINITIONS.map((s) => s.id), ...fromRecords])];
+  }, [production.records]);
+
   const stationsFilterOptions = ['Tümü', ...stationsList];
   const stationDetailOptions = stationsList.length > 0 ? stationsList : [DEFAULT_STATION];
-  const stationDetailRecords = production.records.filter((record) => record.istasyonAdi === selectedStationDetail);
+  const stationDetailRecords = production.records
+    .filter((record) => record.istasyonAdi === selectedStationDetail)
+    .slice()
+    .sort((a, b) => new Date(b.uretimTarihi || 0) - new Date(a.uretimTarihi || 0));
   const stationMetrics = {
     total: stationDetailRecords.length,
     ok: stationDetailRecords.filter((record) => record.kaliteDurumu === 'OK').length,
@@ -119,8 +137,8 @@ function MainLayout() {
   const nokCount = liveNok;
   const yieldRate = totalCount > 0 ? ((okCount / totalCount) * 100).toFixed(1) : 0;
   const qualityChartData = [
-    { name: 'OK (Başarılı)', value: okCount, color: '#10b981' },
-    { name: 'NOK (Hatalı)', value: nokCount, color: '#ef4444' },
+    { name: 'OK (Başarılı)', value: okCount, color: '#0f9f6e' },
+    { name: 'NOK (Hatalı)', value: nokCount, color: '#d92d20' },
   ];
   const stationChartData = stationsList.map((st) => {
     const stRecords = production.records.filter((r) => r.istasyonAdi === st);
@@ -154,7 +172,7 @@ function MainLayout() {
           id: r.id,
           urun: r.urun20liKod,
           malzeme: r.malzeme12liKod,
-          istasyon: r.istasyonAdi,
+          istasyon: getStationDisplayName(r.istasyonAdi),
           kalite: r.kaliteDurumu,
           tarih: r.uretimTarihi
             ? `${new Date(r.uretimTarihi).toLocaleString('tr-TR', { timeZone: 'UTC' })} UTC`
@@ -166,278 +184,251 @@ function MainLayout() {
     }
   };
 
-  const isDashboardActive = location.pathname === '/dashboard' || location.pathname === '/';
-  const isStationsActive = location.pathname === '/istasyonlar';
-  const isQualityActive = location.pathname === '/kalite';
-  const isMetricsActive = location.pathname === '/makine-metrikleri';
+  const navItems = [
+    { to: '/dashboard', label: 'Üretim Paneli', icon: LayoutDashboard, match: (path) => path === '/dashboard' || path === '/' },
+    { to: '/istasyonlar', label: 'İstasyonlar', icon: Cpu, match: (path) => path === '/istasyonlar' },
+    { to: '/kalite', label: 'Kalite Raporları', icon: Activity, match: (path) => path === '/kalite' },
+    { to: '/makine-metrikleri', label: 'Makine Metrikleri', icon: GaugeNavIcon, match: (path) => path === '/makine-metrikleri' },
+    { to: '/andon', label: 'Andon Ekranı', icon: Monitor, match: (path) => path === '/andon' },
+    { to: '/kilavuz', label: 'Kullanım Kılavuzu', icon: BookOpen, match: (path) => path === '/kilavuz' },
+    { to: '/sistem', label: 'Sistem Akışı', icon: Network, match: (path) => path === '/sistem' },
+  ];
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 
+  const pageTitle = navItems.find((item) => item.match(location.pathname))?.label || 'VESTEL MES';
+
+  const NavLinks = ({ onNavigate }) => (
+    <ul className="m-0 flex list-none flex-col gap-1 p-0">
+      {navItems.map(({ to, label, icon: Icon, match }) => {
+        const active = match(location.pathname);
+        return (
+          <li key={to}>
+            <Link
+              to={to}
+              className="mes-nav-link"
+              aria-current={active ? 'page' : undefined}
+              onClick={() => onNavigate?.()}
+            >
+              <Icon size={18} />
+              <span>{label}</span>
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
+  );
+
   return (
-    <div className="app-container">
-      <aside className="sidebar">
-        <div className="brand">
-          <Factory className="brand-icon" size={28} />
+    <div className="mes-shell">
+      <aside className="mes-sidebar">
+        <div className="mes-brand">
+          <Factory className="text-[color:var(--color-vestel)]" size={28} />
           <span>VESTEL MES</span>
         </div>
-        <ul className="menu-list">
-          <li className={`menu-item ${isDashboardActive ? 'active' : ''}`}>
-            <Link to="/dashboard" aria-current={isDashboardActive ? 'page' : undefined} style={{ textDecoration: 'none', color: 'inherit', display: 'flex', alignItems: 'center', gap: '12px', width: '100%' }}>
-              <LayoutDashboard size={20} />
-              <span>Üretim Paneli</span>
-            </Link>
-          </li>
-          <li className={`menu-item ${isStationsActive ? 'active' : ''}`}>
-            <Link to="/istasyonlar" aria-current={isStationsActive ? 'page' : undefined} style={{ textDecoration: 'none', color: 'inherit', display: 'flex', alignItems: 'center', gap: '12px', width: '100%' }}>
-              <Cpu size={20} />
-              <span>İstasyonlar</span>
-            </Link>
-          </li>
-          <li className={`menu-item ${isQualityActive ? 'active' : ''}`}>
-            <Link to="/kalite" aria-current={isQualityActive ? 'page' : undefined} style={{ textDecoration: 'none', color: 'inherit', display: 'flex', alignItems: 'center', gap: '12px', width: '100%' }}>
-              <Activity size={20} />
-              <span>Kalite Raporları</span>
-            </Link>
-          </li>
-          <li className={`menu-item ${isMetricsActive ? 'active' : ''}`}>
-            <Link to="/makine-metrikleri" aria-current={isMetricsActive ? 'page' : undefined} style={{ textDecoration: 'none', color: 'inherit', display: 'flex', alignItems: 'center', gap: '12px', width: '100%' }}>
-              <Cpu size={20} />
-              <span>Makine Metrikleri</span>
-            </Link>
-          </li>
-          <li className="menu-item">
-            <Link to="/andon" style={{ textDecoration: 'none', color: 'inherit', display: 'flex', alignItems: 'center', gap: '12px', width: '100%' }}>
-              <Monitor size={20} />
-              <span>Andon Ekranı</span>
-            </Link>
-          </li>
-        </ul>
+        <NavLinks />
+        <p className="mt-auto px-2 text-xs leading-relaxed text-slate-500">
+          Saha paneli · Canlı OEE · Andon
+        </p>
       </aside>
 
-      <main className="main-content">
-        <header className="top-header">
-          <div>
-            <h1>
-              {isDashboardActive && 'Üretim Takip ve Kontrol Paneli'}
-              {isStationsActive && 'İstasyon Bazlı Üretim Performansı'}
-              {isQualityActive && 'Kalite & Hata Analiz Raporları'}
-              {isMetricsActive && 'Makine Telemetri ve Periyodik Metrikler'}
-            </h1>
-            <p>Saha Canlı Akış Verileri ve İstasyon Yönetimi</p>
+      {mobileNavOpen && (
+        <div className="fixed inset-0 z-40 flex md:hidden">
+          <button type="button" className="absolute inset-0 bg-black/40" aria-label="Menüyü kapat" onClick={() => setMobileNavOpen(false)} />
+          <aside className="relative z-10 flex h-full w-72 flex-col gap-4 bg-slate-950 p-4 text-slate-200">
+            <div className="flex items-center justify-between">
+              <div className="mes-brand text-base">
+                <Factory className="text-[color:var(--color-vestel)]" size={22} />
+                VESTEL MES
+              </div>
+              <button type="button" className="mes-btn-secondary border-slate-700 bg-slate-900 text-white" onClick={() => setMobileNavOpen(false)}>
+                <X size={16} />
+              </button>
+            </div>
+            <NavLinks onNavigate={() => setMobileNavOpen(false)} />
+          </aside>
+        </div>
+      )}
+
+      <main className="mes-main">
+        <header className="mes-topbar">
+          <div className="flex min-w-0 items-center gap-3">
+            <button type="button" className="mes-btn-secondary md:hidden" onClick={() => setMobileNavOpen(true)} aria-label="Menüyü aç">
+              <Menu size={16} />
+            </button>
+            <div className="min-w-0">
+              <h1 className="font-display m-0 truncate text-xl font-semibold tracking-wide text-[color:var(--color-ink)]">
+                {pageTitle}
+              </h1>
+              <p className="m-0 text-xs text-[color:var(--color-muted)] md:text-sm">Saha canlı akış verileri ve istasyon yönetimi</p>
+            </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+
+          <div className="flex flex-wrap items-center gap-2">
             <span
               title={alarms.liveConnected ? 'SignalR bağlı' : 'SignalR yeniden bağlanıyor'}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '8px 12px',
-                borderRadius: '999px',
-                border: '1px solid #e2e8f0',
-                background: alarms.liveConnected ? '#ecfdf5' : '#fff7ed',
-                color: alarms.liveConnected ? '#047857' : '#c2410c',
-                fontWeight: 600,
-              }}
+              className={alarms.liveConnected ? 'mes-pill-ok' : 'mes-pill-warn'}
             >
-              <Radio size={16} />
+              <Radio size={14} />
               {alarms.liveConnected ? 'Canlı' : 'Bağlantı Yok'}
             </span>
             <button
               type="button"
               onClick={() => setIsFactorySimulationActive((prev) => !prev)}
-              style={{
-                background: isFactorySimulationActive ? '#10b981' : '#fff',
-                color: isFactorySimulationActive ? '#fff' : '#10b981',
-                border: '1px solid #10b981',
-                borderRadius: '999px',
-                padding: '8px 12px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                fontWeight: 600,
-              }}
+              className={isFactorySimulationActive ? 'mes-btn-primary' : 'mes-btn-secondary'}
             >
-              <Activity size={16} />
-              {isFactorySimulationActive ? 'Simülasyon: ÇALIŞIYOR' : 'Simülasyonu Başlat'}
+              <Activity size={14} />
+              {isFactorySimulationActive ? 'Simülasyon: Açık' : 'Simülasyonu Başlat'}
             </button>
             <button
               type="button"
               onClick={() => setAutoRefresh((prev) => !prev)}
-              style={{
-                background: autoRefresh ? '#0f172a' : '#fff',
-                color: autoRefresh ? '#fff' : '#0f172a',
-                border: '1px solid #e2e8f0',
-                borderRadius: '999px',
-                padding: '8px 12px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                fontWeight: 600,
-              }}
+              className={autoRefresh ? 'mes-btn-primary' : 'mes-btn-secondary'}
             >
-              <RefreshCw size={16} />
-              {autoRefresh ? 'Otomatik Yenileme Açık' : 'Otomatik Yenileme Kapalı'}
+              <RefreshCw size={14} />
+              {autoRefresh ? 'Oto Yenileme' : 'Yenileme Kapalı'}
             </button>
-            <button
-              type="button"
-              onClick={() => production.fetchRecords()}
-              style={{
-                background: '#fff',
-                border: '1px solid #e2e8f0',
-                borderRadius: '999px',
-                padding: '8px 12px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                fontWeight: 600,
-                color: '#0f172a',
-              }}
-            >
-              <RefreshCw size={16} />
+            <button type="button" onClick={() => production.fetchRecords()} className="mes-btn-secondary">
+              <RefreshCw size={14} />
               Yenile
             </button>
-            <div className="user-badge" style={{ minWidth: '220px' }}>
-              <div className="status-dot" style={{ backgroundColor: isCurrentUserActive ? '#10b981' : '#ef4444' }} />
-              <div>
-                <div style={{ fontWeight: 700 }}>{currentUser.name}</div>
-                <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{currentUser.role} - {currentUser.status}</div>
+            <div className="hidden items-center gap-2 rounded-lg border border-[color:var(--color-line)] bg-slate-50 px-3 py-1.5 sm:flex">
+              <span className={`h-2.5 w-2.5 rounded-full ${isCurrentUserActive ? 'bg-emerald-500' : 'bg-red-500'}`} />
+              <div className="leading-tight">
+                <div className="text-sm font-semibold">{currentUser.name}</div>
+                <div className="text-xs text-[color:var(--color-muted)]">{currentUser.role} · {currentUser.status}</div>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={logout}
-              className="btn-primary"
-              style={{ background: '#ef4444', borderColor: '#ef4444', padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '6px' }}
-              title="Oturumu Kapat"
-            >
-              <LogOut size={16} />
+            <button type="button" onClick={logout} className="mes-btn-danger" title="Oturumu Kapat">
+              <LogOut size={14} />
               Çıkış
             </button>
           </div>
         </header>
 
-        <Routes>
-          <Route
-            path="/dashboard"
-            element={(
-              <DashboardPage
-                metrics={{ totalCount, okCount, nokCount, yieldRate, qualityChartData }}
-                permission={{ isActive: isCurrentUserActive, text: permissionText }}
-                form={{
-                  urun20liKod: production.form.urun20liKod,
-                  malzeme12liKod: production.form.malzeme12liKod,
-                  istasyonAdi: production.form.istasyonAdi,
-                  kaliteDurumu: production.form.kaliteDurumu,
-                  onChangeUrun: (event) => production.form.setUrun20liKod(event.target.value),
-                  onChangeMalzeme: (event) => production.form.setMalzeme12liKod(event.target.value),
-                  onChangeStation: (event) => production.form.setIstasyonAdi(event.target.value),
-                  onChangeQuality: (event) => production.form.setKaliteDurumu(event.target.value),
-                  onSubmit: production.form.onSubmit,
-                  onGenerateRandom: production.form.onGenerateRandom,
-                  urunInputRef: production.form.urunInputRef,
-                  malzemeInputRef: production.form.malzemeInputRef,
-                  canSubmit: canAddRecord,
-                }}
-                table={{
-                  records: production.records,
-                  loading: production.loading,
-                  error: production.error,
-                  filteredRecords,
-                  searchTerm,
-                  selectedStation,
-                  selectedQuality,
-                  stationsFilterOptions,
-                  onSearchChange: (event) => setSearchTerm(event.target.value),
-                  onStationChange: (event) => setSelectedStation(event.target.value),
-                  onQualityChange: (event) => setSelectedQuality(event.target.value),
-                  onExportExcel: handleExportExcel,
-                  onToggleQuality: canChangeQuality ? production.handleToggleQuality : undefined,
-                  canChangeQuality,
-                  canDeleteRecord,
-                  onDelete: canDeleteRecord ? production.handleDelete : undefined,
-                  onOpenDetail: (record) => {
-                    setSelectedRecord(record);
-                    setIsModalOpen(true);
-                  },
-                }}
-                pagination={{
-                  hasMore: Boolean(production.nextProductionCursor),
-                  loadMore: production.loadMoreRecords,
-                  loading: production.loadingMoreRecords,
-                }}
-              />
-            )}
-          />
+        <div className="mes-content">
+          <Routes>
+            <Route
+              path="/dashboard"
+              element={(
+                <DashboardPage
+                  metrics={{ totalCount, okCount, nokCount, yieldRate, qualityChartData }}
+                  permission={{ isActive: isCurrentUserActive, text: permissionText }}
+                  form={{
+                    urun20liKod: production.form.urun20liKod,
+                    malzeme12liKod: production.form.malzeme12liKod,
+                    istasyonAdi: production.form.istasyonAdi,
+                    kaliteDurumu: production.form.kaliteDurumu,
+                    onChangeUrun: (event) => production.form.setUrun20liKod(event.target.value),
+                    onChangeMalzeme: (event) => production.form.setMalzeme12liKod(event.target.value),
+                    onChangeStation: (event) => production.form.setIstasyonAdi(event.target.value),
+                    onChangeQuality: (event) => production.form.setKaliteDurumu(event.target.value),
+                    onSubmit: production.form.onSubmit,
+                    onGenerateRandom: production.form.onGenerateRandom,
+                    urunInputRef: production.form.urunInputRef,
+                    malzemeInputRef: production.form.malzemeInputRef,
+                    canSubmit: canAddRecord,
+                  }}
+                  table={{
+                    records: production.records,
+                    loading: production.loading,
+                    error: production.error,
+                    filteredRecords,
+                    searchTerm,
+                    selectedStation,
+                    selectedQuality,
+                    stationsFilterOptions,
+                    onSearchChange: (event) => setSearchTerm(event.target.value),
+                    onStationChange: (event) => setSelectedStation(event.target.value),
+                    onQualityChange: (event) => setSelectedQuality(event.target.value),
+                    onExportExcel: handleExportExcel,
+                    onToggleQuality: canChangeQuality ? production.handleToggleQuality : undefined,
+                    canChangeQuality,
+                    canDeleteRecord,
+                    onDelete: canDeleteRecord ? production.handleDelete : undefined,
+                    onOpenDetail: (record) => {
+                      setSelectedRecord(record);
+                      setIsModalOpen(true);
+                    },
+                  }}
+                  pagination={{
+                    hasMore: Boolean(production.nextProductionCursor),
+                    loadMore: production.loadMoreRecords,
+                    loading: production.loadingMoreRecords,
+                  }}
+                />
+              )}
+            />
 
-          <Route path="/makine-metrikleri" element={<MachineMetricsPanel />} />
+            <Route path="/makine-metrikleri" element={<MachineMetricsPanel />} />
 
-          <Route
-            path="/istasyonlar"
-            element={(
-              <StationsPage
-                stationChartData={stationChartData}
-                stationDetailOptions={stationDetailOptions}
-                selectedStation={selectedStationDetail}
-                onStationChange={(event) => setSelectedStationDetail(event.target.value)}
-                stationMetrics={stationMetrics}
-                recentRecords={stationDetailRecords.slice(0, 4)}
-                stations={stationsList}
-                records={production.records}
-              />
-            )}
-          />
+            <Route
+              path="/istasyonlar"
+              element={(
+                <StationsPage
+                  stationChartData={stationChartData}
+                  stationDetailOptions={stationDetailOptions}
+                  selectedStation={selectedStationDetail}
+                  onStationChange={(event) => setSelectedStationDetail(event.target.value)}
+                  onSelectStation={(stationId) => setSelectedStationDetail(stationId)}
+                  stationMetrics={stationMetrics}
+                  recentRecords={stationDetailRecords.slice(0, 6)}
+                  stations={stationsList}
+                  records={production.records}
+                />
+              )}
+            />
 
-          <Route
-            path="/kalite"
-            element={(
-              <QualityPage
-                workOrders={{ items: workOrders.workOrders, onAdvance: workOrders.handleAdvanceWorkOrder }}
-                alarms={{
-                  items: alarms.alarms,
-                  loading: alarms.alarmLoading,
-                  error: alarms.alarmError,
-                  onCreateTest: alarms.createTestAlarm,
-                  onAcknowledge: alarms.handleAcknowledgeAlarm,
-                  onDelete: alarms.handleDeleteAlarm,
-                }}
-                batches={workOrders.batches}
-                deleted={{
-                  items: production.deletedRecords,
-                  loading: production.deletedLoading,
-                  error: production.deletedError,
-                  onRestore: production.handleRestore,
-                  onHardDelete: canHardDelete ? production.handleHardDelete : undefined,
-                }}
-                production={{
-                  records: production.records,
-                  onToggleQuality: production.handleToggleQuality,
-                  onDelete: production.handleDelete,
-                }}
-                permissions={{
-                  canManageWorkOrders,
-                  canCreateAlarms,
-                  canManageAlarms,
-                  canManageUsers,
-                  canViewDeleted,
-                  canManageProduction: canDeleteRecord,
-                  canHardDelete,
-                  canChangeQuality,
-                }}
-                alarmForm={alarms.alarmForm}
-                workOrderForm={workOrders.workOrderForm}
-              />
-            )}
-          />
+            <Route
+              path="/kalite"
+              element={(
+                <QualityPage
+                  workOrders={{ items: workOrders.workOrders, onAdvance: workOrders.handleAdvanceWorkOrder }}
+                  alarms={{
+                    items: alarms.alarms,
+                    loading: alarms.alarmLoading,
+                    error: alarms.alarmError,
+                    onCreateTest: alarms.createTestAlarm,
+                    onAcknowledge: alarms.handleAcknowledgeAlarm,
+                    onDelete: alarms.handleDeleteAlarm,
+                  }}
+                  batches={workOrders.batches}
+                  deleted={{
+                    items: production.deletedRecords,
+                    loading: production.deletedLoading,
+                    error: production.deletedError,
+                    onRestore: production.handleRestore,
+                    onHardDelete: canHardDelete ? production.handleHardDelete : undefined,
+                  }}
+                  production={{
+                    records: production.records,
+                    onToggleQuality: production.handleToggleQuality,
+                    onDelete: production.handleDelete,
+                  }}
+                  permissions={{
+                    canManageWorkOrders,
+                    canCreateAlarms,
+                    canManageAlarms,
+                    canManageUsers,
+                    canViewDeleted,
+                    canManageProduction: canDeleteRecord,
+                    canHardDelete,
+                    canChangeQuality,
+                  }}
+                  alarmForm={alarms.alarmForm}
+                  workOrderForm={workOrders.workOrderForm}
+                />
+              )}
+            />
 
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
+            <Route path="/kilavuz" element={<OperatorGuidePage />} />
+            <Route path="/sistem" element={<SystemFlowPage />} />
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          </Routes>
+        </div>
       </main>
 
       <DetailModal
@@ -450,6 +441,10 @@ function MainLayout() {
       />
     </div>
   );
+}
+
+function GaugeNavIcon(props) {
+  return <Cpu {...props} />;
 }
 
 function App() {
