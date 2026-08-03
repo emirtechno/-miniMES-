@@ -57,22 +57,39 @@ namespace MiniMesApi.Services
             await using var scope = _scopeFactory.CreateAsyncScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<MesDbContext>();
             var recordedAt = DateTimeOffset.UtcNow;
+            var shiftCode = ShiftCatalog.ResolveForUtc(recordedAt);
 
             var metrics = Stations.Select(stationId =>
             {
                 var totalProduced = Random.Shared.Next(100, 140);
                 var scrapCount = Random.Shared.Next(0, 8);
+                // Occasionally emit an over-scrap attempt so invariants clamp Good <= Actual.
+                if (Random.Shared.NextDouble() < 0.05)
+                {
+                    scrapCount = totalProduced + Random.Shared.Next(1, 5);
+                }
 
-                return new MachineMetric
+                var downtimeSeconds = Random.Shared.Next(0, 60);
+                IReadOnlyList<string> reasonPool = downtimeSeconds == 0
+                    ? [DowntimeReasonCatalog.None]
+                    : Random.Shared.NextDouble() < 0.35
+                        ? DowntimeReasonCatalog.Planned
+                        : DowntimeReasonCatalog.Unplanned;
+
+                var metric = new MachineMetric
                 {
                     StationId = stationId,
                     PlannedProductionSeconds = 300,
-                    DowntimeSeconds = Random.Shared.Next(10, 60),
+                    DowntimeSeconds = downtimeSeconds,
+                    DowntimeReasonCode = reasonPool[Random.Shared.Next(reasonPool.Count)],
+                    ShiftCode = shiftCode,
                     IdealCycleTimeSeconds = 2,
                     ActualProductionCount = totalProduced,
                     GoodProductionCount = totalProduced - scrapCount,
                     RecordedAt = recordedAt
                 };
+                MachineMetricInvariants.Normalize(metric);
+                return metric;
             });
 
             dbContext.MachineMetrics.AddRange(metrics);

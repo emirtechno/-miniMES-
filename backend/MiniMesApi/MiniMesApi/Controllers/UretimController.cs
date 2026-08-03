@@ -6,6 +6,8 @@ using MiniMesApi.DTOs;
 using MiniMesApi.Infrastructure;
 using MiniMesApi.Security;
 
+using MiniMesApi.Services;
+
 namespace MiniMesApi.Controllers
 {
     [Route("api/[controller]")]
@@ -15,11 +17,16 @@ namespace MiniMesApi.Controllers
     {
         private readonly MesDbContext _context;
         private readonly IValidator<CreateUretimKayitDto> _validator;
+        private readonly IAuditLogService _auditLogService;
 
-        public UretimController(MesDbContext context, IValidator<CreateUretimKayitDto> validator)
+        public UretimController(
+            MesDbContext context,
+            IValidator<CreateUretimKayitDto> validator,
+            IAuditLogService auditLogService)
         {
             _context = context;
             _validator = validator;
+            _auditLogService = auditLogService;
         }
 
         // 1. Tüm Aktif Üretim Kayıtlarını DTO olarak Getir (GET: api/Uretim)
@@ -261,7 +268,18 @@ namespace MiniMesApi.Controllers
             }
 
             uretimKayit.IsDeleted = true;
+            uretimKayit.DeletedAtUtc = DateTimeOffset.UtcNow;
+            uretimKayit.DeletedByUserId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                ?? User.FindFirst("sub")?.Value;
+            uretimKayit.DeletedByUsername = User.Identity?.Name;
             await _context.SaveChangesAsync(cancellationToken);
+            await _auditLogService.WriteAsync(
+                AuditEntityTypes.ProductionRecord,
+                uretimKayit.ID.ToString(),
+                AuditActions.SoftDelete,
+                User,
+                $"Ürün={uretimKayit.Urun20liKod}; İstasyon={uretimKayit.IstasyonAdi}",
+                cancellationToken);
 
             return Ok(new { id, message = "Üretim kaydı silindi." });
         }
@@ -277,8 +295,16 @@ namespace MiniMesApi.Controllers
                 return Problem(statusCode: StatusCodes.Status404NotFound, title: "Kayıt bulunamadı.");
             }
 
+            var details = $"Ürün={kayit.Urun20liKod}; İstasyon={kayit.IstasyonAdi}; SoftDeleted={kayit.IsDeleted}";
             _context.UretimKayitlari.Remove(kayit);
             await _context.SaveChangesAsync(cancellationToken);
+            await _auditLogService.WriteAsync(
+                AuditEntityTypes.ProductionRecord,
+                id.ToString(),
+                AuditActions.HardDelete,
+                User,
+                details,
+                cancellationToken);
 
             return Ok(new { id, message = "Kayıt kalıcı olarak silindi." });
         }
@@ -318,7 +344,9 @@ namespace MiniMesApi.Controllers
                     Malzeme12liKod = x.Malzeme12liKod,
                     IstasyonAdi = x.IstasyonAdi,
                     KaliteDurumu = x.KaliteDurumu,
-                    UretimTarihi = x.UretimTarihi
+                    UretimTarihi = x.UretimTarihi,
+                    DeletedAtUtc = x.DeletedAtUtc,
+                    DeletedByUsername = x.DeletedByUsername
                 })
                 .ToListAsync(cancellationToken);
 
@@ -337,7 +365,17 @@ namespace MiniMesApi.Controllers
             }
 
             uretimKayit.IsDeleted = false;
+            uretimKayit.DeletedAtUtc = null;
+            uretimKayit.DeletedByUserId = null;
+            uretimKayit.DeletedByUsername = null;
             await _context.SaveChangesAsync(cancellationToken);
+            await _auditLogService.WriteAsync(
+                AuditEntityTypes.ProductionRecord,
+                uretimKayit.ID.ToString(),
+                AuditActions.Restore,
+                User,
+                $"Ürün={uretimKayit.Urun20liKod}; İstasyon={uretimKayit.IstasyonAdi}",
+                cancellationToken);
 
             return Ok(new { id, message = "Kayıt başarıyla geri yüklendi." });
         }

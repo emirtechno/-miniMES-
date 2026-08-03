@@ -7,17 +7,26 @@ public static class OeeCalculator
 {
     public static OeeMetricDto Calculate(MachineMetric metric)
     {
-        var operatingTime = Math.Max(
-            metric.PlannedProductionSeconds - metric.DowntimeSeconds,
-            0);
-        var availability = metric.PlannedProductionSeconds > 0
-            ? operatingTime / metric.PlannedProductionSeconds * 100
+        var planned = Math.Max(metric.PlannedProductionSeconds, 0);
+        var downtime = Math.Clamp(metric.DowntimeSeconds, 0, planned > 0 ? planned : metric.DowntimeSeconds);
+        var actual = Math.Max(metric.ActualProductionCount, 0);
+        var good = Math.Clamp(metric.GoodProductionCount, 0, actual);
+        var reasonCode = string.IsNullOrWhiteSpace(metric.DowntimeReasonCode)
+            ? (downtime > 0 ? DowntimeReasonCatalog.Other : DowntimeReasonCatalog.None)
+            : metric.DowntimeReasonCode;
+        var shiftCode = string.IsNullOrWhiteSpace(metric.ShiftCode)
+            ? ShiftCatalog.ResolveForUtc(metric.RecordedAt)
+            : metric.ShiftCode;
+
+        var operatingTime = Math.Max(planned - downtime, 0);
+        var availability = planned > 0
+            ? operatingTime / planned * 100
             : 0;
         var performance = operatingTime > 0
-            ? metric.IdealCycleTimeSeconds * metric.ActualProductionCount / operatingTime * 100
+            ? metric.IdealCycleTimeSeconds * actual / operatingTime * 100
             : 0;
-        var quality = metric.ActualProductionCount > 0
-            ? (double)metric.GoodProductionCount / metric.ActualProductionCount * 100
+        var quality = actual > 0
+            ? (double)good / actual * 100
             : 0;
 
         availability = Math.Clamp(availability, 0, 100);
@@ -31,14 +40,17 @@ public static class OeeCalculator
             Performance = Math.Round(performance, 1),
             Quality = Math.Round(quality, 1),
             Oee = Math.Round(availability * performance * quality / 10000, 1),
-            PlannedProductionSeconds = metric.PlannedProductionSeconds,
+            PlannedProductionSeconds = planned,
             OperatingTimeSeconds = operatingTime,
-            DowntimeSeconds = metric.DowntimeSeconds,
-            TotalProduction = metric.ActualProductionCount,
-            GoodProduction = metric.GoodProductionCount,
-            ScrapProduction = Math.Max(
-                metric.ActualProductionCount - metric.GoodProductionCount,
-                0),
+            DowntimeSeconds = downtime,
+            DowntimeReasonCode = reasonCode,
+            DowntimeReason = DowntimeReasonCatalog.DisplayName(reasonCode),
+            IsPlannedDowntime = DowntimeReasonCatalog.IsPlanned(reasonCode),
+            ShiftCode = shiftCode,
+            ShiftName = ShiftCatalog.DisplayName(shiftCode),
+            TotalProduction = actual,
+            GoodProduction = good,
+            ScrapProduction = Math.Max(actual - good, 0),
             LastUpdated = metric.RecordedAt
         };
     }
