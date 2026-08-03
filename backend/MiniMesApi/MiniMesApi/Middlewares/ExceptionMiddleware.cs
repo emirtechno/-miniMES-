@@ -1,6 +1,6 @@
 using System.Net;
 using System.Text.Json;
-using MiniMesApi.DTOs;
+using Microsoft.AspNetCore.Mvc;
 
 namespace MiniMesApi.Middlewares
 {
@@ -39,10 +39,13 @@ namespace MiniMesApi.Middlewares
             context.Response.ContentType = "application/json";
             context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
 
-            var response = ApiResponse<string>.FailResult(
-                message: "Sunucu tarafında beklenmeyen bir hata oluştu.",
-                errors: new List<string> { $"Hata referansı: {context.TraceIdentifier}" }
-            );
+            var response = new ProblemDetails
+            {
+                Status = StatusCodes.Status500InternalServerError,
+                Title = "Sunucu tarafında beklenmeyen bir hata oluştu.",
+                Detail = "Hata ayrıntıları sunucu günlüklerine kaydedildi."
+            };
+            response.Extensions["traceId"] = context.TraceIdentifier;
 
             var jsonOptions = new JsonSerializerOptions
             {

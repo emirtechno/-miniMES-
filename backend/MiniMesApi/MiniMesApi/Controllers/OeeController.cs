@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MiniMesApi.Models;
+using MiniMesApi.Security;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
@@ -10,7 +11,7 @@ namespace MiniMesApi.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    [Authorize]
+    [Authorize(Policy = PolicyNames.MetricsRead)]
     public class OeeController : ControllerBase
     {
         private readonly MesDbContext _context;

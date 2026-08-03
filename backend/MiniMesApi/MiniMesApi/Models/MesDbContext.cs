@@ -1,8 +1,9 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 
 namespace MiniMesApi.Models
 {
-    public class MesDbContext : DbContext
+    public class MesDbContext : IdentityDbContext<ApplicationUser>
     {
         public MesDbContext(DbContextOptions<MesDbContext> options) : base(options)
         {
@@ -17,7 +18,7 @@ namespace MiniMesApi.Models
 
         public DbSet<Product> Products { get; set; }
         public DbSet<Station> Stations { get; set; }
-        public DbSet<User> Users { get; set; }
+        public DbSet<User> TraceabilityUsers { get; set; }
         public DbSet<TraceabilityLog> TraceabilityLogs { get; set; }
         public DbSet<MachineMetric> MachineMetrics { get; set; }
 
@@ -74,9 +75,11 @@ namespace MiniMesApi.Models
                 .HasIndex(station => station.StationCode)
                 .IsUnique();
 
-            modelBuilder.Entity<User>()
-                .HasIndex(user => user.Username)
-                .IsUnique();
+            modelBuilder.Entity<User>(entity =>
+            {
+                entity.ToTable("Users");
+                entity.HasIndex(user => user.Username).IsUnique();
+            });
         }
     }
 }

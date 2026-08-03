@@ -38,6 +38,24 @@ elle işaretlemeden önce şemayı ve veriyi yedekleyip DBA incelemesi yapın.
 emri, kullanıcı, ürün, istasyon ve aktif barkod kayıtlarını kontrol eder; uyumsuz
 veri varsa veri silmek yerine açıklayıcı bir hatayla durur.
 
+## Identity ve JWT Yapılandırması
+
+Kimlik doğrulama ASP.NET Core Identity kullanır. JWT imzalama anahtarı ve ilk yönetici
+parolası kaynak kodda tutulmaz. Uygulamayı ilk kez başlatmadan önce en az aşağıdaki
+ortam değişkenlerini sağlayın:
+
+```bash
+export Jwt__Key='en-az-32-karakterlik-rastgele-bir-imzalama-anahtari'
+export IdentityBootstrap__AdminUsername='admin'
+export IdentityBootstrap__AdminPassword='guclu-ve-benzersiz-bir-parola'
+export IdentityBootstrap__AdminDisplayName='MES Yöneticisi'
+```
+
+Bootstrap hesabı yalnızca bulunmadığında oluşturulur; mevcut hesabın parolası ortam
+değişkeniyle sıfırlanmaz. İlk yönetici oluşturulduktan sonra bootstrap parola
+değişkenini dağıtım ortamından kaldırın. Parolalar Identity tarafından hash'lenir;
+başarısız girişler hesap kilitleme ve endpoint hız sınırlamasına tabidir.
+
 ## Telemetri Güvenlik Ayarları
 
 OEE simülasyonu yalnızca Development ortamında ve `OeeSimulation:Enabled=true`

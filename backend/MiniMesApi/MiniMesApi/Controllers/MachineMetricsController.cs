@@ -2,12 +2,13 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MiniMesApi.Models;
+using MiniMesApi.Security;
 
 namespace MiniMesApi.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    [Authorize]
+    [Authorize(Policy = PolicyNames.MetricsRead)]
     public class MachineMetricsController : ControllerBase
     {
         private readonly MesDbContext _context;
