@@ -23,7 +23,7 @@ public sealed class CreateIdentityUserDto
     public string DisplayName { get; init; } = string.Empty;
 
     [Required]
-    [StringLength(128, MinimumLength = 3)]
+    [StringLength(128, MinimumLength = 6)]
     public string Password { get; init; } = string.Empty;
 
     [Required]
@@ -45,6 +45,6 @@ public sealed class UpdateIdentityUserStatusDto
 public sealed class ResetIdentityUserPasswordDto
 {
     [Required]
-    [StringLength(128, MinimumLength = 3)]
+    [StringLength(128, MinimumLength = 6)]
     public string NewPassword { get; init; } = string.Empty;
 }

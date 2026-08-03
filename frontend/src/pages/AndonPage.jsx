@@ -2,12 +2,17 @@ import { useEffect, useMemo, useState } from 'react';
 import { Navigate, Link } from 'react-router-dom';
 import { Activity, AlertTriangle, Factory, Radio } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { fetchAlarms, fetchLatestOee, fetchTelemetrySummary } from '../services/api';
+import { fetchAlarms, fetchLatestOeeAll, fetchTelemetrySummary } from '../services/api';
 import { useMesHub } from '../hooks/useMesHub';
 import { ACTIVE_STATION_DEFINITIONS, getStationDisplayName } from '../constants/stations';
 import './AndonPage.css';
 
 const ANDON_STATIONS = ACTIVE_STATION_DEFINITIONS.map((station) => station.id);
+
+const isClosedAlarm = (status) => {
+  const value = (status || '').toLowerCase();
+  return value === 'onaylandı' || value === 'çözüldü' || value === 'kapalı' || value === 'resolved';
+};
 
 const severityTone = (severity) => {
   const value = (severity || '').toLowerCase();
@@ -23,6 +28,7 @@ const AndonPage = () => {
   const [plantGood, setPlantGood] = useState(null);
   const [clock, setClock] = useState(new Date());
   const [hubConnected, setHubConnected] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const timer = window.setInterval(() => setClock(new Date()), 1000);
@@ -35,34 +41,36 @@ const AndonPage = () => {
 
     const load = async () => {
       try {
-        const [alarmPage, summaries] = await Promise.all([
-          fetchAlarms({ signal: controller.signal, limit: 20 }),
+        setLoading(true);
+        // 3 parallel calls (was 2 + N station OEE fan-out).
+        const [alarmPage, summaries, latestOee] = await Promise.all([
+          fetchAlarms({ signal: controller.signal, limit: 30, openOnly: true }),
           fetchTelemetrySummary({ signal: controller.signal }),
+          fetchLatestOeeAll({ signal: controller.signal }),
         ]);
-        setAlarms(alarmPage.items.filter((alarm) => (alarm.status || '').toLowerCase() !== 'onaylandı').slice(0, 8));
+        setAlarms((alarmPage.items || []).filter((alarm) => !isClosedAlarm(alarm.status)).slice(0, 8));
         const plant = (summaries || []).find((row) => !row.stationId);
         setPlantGood(plant ? Number(plant.good) || 0 : null);
-
-        const entries = await Promise.all(
-          ANDON_STATIONS.map(async (stationId) => {
-            try {
-              const metric = await fetchLatestOee(stationId, { signal: controller.signal });
-              return [stationId, metric];
-            } catch {
-              return [stationId, null];
-            }
-          }),
-        );
-        setOeeByStation(Object.fromEntries(entries));
+        const map = {};
+        for (const metric of latestOee || []) {
+          if (metric?.stationId) map[metric.stationId] = metric;
+        }
+        setOeeByStation(map);
       } catch (error) {
         if (error.name !== 'CanceledError' && error.name !== 'AbortError') {
           console.error(error);
         }
+      } finally {
+        setLoading(false);
       }
     };
 
     load();
-    return () => controller.abort();
+    const refresh = window.setInterval(load, 20000);
+    return () => {
+      controller.abort();
+      window.clearInterval(refresh);
+    };
   }, [isAuthenticated]);
 
   const { connected } = useMesHub({
@@ -76,12 +84,13 @@ const AndonPage = () => {
       });
     },
     onAlarmCreated: (alarm) => {
-      setAlarms((current) => [alarm, ...current].slice(0, 8));
+      if (isClosedAlarm(alarm.status)) return;
+      setAlarms((current) => [alarm, ...current.filter((item) => (item.id ?? item.Id) !== (alarm.id ?? alarm.Id))].slice(0, 8));
     },
     onAlarmUpdated: (alarm) => {
       setAlarms((current) => {
         const id = alarm.id ?? alarm.Id;
-        if ((alarm.status || '').toLowerCase() === 'onaylandı') {
+        if (isClosedAlarm(alarm.status)) {
           return current.filter((item) => (item.id ?? item.Id) !== id);
         }
         return [alarm, ...current.filter((item) => (item.id ?? item.Id) !== id)].slice(0, 8);
@@ -97,27 +106,28 @@ const AndonPage = () => {
     setHubConnected(connected);
   }, [connected]);
 
-  const openAlarmCount = alarms.length;
   const averageOee = useMemo(() => {
     const values = ANDON_STATIONS
-      .map((station) => oeeByStation[station]?.oee)
+      .map((id) => oeeByStation[id]?.oee)
       .filter((value) => typeof value === 'number');
     if (!values.length) return null;
     return values.reduce((sum, value) => sum + value, 0) / values.length;
   }, [oeeByStation]);
+
+  const openAlarmCount = alarms.length;
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 
   return (
-    <div className="andon-screen">
-      <header className="andon-header">
+    <div className="andon-shell">
+      <header className="andon-top">
         <div className="andon-brand">
           <Factory size={28} />
           <div>
             <strong>VESTEL MES ANDON</strong>
-            <span>{currentUser?.name} · Saha Ekranı</span>
+            <span>{currentUser?.name} · Saha Ekranı{loading ? ' · yükleniyor…' : ''}</span>
           </div>
         </div>
         <div className="andon-meta">
@@ -175,7 +185,7 @@ const AndonPage = () => {
       <section className="andon-alarms">
         <header>
           <AlertTriangle size={20} />
-          <h2>Canlı Alarmlar</h2>
+          <h2>Canlı Alarmlar (yalnızca açık)</h2>
         </header>
         {alarms.length === 0 ? (
           <p className="andon-empty">Aktif alarm yok.</p>

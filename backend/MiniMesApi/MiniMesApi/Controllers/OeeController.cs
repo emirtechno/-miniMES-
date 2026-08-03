@@ -34,6 +34,30 @@ public sealed class OeeController(MesDbContext context) : ControllerBase
             isPlanned = DowntimeReasonCatalog.IsPlanned(code)
         }).ToArray());
 
+    [HttpGet("latest")]
+    public async Task<ActionResult<IReadOnlyList<OeeMetricDto>>> GetLatestForAllStations(
+        CancellationToken cancellationToken)
+    {
+        var latestIds = await context.MachineMetrics
+            .AsNoTracking()
+            .GroupBy(item => item.StationId)
+            .Select(group => group.Max(item => item.Id))
+            .ToListAsync(cancellationToken);
+
+        var metrics = await context.MachineMetrics
+            .AsNoTracking()
+            .Where(item => latestIds.Contains(item.Id))
+            .ToListAsync(cancellationToken);
+
+        var byStation = metrics.ToDictionary(item => item.StationId, StringComparer.Ordinal);
+        var payload = StationCatalog.All
+            .Where(stationId => byStation.ContainsKey(stationId))
+            .Select(stationId => OeeCalculator.Calculate(byStation[stationId]))
+            .ToArray();
+
+        return Ok(payload);
+    }
+
     [HttpGet("latest/{stationId}")]
     public async Task<ActionResult<OeeMetricDto>> GetLatestMetrics(
         string stationId,

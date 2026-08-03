@@ -56,7 +56,7 @@ function MainLayout() {
     : 'admin';
 
   return (
-    <PersonaProvider defaultPersona={defaultPersona}>
+    <PersonaProvider defaultPersona={defaultPersona} roles={currentUser?.roles || []}>
       <ShiftSessionProvider
         user={currentUser}
         notify={notify}
@@ -75,7 +75,7 @@ function MainLayout() {
 
 function MainLayoutShell({ currentUser, logout, notify, confirm }) {
   const location = useLocation();
-  const { persona, setPersona, isOperatorPersona, isExecutivePersona } = usePersona();
+  const { persona, setPersona, isOperatorPersona, isExecutivePersona, allowedPersonas } = usePersona();
   const { shift, elapsedLabel } = useShiftSession();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [selectedStationDetail, setSelectedStationDetail] = useState(DEFAULT_STATION);
@@ -204,7 +204,7 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
                 </p>
               </div>
             </div>
-            <PersonaSwitcher persona={persona} onSelect={setPersona} />
+            <PersonaSwitcher persona={persona} onSelect={setPersona} allowedPersonas={allowedPersonas} />
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -245,8 +245,16 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
             <div className="hidden items-center gap-2 rounded-lg border border-[color:var(--color-line)] bg-slate-50 px-3 py-1.5 sm:flex">
               <span className={`h-2.5 w-2.5 rounded-full ${isCurrentUserActive ? 'bg-emerald-500' : 'bg-red-500'}`} />
               <div className="leading-tight">
-                <div className="text-sm font-semibold">{currentUser.name}</div>
-                <div className="text-xs text-[color:var(--color-muted)]">{currentUser.role} · {currentUser.status}</div>
+                <div className="text-sm font-semibold">
+                  {isOperatorPersona
+                    ? (shift.operatorName || 'Operatör')
+                    : currentUser.name}
+                </div>
+                <div className="text-xs text-[color:var(--color-muted)]">
+                  {isOperatorPersona
+                    ? `Operatör paneli · ${currentUser.status}`
+                    : `${(currentUser.roles || []).join(' · ') || currentUser.role} · Yönetici paneli · ${currentUser.status}`}
+                </div>
               </div>
             </div>
             <button type="button" onClick={logout} className="mes-btn-danger" title="Oturumu Kapat">
@@ -343,10 +351,10 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
                   scrapTicks={telemetry.scrapTicks}
                   plantKpi={telemetry.plantKpi}
                   permissions={{
-                    canManageWorkOrders,
+                    canManageWorkOrders: canManageWorkOrders && isExecutivePersona,
                     canCreateAlarms,
-                    canManageAlarms,
-                    canManageUsers,
+                    canManageAlarms: canManageAlarms && isExecutivePersona,
+                    canManageUsers: canManageUsers && isExecutivePersona,
                   }}
                   alarmForm={alarms.alarmForm}
                   workOrderForm={workOrders.workOrderForm}

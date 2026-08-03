@@ -123,13 +123,13 @@ const UserRolePanel = () => {
         <input
           className="mes-input"
           type="password"
-          placeholder="Parola (büyük/küçük harf, rakam, özel karakter)"
+          placeholder="Parola (en az 6 karakter, 1 rakam)"
           autoComplete="new-password"
           value={form.password}
           onChange={(event) => setForm({ ...form, password: event.target.value })}
-          minLength={3}
+          minLength={6}
           required
-          title="Identity kuralları: en az 3 karakter; büyük harf, küçük harf, rakam ve alfanümerik olmayan karakter gerekir."
+          title="Parola en az 6 karakter ve en az bir rakam içermelidir."
         />
         <select
           className="mes-input"
@@ -156,7 +156,7 @@ const UserRolePanel = () => {
       )}
 
       <p className="mes-helper mb-3">
-        Parola kuralları: büyük harf, küçük harf, rakam ve özel karakter; Identity doğrulama hataları burada ayrıntılı gösterilir.
+        Parola kuralları (saha operatörü): en az 6 karakter ve en az bir rakam. Büyük/küçük harf veya özel karakter zorunlu değildir.
       </p>
 
       {loading ? (
