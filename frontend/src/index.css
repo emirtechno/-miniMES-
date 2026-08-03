@@ -190,4 +190,56 @@
   .mes-pill-maint {
     @apply inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold tracking-wide bg-amber-50 text-amber-900 ring-1 ring-amber-200;
   }
+
+  .mes-persona-badge {
+    @apply inline-flex h-8 items-center rounded-md border border-[color:var(--color-line)] bg-white px-2.5 text-xs font-bold tracking-wide text-[color:var(--color-muted)] transition hover:border-[color:var(--color-vestel)] hover:text-[color:var(--color-vestel)];
+  }
+
+  .mes-persona-badge-active {
+    @apply border-[color:var(--color-vestel)] bg-[color:var(--color-vestel)] text-white hover:bg-[color:var(--color-vestel-dark)] hover:text-white;
+  }
+
+  .mes-hmi-grid {
+    @apply grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3;
+  }
+
+  .mes-hmi-btn {
+    @apply flex min-h-[108px] flex-col items-start justify-center gap-1 rounded-2xl border-0 px-5 py-4 text-left text-white shadow-sm transition hover:brightness-105 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .mes-hmi-btn span {
+    @apply text-base font-bold leading-tight;
+  }
+
+  .mes-hmi-btn small {
+    @apply text-xs font-medium opacity-80;
+  }
+
+  .mes-hmi-blue {
+    @apply bg-sky-600;
+  }
+
+  .mes-hmi-orange {
+    @apply bg-orange-500;
+  }
+
+  .mes-hmi-red-soft {
+    @apply bg-rose-600;
+  }
+
+  .mes-hmi-green {
+    @apply bg-emerald-600;
+  }
+
+  .mes-hmi-danger {
+    @apply bg-red-700;
+  }
+
+  .mes-hmi-navy {
+    @apply bg-slate-800;
+  }
+
+  .mes-keypad-key {
+    @apply flex h-14 items-center justify-center rounded-xl border border-[color:var(--color-line)] bg-slate-50 text-xl font-bold text-[color:var(--color-ink)] transition hover:bg-white active:bg-slate-200;
+  }
 }

@@ -6,8 +6,15 @@ import { Factory, LogIn } from 'lucide-react';
 
 const homeForUser = (user) => {
   const roles = user?.roles || [];
-  if (roles.includes('Admin')) return '/fabrika';
-  if (roles.includes('Operator')) return '/operator';
+  if (roles.includes('Admin')) {
+    sessionStorage.setItem('mm_active_persona', 'admin');
+    return '/fabrika';
+  }
+  if (roles.includes('Operator')) {
+    sessionStorage.setItem('mm_active_persona', 'operator');
+    return '/operator';
+  }
+  sessionStorage.setItem('mm_active_persona', 'admin');
   return '/dashboard';
 };
 
