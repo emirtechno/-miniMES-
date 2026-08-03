@@ -37,6 +37,8 @@ const ProductionForm = ({
           placeholder="Örn: 20260727000000000001"
           value={urun20liKod}
           onChange={onChangeUrun}
+          minLength={3}
+          maxLength={20}
           required
           disabled={!canSubmit}
         />
@@ -50,6 +52,8 @@ const ProductionForm = ({
           placeholder="Örn: 123456789012"
           value={malzeme12liKod}
           onChange={onChangeMalzeme}
+          minLength={3}
+          maxLength={12}
           required
           disabled={!canSubmit}
         />

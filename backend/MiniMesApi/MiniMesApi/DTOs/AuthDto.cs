@@ -41,6 +41,6 @@ public sealed class ChangePasswordDto
     public string CurrentPassword { get; init; } = string.Empty;
 
     [Required]
-    [StringLength(128, MinimumLength = 12)]
+    [StringLength(128, MinimumLength = 3)]
     public string NewPassword { get; init; } = string.Empty;
 }

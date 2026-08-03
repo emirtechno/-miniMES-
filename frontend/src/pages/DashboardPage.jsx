@@ -1,21 +1,13 @@
-import { Activity, CheckCircle2, Percent, PieChart as PieIcon, XCircle } from 'lucide-react';
-import {
-  Cell,
-  Legend,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-} from 'recharts';
+import { Activity, CheckCircle2, Percent, XCircle } from 'lucide-react';
 import KpiCard from '../components/KpiCard';
 import OeePanel from '../components/OeePanel';
 import ProductionForm from '../components/ProductionForm';
 import ProductionTable from '../components/ProductionTable';
+import QualityDistributionChart from '../components/QualityDistributionChart';
 import { DEFAULT_STATION, isCanonicalStation } from '../constants/stations';
 
 const DashboardPage = ({
   metrics,
-  permission,
   form,
   table,
   pagination,
@@ -28,54 +20,62 @@ const DashboardPage = ({
       <KpiCard title="Verimlilik Oranı" value={`%${metrics.yieldRate}`} icon={Percent} accent={{ bg: '#fef3c7', color: '#c47f17' }} valueColor="#c47f17" />
     </section>
 
-    <OeePanel stationId={isCanonicalStation(table.selectedStation) ? table.selectedStation : DEFAULT_STATION} />
+    {/* Isolated OEE / line-efficiency block — not part of the operator production form */}
+    <section
+      className="rounded-2xl border border-sky-200/80 bg-gradient-to-br from-sky-50/90 via-white to-white p-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+      aria-labelledby="oee-section-heading"
+    >
+      <div className="mb-1 flex flex-wrap items-end justify-between gap-2 px-4 pt-3">
+        <div>
+          <p className="m-0 text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-800/80">
+            Hat Verimliliği · Telemetri
+          </p>
+          <h2 id="oee-section-heading" className="font-display m-0 text-xl font-semibold text-sky-950">
+            OEE / Hat Verimliliği
+          </h2>
+          <p className="mes-helper mt-1 mb-0 max-w-2xl">
+            Bu bölüm makine/hat telemetrisinden (API veya simülasyon) gelir. Aşağıdaki Üretim Paneli ise operatörün
+            girdiği iş ve kalite kayıtlarıdır — karıştırılmamalıdır.
+          </p>
+        </div>
+      </div>
+      <div className="px-1 pb-1">
+        <OeePanel stationId={isCanonicalStation(table.selectedStation) ? table.selectedStation : DEFAULT_STATION} />
+      </div>
+    </section>
 
-    <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-      <div
-        className="mes-surface p-5"
-        style={{ borderLeft: !permission.isActive ? '4px solid #d92d20' : '4px solid #1769aa' }}
-      >
-        <div className="text-sm font-semibold text-[color:var(--color-ink)]">Aktif Kullanıcı Yetkisi</div>
-        <p className={`mb-0 mt-2 text-sm ${!permission.isActive ? 'font-semibold text-[color:var(--color-nok)]' : 'text-[color:var(--color-muted)]'}`}>
-          {permission.text}
+    <section
+      className="rounded-2xl border border-[color:var(--color-line)] bg-white p-4 md:p-5"
+      aria-labelledby="production-section-heading"
+    >
+      <div className="mb-4">
+        <p className="m-0 text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--color-muted)]">
+          Operatör İş Akışı
+        </p>
+        <h2 id="production-section-heading" className="font-display m-0 text-xl font-semibold text-[color:var(--color-ink)]">
+          Üretim Paneli
+        </h2>
+        <p className="mes-helper mt-1 mb-0">
+          Barkod / malzeme girişi, kalite dağılımı ve üretim listesi. Veriler operatör aksiyonlarıyla oluşur.
         </p>
       </div>
 
-      <ProductionForm {...form} />
-
-      <section className="mes-surface flex flex-col p-5">
-        <div className="mb-3 flex items-center gap-2">
-          <PieIcon className="text-[color:var(--color-vestel)]" size={20} />
-          <span className="mes-section-title">Kalite Dağılım Grafiği</span>
-        </div>
-        <div className="min-h-[260px] w-full flex-1">
-          {metrics.totalCount === 0 ? (
-            <p className="pt-20 text-center text-[color:var(--color-muted)]">Grafik için henüz veri yok.</p>
-          ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={metrics.qualityChartData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={5} dataKey="value">
-                  {metrics.qualityChartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(value) => [`${value} Adet`, 'Miktar']} />
-                <Legend verticalAlign="bottom" height={36} />
-              </PieChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-      </section>
-    </div>
-
-    <ProductionTable {...table} />
-    {pagination.hasMore && (
-      <div className="flex justify-center">
-        <button type="button" className="mes-btn-secondary" onClick={pagination.loadMore} disabled={pagination.loading}>
-          {pagination.loading ? 'Yükleniyor...' : 'Daha Fazla Kayıt Yükle'}
-        </button>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <ProductionForm {...form} />
+        <QualityDistributionChart data={metrics.qualityChartData} totalCount={metrics.totalCount} />
       </div>
-    )}
+
+      <div className="mt-4">
+        <ProductionTable {...table} />
+        {pagination.hasMore && (
+          <div className="mt-3 flex justify-center">
+            <button type="button" className="mes-btn-secondary" onClick={pagination.loadMore} disabled={pagination.loading}>
+              {pagination.loading ? 'Yükleniyor...' : 'Daha Fazla Kayıt Yükle'}
+            </button>
+          </div>
+        )}
+      </div>
+    </section>
   </div>
 );
 

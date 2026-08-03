@@ -5,7 +5,7 @@ namespace MiniMesApi.DTOs;
 public sealed class CreateAlarmDto
 {
     [Required]
-    [StringLength(100)]
+    [StringLength(100, MinimumLength = 3)]
     public string Title { get; init; } = string.Empty;
 
     [Required]

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import MachineMetricsPanel from './components/MachineMetricsPanel';
 import {
   Factory,
@@ -23,6 +23,7 @@ import { downloadWorkbook } from './utils/excelExport';
 import { getApiErrorMessage } from './services/api';
 
 import DetailModal from './components/DetailModal';
+import AppNavLinks from './components/AppNavLinks';
 import DashboardPage from './pages/DashboardPage';
 import LoginPage from './pages/LoginPage';
 import QualityPage from './pages/QualityPage';
@@ -66,16 +67,6 @@ function MainLayout() {
   const canManageAlarms = hasPermission('alarms.manage');
   const canManageUsers = hasPermission('users.manage');
   const canViewDeleted = hasPermission('deleted-records.read');
-
-  const permissionText = !isCurrentUserActive
-    ? 'Kullanıcınız PASİF durumdadır. İşlem yapamazsınız.'
-    : canAddRecord && canChangeQuality
-      ? 'Tüm üretim ve kalite işlemlerini yapabilirsiniz.'
-      : canAddRecord
-        ? 'Sadece üretim kayıtları ekleyebilirsiniz.'
-        : canChangeQuality
-          ? 'Sadece kalite durumlarını güncelleyebilirsiniz.'
-          : 'Yalnızca raporları görüntüleyebilirsiniz.';
 
   const production = useProduction({
     isAuthenticated,
@@ -200,27 +191,6 @@ function MainLayout() {
 
   const pageTitle = navItems.find((item) => item.match(location.pathname))?.label || 'VESTEL MES';
 
-  const NavLinks = ({ onNavigate }) => (
-    <ul className="m-0 flex list-none flex-col gap-1 p-0">
-      {navItems.map(({ to, label, icon: Icon, match }) => {
-        const active = match(location.pathname);
-        return (
-          <li key={to}>
-            <Link
-              to={to}
-              className="mes-nav-link"
-              aria-current={active ? 'page' : undefined}
-              onClick={() => onNavigate?.()}
-            >
-              <Icon size={18} />
-              <span>{label}</span>
-            </Link>
-          </li>
-        );
-      })}
-    </ul>
-  );
-
   return (
     <div className="mes-shell">
       <aside className="mes-sidebar">
@@ -228,7 +198,7 @@ function MainLayout() {
           <Factory className="text-[color:var(--color-vestel)]" size={28} />
           <span>VESTEL MES</span>
         </div>
-        <NavLinks />
+        <AppNavLinks items={navItems} />
         <p className="mt-auto px-2 text-xs leading-relaxed text-slate-500">
           Saha paneli · Canlı OEE · Andon
         </p>
@@ -247,7 +217,7 @@ function MainLayout() {
                 <X size={16} />
               </button>
             </div>
-            <NavLinks onNavigate={() => setMobileNavOpen(false)} />
+            <AppNavLinks items={navItems} onNavigate={() => setMobileNavOpen(false)} />
           </aside>
         </div>
       )}
@@ -315,7 +285,6 @@ function MainLayout() {
               element={(
                 <DashboardPage
                   metrics={{ totalCount, okCount, nokCount, yieldRate, qualityChartData }}
-                  permission={{ isActive: isCurrentUserActive, text: permissionText }}
                   form={{
                     urun20liKod: production.form.urun20liKod,
                     malzeme12liKod: production.form.malzeme12liKod,
@@ -385,7 +354,12 @@ function MainLayout() {
               path="/kalite"
               element={(
                 <QualityPage
-                  workOrders={{ items: workOrders.workOrders, onAdvance: workOrders.handleAdvanceWorkOrder }}
+                  workOrders={{
+                  items: workOrders.workOrders,
+                  onAdvance: workOrders.handleAdvanceWorkOrder,
+                  onCreateSample: workOrders.handleCreateSampleWorkOrder,
+                  creatingSample: workOrders.creatingSample,
+                }}
                   alarms={{
                     items: alarms.alarms,
                     loading: alarms.alarmLoading,
