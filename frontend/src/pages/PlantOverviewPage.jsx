@@ -151,22 +151,36 @@ const PlantOverviewPage = ({ stationChartData = [], records = [], workOrders = [
       </section>
 
       <div className="grid gap-5 xl:grid-cols-2">
-        <OeePanel stationId={focusStation} />
+        <OeePanel
+          stationId={focusStation}
+          onStationChange={setFocusStation}
+          showStationSelector
+        />
         <section className="mes-surface p-5">
           <CardHeader icon={Gauge} title="İstasyon Bazlı Üretim Hacmi" subtitle="OK / NOK karşılaştırması" />
-          <div className="h-[300px]">
+          <div className="h-[360px]">
             {volumeData.length === 0 ? (
               <p className="pt-20 text-center text-[color:var(--color-muted)]">Hacim verisi yok.</p>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={volumeData} margin={{ top: 8, right: 8, left: 0, bottom: 48 }}>
+                <BarChart data={volumeData} margin={{ top: 28, right: 12, left: 0, bottom: 80 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                  <XAxis dataKey="name" interval={0} angle={-25} textAnchor="end" tick={{ fontSize: 11, fill: '#5b6b7c' }} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#5b6b7c' }} width={36} />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="OK" name="Başarılı (OK)" fill="#0f9f6e" radius={[6, 6, 0, 0]} />
-                  <Bar dataKey="NOK" name="Hatalı (NOK)" fill="#d92d20" radius={[6, 6, 0, 0]} />
+                  <XAxis
+                    dataKey="name"
+                    interval={0}
+                    angle={-30}
+                    textAnchor="end"
+                    height={72}
+                    tick={{ fontSize: 10, fill: '#5b6b7c' }}
+                    tickMargin={8}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#5b6b7c' }} width={36} axisLine={false} tickLine={false} />
+                  <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #d7dee8' }} />
+                  <Legend verticalAlign="top" align="right" height={28} wrapperStyle={{ paddingBottom: 8 }} />
+                  <Bar dataKey="OK" name="Başarılı (OK)" fill="#0f9f6e" radius={[6, 6, 0, 0]} maxBarSize={42} />
+                  <Bar dataKey="NOK" name="Hatalı (NOK)" fill="#d92d20" radius={[6, 6, 0, 0]} maxBarSize={42} />
                 </BarChart>
               </ResponsiveContainer>
             )}

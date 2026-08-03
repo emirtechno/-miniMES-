@@ -32,7 +32,7 @@ public class BatchController : ControllerBase
             return Problem(statusCode: StatusCodes.Status400BadRequest, title: "Geçersiz sayfalama imleci.");
         }
 
-        var query = _context.Batches.AsNoTracking();
+        var query = _context.Batches.AsQueryable();
         if (!string.IsNullOrWhiteSpace(cursor))
         {
             query = query.Where(batch => batch.Id < cursorId);
@@ -43,7 +43,10 @@ public class BatchController : ControllerBase
             .Take(limit + 1)
             .ToListAsync(cancellationToken);
 
-        var items = batches.Take(limit).Select(ToDto).ToArray();
+        var pageBatches = batches.Take(limit).ToList();
+        await SyncProducedFromTelemetryAsync(pageBatches, cancellationToken);
+
+        var items = pageBatches.Select(ToDto).ToArray();
         return Ok(new CursorPage<BatchDto>
         {
             Items = items,
@@ -51,6 +54,49 @@ public class BatchController : ControllerBase
                 ? CursorCodec.EncodeId(items[^1].Id)
                 : null
         });
+    }
+
+    /// <summary>
+    /// Recalculates ProducedQuantity from station OK production records and derives status.
+    /// </summary>
+    private async Task SyncProducedFromTelemetryAsync(List<Batch> batches, CancellationToken cancellationToken)
+    {
+        if (batches.Count == 0) return;
+
+        var stations = batches.Select(batch => batch.Station).Distinct().ToArray();
+        var counts = await _context.UretimKayitlari
+            .AsNoTracking()
+            .Where(record => !record.IsDeleted
+                && record.KaliteDurumu == "OK"
+                && stations.Contains(record.IstasyonAdi))
+            .GroupBy(record => record.IstasyonAdi)
+            .Select(group => new { Station = group.Key, Count = group.Count() })
+            .ToDictionaryAsync(row => row.Station, row => row.Count, cancellationToken);
+
+        var dirty = false;
+        foreach (var batch in batches)
+        {
+            var telemetryCount = counts.GetValueOrDefault(batch.Station, 0);
+            var produced = Math.Clamp(telemetryCount, 0, Math.Max(batch.TargetQuantity, 0));
+            var nextStatus = produced <= 0
+                ? BatchStatuses.Waiting
+                : produced >= batch.TargetQuantity
+                    ? BatchStatuses.Completed
+                    : BatchStatuses.InProgress;
+
+            if (batch.ProducedQuantity != produced || batch.Status != nextStatus)
+            {
+                batch.ProducedQuantity = produced;
+                batch.Status = nextStatus;
+                batch.UpdatedAt = DateTimeOffset.UtcNow;
+                dirty = true;
+            }
+        }
+
+        if (dirty)
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+        }
     }
 
     [HttpPost("{id:int}/advance")]
@@ -63,19 +109,7 @@ public class BatchController : ControllerBase
             return NotFound();
         }
 
-        if (!BatchStatuses.TryAdvance(batch.Status, out var next, out var error))
-        {
-            return Problem(statusCode: StatusCodes.Status409Conflict, title: error);
-        }
-
-        batch.Status = next;
-        batch.UpdatedAt = DateTimeOffset.UtcNow;
-        if (next == BatchStatuses.Completed && batch.ProducedQuantity < batch.TargetQuantity)
-        {
-            batch.ProducedQuantity = batch.TargetQuantity;
-        }
-
-        await _context.SaveChangesAsync(cancellationToken);
+        await SyncProducedFromTelemetryAsync([batch], cancellationToken);
         return Ok(ToDto(batch));
     }
 
@@ -89,14 +123,7 @@ public class BatchController : ControllerBase
             return NotFound();
         }
 
-        if (!BatchStatuses.TryReopen(batch.Status, out var next, out var error))
-        {
-            return Problem(statusCode: StatusCodes.Status409Conflict, title: error);
-        }
-
-        batch.Status = next;
-        batch.UpdatedAt = DateTimeOffset.UtcNow;
-        await _context.SaveChangesAsync(cancellationToken);
+        await SyncProducedFromTelemetryAsync([batch], cancellationToken);
         return Ok(ToDto(batch));
     }
 
@@ -113,28 +140,15 @@ public class BatchController : ControllerBase
             return NotFound();
         }
 
-        if (batch.Status == BatchStatuses.Completed)
-        {
-            return Problem(statusCode: StatusCodes.Status409Conflict, title: "Tamamlanan parti güncellenemez. Önce Geri Al kullanın.");
-        }
-
+        // Target may still be adjusted by planners; produced always comes from telemetry.
         if (request.TargetQuantity is int target)
         {
             batch.TargetQuantity = target;
+            batch.UpdatedAt = DateTimeOffset.UtcNow;
+            await _context.SaveChangesAsync(cancellationToken);
         }
 
-        if (request.ProducedQuantity is int produced)
-        {
-            batch.ProducedQuantity = Math.Clamp(produced, 0, Math.Max(batch.TargetQuantity, 0));
-        }
-
-        if (batch.Status == BatchStatuses.Waiting && batch.ProducedQuantity > 0)
-        {
-            batch.Status = BatchStatuses.InProgress;
-        }
-
-        batch.UpdatedAt = DateTimeOffset.UtcNow;
-        await _context.SaveChangesAsync(cancellationToken);
+        await SyncProducedFromTelemetryAsync([batch], cancellationToken);
         return Ok(ToDto(batch));
     }
 

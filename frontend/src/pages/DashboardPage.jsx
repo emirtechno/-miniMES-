@@ -4,7 +4,7 @@ import OeePanel from '../components/OeePanel';
 import ProductionForm from '../components/ProductionForm';
 import ProductionTable from '../components/ProductionTable';
 import QualityDistributionChart from '../components/QualityDistributionChart';
-import { DEFAULT_STATION, isCanonicalStation } from '../constants/stations';
+import { DEFAULT_STATION } from '../constants/stations';
 
 const DashboardPage = ({
   metrics,
@@ -35,12 +35,12 @@ const DashboardPage = ({
           </h2>
           <p className="mes-helper mt-1 mb-0 max-w-2xl">
             Bu bölüm makine/hat telemetrisinden (API veya simülasyon) gelir. Aşağıdaki Üretim Paneli ise operatörün
-            girdiği iş ve kalite kayıtlarıdır — karıştırılmamalıdır.
+            girdiği iş ve kalite kayıtlarıdır — karıştırılmamalıdır. İstasyon seçici ile farklı hatların OEE’sini görün.
           </p>
         </div>
       </div>
       <div className="px-1 pb-1">
-        <OeePanel stationId={isCanonicalStation(table.selectedStation) ? table.selectedStation : DEFAULT_STATION} />
+        <OeePanel defaultStationId={DEFAULT_STATION} showStationSelector />
       </div>
     </section>
 

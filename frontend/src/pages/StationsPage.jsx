@@ -190,17 +190,27 @@ const StationsPage = ({
           title="İstasyon Bazlı Üretim Hacmi"
           subtitle="OK / NOK adetleri canlı üretim kayıtlarından hesaplanır"
         />
-        <div className="h-[340px] w-full">
+        <div className="h-[400px] w-full">
           {chartData.length === 0 ? (
             <p className="pt-24 text-center text-[color:var(--color-muted)]">Grafik verisi bulunamadı.</p>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} margin={{ top: 12, right: 12, left: 0, bottom: 56 }}>
+              <BarChart data={chartData} margin={{ top: 28, right: 12, left: 0, bottom: 88 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                <XAxis dataKey="name" interval={0} angle={-28} textAnchor="end" tick={{ fontSize: 11, fill: '#5b6b7c' }} axisLine={false} tickLine={false} />
+                <XAxis
+                  dataKey="name"
+                  interval={0}
+                  angle={-32}
+                  textAnchor="end"
+                  height={78}
+                  tick={{ fontSize: 10, fill: '#5b6b7c' }}
+                  axisLine={false}
+                  tickLine={false}
+                  tickMargin={10}
+                />
                 <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#5b6b7c' }} axisLine={false} tickLine={false} width={36} />
                 <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #d7dee8' }} />
-                <Legend verticalAlign="top" height={36} />
+                <Legend verticalAlign="top" align="right" height={28} wrapperStyle={{ paddingBottom: 8 }} />
                 <Bar dataKey="OK" fill="#0f9f6e" name="Başarılı (OK)" radius={[8, 8, 0, 0]} maxBarSize={42} />
                 <Bar dataKey="NOK" fill="#d92d20" name="Hatalı (NOK)" radius={[8, 8, 0, 0]} maxBarSize={42} />
               </BarChart>

@@ -29,4 +29,8 @@ public sealed class AlarmDto
     public DateTimeOffset Time { get; init; }
     public string Status { get; init; } = string.Empty;
     public string Description { get; init; } = string.Empty;
+    public DateTimeOffset? AcknowledgedAt { get; init; }
+    public string? AcknowledgedBy { get; init; }
+    public DateTimeOffset? ResolvedAt { get; init; }
+    public string? ResolvedBy { get; init; }
 }
