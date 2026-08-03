@@ -1,82 +1,48 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using MiniMesApi.DTOs;
 using MiniMesApi.Models;
 using MiniMesApi.Security;
-using System;
-using System.Linq;
-using System.Threading.Tasks;
+using MiniMesApi.Services;
 
-namespace MiniMesApi.Controllers
+namespace MiniMesApi.Controllers;
+
+[ApiController]
+[Route("api/[controller]")]
+[Authorize(Policy = PolicyNames.MetricsRead)]
+public sealed class OeeController(MesDbContext context) : ControllerBase
 {
-    [ApiController]
-    [Route("api/[controller]")]
-    [Authorize(Policy = PolicyNames.MetricsRead)]
-    public class OeeController : ControllerBase
-    {
-        private readonly MesDbContext _context;
+    [HttpGet("stations")]
+    public ActionResult<IReadOnlyCollection<string>> GetStations() =>
+        Ok(StationCatalog.All);
 
-        public OeeController(MesDbContext context)
+    [HttpGet("latest/{stationId}")]
+    public async Task<ActionResult<OeeMetricDto>> GetLatestMetrics(
+        string stationId,
+        CancellationToken cancellationToken)
+    {
+        if (!StationCatalog.Contains(stationId))
         {
-            _context = context;
+            return Problem(
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Geçersiz istasyon kimliği.");
         }
 
-        [HttpGet("latest/{stationId}")]
-public async Task<IActionResult> GetLatestMetrics(
-    string stationId,
-    CancellationToken cancellationToken)
-{
-    var metric = await _context.MachineMetrics
-        .AsNoTracking()
-        .Where(m => m.StationId == stationId)
-        .OrderByDescending(m => m.RecordedAt)
-        .FirstOrDefaultAsync(cancellationToken);
+        var metric = await context.MachineMetrics
+            .AsNoTracking()
+            .Where(item => item.StationId == stationId)
+            .OrderByDescending(item => item.RecordedAt)
+            .ThenByDescending(item => item.Id)
+            .FirstOrDefaultAsync(cancellationToken);
 
-    if (metric == null)
-    {
-        return NotFound(new { message = "Bu istasyon için metrik bulunamadı." });
-    }
+        if (metric is null)
+        {
+            return Problem(
+                statusCode: StatusCodes.Status404NotFound,
+                title: "Bu istasyon için metrik bulunamadı.");
+        }
 
-    // OEE Hesaplama Mantığı
-    double operatingTime = metric.PlannedProductionSeconds - metric.DowntimeSeconds;
-    
-    // 1. Availability
-    double availability = metric.PlannedProductionSeconds > 0 
-        ? (operatingTime / metric.PlannedProductionSeconds) * 100 
-        : 0;
-
-    // 2. Performance
-    double performance = operatingTime > 0 
-        ? ((metric.IdealCycleTimeSeconds * metric.ActualProductionCount) / operatingTime) * 100 
-        : 0;
-
-    // 3. Quality
-    double quality = metric.ActualProductionCount > 0 
-        ? ((double)metric.GoodProductionCount / metric.ActualProductionCount) * 100 
-        : 0;
-
-    availability = Math.Min(availability, 100.0);
-    performance = Math.Min(performance, 100.0);
-    quality = Math.Min(quality, 100.0);
-
-    double overallOee = (availability / 100.0) * (performance / 100.0) * (quality / 100.0) * 100.0;
-
-    // Fire (NOK) Sayısı
-    int scrapCount = metric.ActualProductionCount - metric.GoodProductionCount;
-
-    return Ok(new
-    {
-        stationId = metric.StationId,
-        availability = Math.Round(availability, 1),
-        performance = Math.Round(performance, 1),
-        quality = Math.Round(quality, 1),
-        oee = Math.Round(overallOee, 1),
-        // YENİ EKLENEN CANLI ADET VERİLERİ:
-        totalProduction = metric.ActualProductionCount,
-        goodProduction = metric.GoodProductionCount,
-        scrapProduction = scrapCount,
-        lastUpdated = metric.RecordedAt
-    });
-}
+        return Ok(OeeCalculator.Calculate(metric));
     }
 }

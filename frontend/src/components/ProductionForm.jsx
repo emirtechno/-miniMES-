@@ -1,4 +1,5 @@
 import { PlusCircle, Scan } from 'lucide-react';
+import { STATIONS } from '../constants/stations';
 
 const ProductionForm = ({
   urun20liKod,
@@ -73,14 +74,16 @@ const ProductionForm = ({
         </div>
         <div className="input-group">
           <label>İstasyon Adı</label>
-          <input
+          <select
             className="input-field"
-            type="text"
-            placeholder="Örn: Montaj_Hatti_01"
             value={istasyonAdi}
             onChange={onChangeStation}
+            required
             disabled={!canSubmit}
-          />
+          >
+            <option value="">İstasyon seçin</option>
+            {STATIONS.map((station) => <option key={station} value={station}>{station}</option>)}
+          </select>
         </div>
         <div className="input-group">
           <label>Kalite Durumu</label>

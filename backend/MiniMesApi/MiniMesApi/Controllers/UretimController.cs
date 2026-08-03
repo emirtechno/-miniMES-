@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using FluentValidation;
 using MiniMesApi.Models;
 using MiniMesApi.DTOs;
+using MiniMesApi.Infrastructure;
 using MiniMesApi.Security;
 
 namespace MiniMesApi.Controllers
@@ -24,16 +25,30 @@ namespace MiniMesApi.Controllers
         // 1. Tüm Aktif Üretim Kayıtlarını DTO olarak Getir (GET: api/Uretim)
         [HttpGet]
         public async Task<IActionResult> GetUretimler(
-            [FromQuery] int limit = 100,
+            [FromQuery] int limit = 50,
+            [FromQuery] string? cursor = null,
             CancellationToken cancellationToken = default)
         {
-            limit = Math.Clamp(limit, 1, 500);
+            limit = Math.Clamp(limit, 1, 200);
+            if (!CursorCodec.TryDecodeTimestamp(cursor, out var cursorTime, out var cursorId))
+            {
+                return Problem(statusCode: StatusCodes.Status400BadRequest, title: "Geçersiz sayfalama imleci.");
+            }
 
-            var uretimler = await _context.UretimKayitlari
+            var query = _context.UretimKayitlari
                 .Where(x => !x.IsDeleted)
-                .AsNoTracking()
+                .AsNoTracking();
+            if (!string.IsNullOrWhiteSpace(cursor))
+            {
+                query = query.Where(record =>
+                    record.UretimTarihi < cursorTime ||
+                    (record.UretimTarihi == cursorTime && record.ID < cursorId));
+            }
+
+            var uretimler = await query
                 .OrderByDescending(x => x.UretimTarihi)
-                .Take(limit)
+                .ThenByDescending(x => x.ID)
+                .Take(limit + 1)
                 .Select(x => new UretimKayitResponseDto
                 {
                     ID = x.ID,
@@ -45,12 +60,12 @@ namespace MiniMesApi.Controllers
                 })
                 .ToListAsync(cancellationToken);
 
-            return Ok(uretimler);
+            return Ok(ToCursorPage(uretimler, limit));
         }
 
         // 2. ID'ye Göre Tek Kayıt Getir (GET: api/Uretim/5)
         [HttpGet("{id}")]
-        public async Task<IActionResult> GetUretimById(int id)
+        public async Task<IActionResult> GetUretimById(int id, CancellationToken cancellationToken)
         {
             var kayit = await _context.UretimKayitlari
                 .Where(x => !x.IsDeleted && x.ID == id)
@@ -64,7 +79,7 @@ namespace MiniMesApi.Controllers
                     KaliteDurumu = x.KaliteDurumu,
                     UretimTarihi = x.UretimTarihi
                 })
-                .FirstOrDefaultAsync();
+                .FirstOrDefaultAsync(cancellationToken);
 
             if (kayit == null)
             {
@@ -79,10 +94,15 @@ namespace MiniMesApi.Controllers
         public async Task<IActionResult> Filtrele(
             [FromQuery] string? istasyon,
             [FromQuery] string? kaliteDurumu,
-            [FromQuery] int limit = 100,
+            [FromQuery] int limit = 50,
+            [FromQuery] string? cursor = null,
             CancellationToken cancellationToken = default)
         {
-            limit = Math.Clamp(limit, 1, 500);
+            limit = Math.Clamp(limit, 1, 200);
+            if (!CursorCodec.TryDecodeTimestamp(cursor, out var cursorTime, out var cursorId))
+            {
+                return Problem(statusCode: StatusCodes.Status400BadRequest, title: "Geçersiz sayfalama imleci.");
+            }
             var query = _context.UretimKayitlari.Where(x => !x.IsDeleted).AsQueryable();
 
             if (!string.IsNullOrEmpty(istasyon))
@@ -94,11 +114,18 @@ namespace MiniMesApi.Controllers
             {
                 query = query.Where(x => x.KaliteDurumu == kaliteDurumu);
             }
+            if (!string.IsNullOrWhiteSpace(cursor))
+            {
+                query = query.Where(record =>
+                    record.UretimTarihi < cursorTime ||
+                    (record.UretimTarihi == cursorTime && record.ID < cursorId));
+            }
 
             var sonuc = await query
                 .AsNoTracking()
                 .OrderByDescending(x => x.UretimTarihi)
-                .Take(limit)
+                .ThenByDescending(x => x.ID)
+                .Take(limit + 1)
                 .Select(x => new UretimKayitResponseDto
                 {
                     ID = x.ID,
@@ -110,16 +137,18 @@ namespace MiniMesApi.Controllers
                 })
                 .ToListAsync(cancellationToken);
 
-            return Ok(sonuc);
+            return Ok(ToCursorPage(sonuc, limit));
         }
 
         // 4. Yeni Üretim Kaydı Ekle (POST: api/Uretim)
         [HttpPost]
         [Microsoft.AspNetCore.Authorization.Authorize(Policy = PolicyNames.ProductionWrite)]
-        public async Task<IActionResult> UretimEkle([FromBody] CreateUretimKayitDto yeniDto)
+        public async Task<IActionResult> UretimEkle(
+            [FromBody] CreateUretimKayitDto yeniDto,
+            CancellationToken cancellationToken)
         {
             // FluentValidation Doğrulaması
-            var validationResult = await _validator.ValidateAsync(yeniDto);
+            var validationResult = await _validator.ValidateAsync(yeniDto, cancellationToken);
             if (!validationResult.IsValid)
             {
                 return BadRequest(new ValidationProblemDetails(validationResult.Errors
@@ -131,7 +160,7 @@ namespace MiniMesApi.Controllers
 
             // Mükerrer Barkod Kontrolü
             var mukerrerVarMi = await _context.UretimKayitlari
-                .AnyAsync(x => x.Urun20liKod == yeniDto.Urun20liKod && !x.IsDeleted);
+                .AnyAsync(x => x.Urun20liKod == yeniDto.Urun20liKod && !x.IsDeleted, cancellationToken);
 
             if (mukerrerVarMi)
             {
@@ -154,7 +183,7 @@ namespace MiniMesApi.Controllers
             _context.UretimKayitlari.Add(yeniKayit);
             try
             {
-                await _context.SaveChangesAsync();
+                await _context.SaveChangesAsync(cancellationToken);
             }
             catch (DbUpdateException)
             {
@@ -180,9 +209,12 @@ namespace MiniMesApi.Controllers
         // 5. Üretim Kaydını Güncelle (PUT: api/Uretim/5)
         [HttpPut("{id}")]
         [Microsoft.AspNetCore.Authorization.Authorize(Policy = PolicyNames.ProductionManage)]
-        public async Task<IActionResult> UretimGuncelle(int id, [FromBody] CreateUretimKayitDto guncelDto)
+        public async Task<IActionResult> UretimGuncelle(
+            int id,
+            [FromBody] CreateUretimKayitDto guncelDto,
+            CancellationToken cancellationToken)
         {
-            var validationResult = await _validator.ValidateAsync(guncelDto);
+            var validationResult = await _validator.ValidateAsync(guncelDto, cancellationToken);
             if (!validationResult.IsValid)
             {
                 return BadRequest(new ValidationProblemDetails(validationResult.Errors
@@ -192,7 +224,7 @@ namespace MiniMesApi.Controllers
                         group => group.Select(error => error.ErrorMessage).ToArray())));
             }
 
-            var mevcutKayit = await _context.UretimKayitlari.FindAsync(id);
+            var mevcutKayit = await _context.UretimKayitlari.FindAsync([id], cancellationToken);
             if (mevcutKayit == null || mevcutKayit.IsDeleted)
             {
                 return Problem(statusCode: StatusCodes.Status404NotFound, title: $"{id} ID'li güncellenecek kayıt bulunamadı.");
@@ -202,7 +234,7 @@ namespace MiniMesApi.Controllers
             mevcutKayit.KaliteDurumu = guncelDto.KaliteDurumu;
             mevcutKayit.Malzeme12liKod = guncelDto.Malzeme12liKod;
 
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
 
             var responseDto = new UretimKayitResponseDto
             {
@@ -220,32 +252,33 @@ namespace MiniMesApi.Controllers
         // 6. Soft Delete ile Sil (DELETE: api/Uretim/5)
         [HttpDelete("{id}")]
         [Microsoft.AspNetCore.Authorization.Authorize(Policy = PolicyNames.ProductionManage)]
-        public async Task<IActionResult> UretimSil(int id)
+        public async Task<IActionResult> UretimSil(int id, CancellationToken cancellationToken)
         {
-            var uretimKayit = await _context.UretimKayitlari.FindAsync(id);
+            var uretimKayit = await _context.UretimKayitlari.FindAsync([id], cancellationToken);
             if (uretimKayit == null || uretimKayit.IsDeleted)
             {
                 return Problem(statusCode: StatusCodes.Status404NotFound, title: $"{id} ID'li aktif üretim kaydı bulunamadı.");
             }
 
             uretimKayit.IsDeleted = true;
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
 
             return Ok(new { id, message = "Üretim kaydı silindi." });
         }
 
         [HttpDelete("hard-delete/{id}")]
         [Microsoft.AspNetCore.Authorization.Authorize(Policy = PolicyNames.ProductionHardDelete)]
-        public async Task<IActionResult> HardDelete(int id)
+        public async Task<IActionResult> HardDelete(int id, CancellationToken cancellationToken)
         {
-            var kayit = await _context.UretimKayitlari.FirstOrDefaultAsync(x => x.ID == id);
+            var kayit = await _context.UretimKayitlari
+                .FirstOrDefaultAsync(x => x.ID == id, cancellationToken);
             if (kayit == null)
             {
                 return Problem(statusCode: StatusCodes.Status404NotFound, title: "Kayıt bulunamadı.");
             }
 
             _context.UretimKayitlari.Remove(kayit);
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
 
             return Ok(new { id, message = "Kayıt kalıcı olarak silindi." });
         }
@@ -254,16 +287,30 @@ namespace MiniMesApi.Controllers
         [HttpGet("deleted")]
         [Microsoft.AspNetCore.Authorization.Authorize(Policy = PolicyNames.DeletedRecordsRead)]
         public async Task<IActionResult> GetDeletedUretimler(
-            [FromQuery] int limit = 100,
+            [FromQuery] int limit = 50,
+            [FromQuery] string? cursor = null,
             CancellationToken cancellationToken = default)
         {
-            limit = Math.Clamp(limit, 1, 500);
+            limit = Math.Clamp(limit, 1, 200);
+            if (!CursorCodec.TryDecodeTimestamp(cursor, out var cursorTime, out var cursorId))
+            {
+                return Problem(statusCode: StatusCodes.Status400BadRequest, title: "Geçersiz sayfalama imleci.");
+            }
 
-            var silinenler = await _context.UretimKayitlari
+            var query = _context.UretimKayitlari
                 .Where(x => x.IsDeleted)
-                .AsNoTracking()
+                .AsNoTracking();
+            if (!string.IsNullOrWhiteSpace(cursor))
+            {
+                query = query.Where(record =>
+                    record.UretimTarihi < cursorTime ||
+                    (record.UretimTarihi == cursorTime && record.ID < cursorId));
+            }
+
+            var silinenler = await query
                 .OrderByDescending(x => x.UretimTarihi)
-                .Take(limit)
+                .ThenByDescending(x => x.ID)
+                .Take(limit + 1)
                 .Select(x => new UretimKayitResponseDto
                 {
                     ID = x.ID,
@@ -275,26 +322,38 @@ namespace MiniMesApi.Controllers
                 })
                 .ToListAsync(cancellationToken);
 
-            return Ok(silinenler);
+            return Ok(ToCursorPage(silinenler, limit));
         }
 
         // 8. Silinen Kayıtları Geri Yükle (PUT: api/Uretim/restore/5)
         [HttpPut("restore/{id}")]
         [Microsoft.AspNetCore.Authorization.Authorize(Policy = PolicyNames.ProductionManage)]
-        public async Task<IActionResult> RestoreUretim(int id)
+        public async Task<IActionResult> RestoreUretim(int id, CancellationToken cancellationToken)
         {
-            var uretimKayit = await _context.UretimKayitlari.FindAsync(id);
+            var uretimKayit = await _context.UretimKayitlari.FindAsync([id], cancellationToken);
             if (uretimKayit == null || !uretimKayit.IsDeleted)
             {
                 return Problem(statusCode: StatusCodes.Status404NotFound, title: $"{id} ID'li silinmiş kayıt bulunamadı.");
             }
 
             uretimKayit.IsDeleted = false;
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
 
             return Ok(new { id, message = "Kayıt başarıyla geri yüklendi." });
         }
 
-        
+        private static CursorPage<UretimKayitResponseDto> ToCursorPage(
+            IReadOnlyCollection<UretimKayitResponseDto> records,
+            int limit)
+        {
+            var items = records.Take(limit).ToArray();
+            return new CursorPage<UretimKayitResponseDto>
+            {
+                Items = items,
+                NextCursor = records.Count > limit && items.Length > 0
+                    ? CursorCodec.EncodeTimestamp(items[^1].UretimTarihi, items[^1].ID)
+                    : null
+            };
+        }
     }
 }

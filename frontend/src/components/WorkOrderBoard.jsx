@@ -1,4 +1,5 @@
 import { ClipboardList, PlusCircle, ArrowRight } from 'lucide-react';
+import { STATIONS } from '../constants/stations';
 
 const WorkOrderBoard = ({ workOrders, formValues, onFieldChange, onSubmit, onAdvance }) => {
   return (
@@ -21,7 +22,10 @@ const WorkOrderBoard = ({ workOrders, formValues, onFieldChange, onSubmit, onAdv
         </div>
         <div className="input-group">
           <label>İstasyon</label>
-          <input className="input-field" value={formValues.station} onChange={(e) => onFieldChange('station', e.target.value)} required />
+          <select className="input-field" value={formValues.station} onChange={(e) => onFieldChange('station', e.target.value)} required>
+            <option value="">İstasyon seçin</option>
+            {STATIONS.map((station) => <option key={station}>{station}</option>)}
+          </select>
         </div>
         <div className="input-group">
           <label>Miktar</label>
@@ -58,7 +62,7 @@ const WorkOrderBoard = ({ workOrders, formValues, onFieldChange, onSubmit, onAdv
                   </span>
                 </td>
                 <td>
-                  <button className="btn-delete" onClick={() => onAdvance(order.id)} title="Durumu ilerlet">
+                  <button className="btn-delete" onClick={() => onAdvance(order)} title="Durumu ilerlet">
                     <ArrowRight size={18} />
                   </button>
                 </td>
