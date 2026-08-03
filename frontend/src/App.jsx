@@ -13,6 +13,7 @@ import {
 
 import './App.css';
 import { useAuth } from './context/AuthContext';
+import { useNotify } from './context/NotificationContext';
 import {
   createProductionRecord,
   deleteProductionRecord,
@@ -42,6 +43,7 @@ import { DEFAULT_STATION, STATIONS } from './constants/stations';
 
 function MainLayout() {
   const { currentUser, logout, isAuthenticated } = useAuth();
+  const { notify, confirm } = useNotify();
   const location = useLocation();
 
   const [records, setRecords] = useState([]);
@@ -248,7 +250,7 @@ function MainLayout() {
 
   const createTestAlarm = async () => {
     if (!canCreateAlarms) {
-      alert('Alarm oluşturma yetkiniz bulunmamaktadır.');
+      notify('Alarm oluşturma yetkiniz bulunmamaktadır.', 'error');
       return;
     }
     try {
@@ -264,7 +266,7 @@ function MainLayout() {
       await createAlarm(newAlarm);
       await loadAlarms();
     } catch (err) {
-      alert(getApiErrorMessage(err, 'Test alarmı oluşturulurken hata oluştu.'));
+      notify(getApiErrorMessage(err, 'Test alarmı oluşturulurken hata oluştu.'), 'error');
       console.error(err);
     } finally {
       setAlarmLoading(false);
@@ -274,7 +276,7 @@ function MainLayout() {
   const createManualAlarm = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
     if (!canCreateAlarms) {
-      alert('Alarm oluşturma yetkiniz bulunmamaktadır.');
+      notify('Alarm oluşturma yetkiniz bulunmamaktadır.', 'error');
       return;
     }
     try {
@@ -294,7 +296,7 @@ function MainLayout() {
       setManualDescription('');
       await loadAlarms();
     } catch (err) {
-      alert(getApiErrorMessage(err, 'Manuel alarm eklenirken hata oluştu.'));
+      notify(getApiErrorMessage(err, 'Manuel alarm eklenirken hata oluştu.'), 'error');
       console.error(err);
     } finally {
       setAlarmLoading(false);
@@ -303,7 +305,7 @@ function MainLayout() {
 
   const generateRandomBarcodes = () => {
     if (!canAddRecord) {
-      alert('Kayıt ekleme yetkiniz yok.');
+      notify('Kayıt ekleme yetkiniz yok.', 'error');
       return;
     }
     const timestamp = Date.now().toString();
@@ -322,7 +324,7 @@ function MainLayout() {
   const handleExportExcel = () => {
     const exportData = filteredRecords.length > 0 ? filteredRecords : records;
     if (!exportData || exportData.length === 0) {
-      alert("Dışa aktarılacak veri bulunamadı!");
+      notify("Dışa aktarılacak veri bulunamadı!", 'error');
       return;
     }
     const formattedData = exportData.map((r) => ({
@@ -346,7 +348,7 @@ function MainLayout() {
   const handleAddRecord = async (e) => {
     e.preventDefault();
     if (!canAddRecord) {
-      alert('Seçili kullanıcı şu anda üretim kaydı ekleyemez.');
+      notify('Seçili kullanıcı şu anda üretim kaydı ekleyemez.', 'error');
       return;
     }
 
@@ -367,27 +369,27 @@ function MainLayout() {
       if (canViewDeleted) await fetchDeletedRecords();
       urunInputRef.current?.focus();
     } catch (err) {
-      alert(getApiErrorMessage(err, 'Kayıt eklenirken bir sorun oluştu.'));
+      notify(getApiErrorMessage(err, 'Kayıt eklenirken bir sorun oluştu.'), 'error');
       console.error(err);
     }
   };
 
   const handleDelete = async (id) => {
     if (!canDeleteRecord) {
-      alert('Bu işlemi yapmak için Tam Yetki yetkisine sahip olmalısınız.');
+      notify('Bu işlemi yapmak için Tam Yetki yetkisine sahip olmalısınız.', 'error');
       return;
     }
-    if (!window.confirm(`ID: ${id} kaydını silmek istediğinize emin misiniz?`)) return;
+    if (!(await confirm(`ID: ${id} kaydını silmek istediğinize emin misiniz?`))) return;
     try {
       const res = await deleteProductionRecord(id);
       if (res.success !== false) {
         await fetchRecords();
         if (canViewDeleted) await fetchDeletedRecords();
       } else {
-        alert(`Silme Başarısız: ${res.message}`);
+        notify(`Silme Başarısız: ${res.message}`, 'error');
       }
     } catch (err) {
-      alert(getApiErrorMessage(err, 'Silme işlemi başarısız.'));
+      notify(getApiErrorMessage(err, 'Silme işlemi başarısız.'), 'error');
       console.error(err);
     }
   };
@@ -399,52 +401,50 @@ function MainLayout() {
       : alarmOrId;
 
     if (!canManageAlarms) {
-      alert('Alarm silme yetkiniz bulunmamaktadır.');
+      notify('Alarm silme yetkiniz bulunmamaktadır.', 'error');
       return;
     }
 
     if (!id) {
-      alert('Hata: Silinecek alarmın ID bilgisi okunamadı!');
+      notify('Hata: Silinecek alarmın ID bilgisi okunamadı!', 'error');
       return;
     }
 
-    if (!window.confirm('Bu alarmı silmek istediğinize emin misiniz?')) return;
+    if (!(await confirm('Bu alarmı silmek istediğinize emin misiniz?'))) return;
     
     try {
       await deleteAlarm(id);
       await loadAlarms(); // Silme başarılı olunca listeyi yenile
     } catch (err) {
-      alert(getApiErrorMessage(err, 'Alarm silinirken hata oluştu.'));
+      notify(getApiErrorMessage(err, 'Alarm silinirken hata oluştu.'), 'error');
       console.error(err);
     }
   };
 
-  // Kalıcı silme ekranı eklenene kadar bu işlem tetiklenmez.
-  // eslint-disable-next-line no-unused-vars
   const handleHardDelete = async (recordOrId) => {
     const id = typeof recordOrId === 'object' ? (recordOrId.id || recordOrId.Id) : recordOrId;
 
     if (!canHardDelete) {
-      alert('Kalıcı silme işlemi için ek yönetici yetkisi gereklidir.');
+      notify('Kalıcı silme işlemi için ek yönetici yetkisi gereklidir.', 'error');
       return;
     }
 
     if (!id) {
-      alert('Hata: Silinecek kaydın ID bilgisi okunamadı!');
+      notify('Hata: Silinecek kaydın ID bilgisi okunamadı!', 'error');
       return;
     }
 
-    if (!window.confirm(`ID: ${id} kaydı veritabanından KALICI OLARAK silinecektir. Bu işlem geri alınamaz! Onaylıyor musunuz?`)) return;
+    if (!(await confirm(`ID: ${id} kaydı veritabanından KALICI OLARAK silinecektir. Bu işlem geri alınamaz! Onaylıyor musunuz?`))) return;
 
     try {
       const res = await hardDeleteProductionRecord(id);
       if (res && res.success !== false) {
         if (canViewDeleted) await fetchDeletedRecords();
       } else {
-        alert(`Kalıcı Silme Başarısız: ${res?.message || 'Sunucu hatası'}`);
+        notify(`Kalıcı Silme Başarısız: ${res?.message || 'Sunucu hatası'}`, 'error');
       }
     } catch (err) {
-      alert(getApiErrorMessage(err, 'Kalıcı silme işlemi başarısız.'));
+      notify(getApiErrorMessage(err, 'Kalıcı silme işlemi başarısız.'), 'error');
       console.error(err);
     }
   };
@@ -453,12 +453,12 @@ function MainLayout() {
     const id = typeof recordOrId === 'object' ? (recordOrId.id || recordOrId.Id) : recordOrId;
 
     if (!canDeleteRecord) {
-      alert('Silinen kaydı geri yüklemek için Tam Yetki gereklidir.');
+      notify('Silinen kaydı geri yüklemek için Tam Yetki gereklidir.', 'error');
       return;
     }
 
     if (!id) {
-      alert('Hata: Geri yüklenecek kaydın ID bilgisi okunamadı!');
+      notify('Hata: Geri yüklenecek kaydın ID bilgisi okunamadı!', 'error');
       return;
     }
 
@@ -468,17 +468,17 @@ function MainLayout() {
         await fetchRecords();
         if (canViewDeleted) await fetchDeletedRecords();
       } else {
-        alert(`Geri Yükleme Başarısız: ${res?.message || 'Sunucu hatası'}`);
+        notify(`Geri Yükleme Başarısız: ${res?.message || 'Sunucu hatası'}`, 'error');
       }
     } catch (err) {
-      alert(getApiErrorMessage(err, 'Geri yükleme işlemi başarısız.'));
+      notify(getApiErrorMessage(err, 'Geri yükleme işlemi başarısız.'), 'error');
       console.error(err);
     }
   };
 
   const handleToggleQuality = async (record) => {
     if (!canChangeQuality) {
-      alert('Seçili kullanıcı kalite durumunu güncelleyemez.');
+      notify('Seçili kullanıcı kalite durumunu güncelleyemez.', 'error');
       return;
     }
     const newStatus = record.kaliteDurumu === 'OK' ? 'NOK' : 'OK';
@@ -491,10 +491,10 @@ function MainLayout() {
         await fetchRecords();
         if (canViewDeleted) await fetchDeletedRecords();
       } else {
-        alert(`Güncelleme Başarısız: ${res.message}`);
+        notify(`Güncelleme Başarısız: ${res.message}`, 'error');
       }
     } catch (err) {
-      alert(getApiErrorMessage(err, 'Güncelleme başarısız.'));
+      notify(getApiErrorMessage(err, 'Güncelleme başarısız.'), 'error');
       console.error(err);
     }
   };
@@ -547,7 +547,7 @@ const yieldRate = totalCount > 0 ? ((okCount / totalCount) * 100).toFixed(1) : 0
   const handleWorkOrderSubmit = async (e) => {
     e.preventDefault();
     if (!canManageWorkOrders) {
-      alert('İş emri oluşturma yetkiniz yok (Saha Müdürü yetkisi gereklidir).');
+      notify('İş emri oluşturma yetkiniz yok (Saha Müdürü yetkisi gereklidir).', 'error');
       return;
     }
     try {
@@ -560,35 +560,35 @@ const yieldRate = totalCount > 0 ? ((okCount / totalCount) * 100).toFixed(1) : 0
       setWorkOrderForm({ orderNo: '', product: '', station: '', quantity: '' });
       await loadWorkOrders();
     } catch (err) {
-      alert(getApiErrorMessage(err, 'İş emri oluşturulamadı.'));
+      notify(getApiErrorMessage(err, 'İş emri oluşturulamadı.'), 'error');
       console.error(err);
     }
   };
 
   const handleAdvanceWorkOrder = async (order) => {
     if (!canManageWorkOrders) {
-      alert('İş emri durumunu değiştirme yetkiniz yok.');
+      notify('İş emri durumunu değiştirme yetkiniz yok.', 'error');
       return;
     }
     try {
       await advanceWorkOrder(order.id, order.rowVersion);
       await loadWorkOrders();
     } catch (err) {
-      alert(getApiErrorMessage(err, 'İş emri durumu güncellenemedi.'));
+      notify(getApiErrorMessage(err, 'İş emri durumu güncellenemedi.'), 'error');
       console.error(err);
     }
   };
 
   const handleAcknowledgeAlarm = async (id) => {
     if (!canManageAlarms) {
-      alert('Alarm onaylama yetkiniz bulunmamaktadır.');
+      notify('Alarm onaylama yetkiniz bulunmamaktadır.', 'error');
       return;
     }
     try {
       await acknowledgeAlarm(id);
       await loadAlarms();
     } catch (err) {
-      alert(getApiErrorMessage(err, 'Alarm onayı kaydedilirken hata oluştu.'));
+      notify(getApiErrorMessage(err, 'Alarm onayı kaydedilirken hata oluştu.'), 'error');
       console.error(err);
     }
   };
@@ -621,25 +621,25 @@ const yieldRate = totalCount > 0 ? ((okCount / totalCount) * 100).toFixed(1) : 0
         </div>
         <ul className="menu-list">
           <li className={`menu-item ${isDashboardActive ? 'active' : ''}`}>
-            <Link to="/dashboard" style={{ textDecoration: 'none', color: 'inherit', display: 'flex', alignItems: 'center', gap: '12px', width: '100%' }}>
+            <Link to="/dashboard" aria-current={isDashboardActive ? 'page' : undefined} style={{ textDecoration: 'none', color: 'inherit', display: 'flex', alignItems: 'center', gap: '12px', width: '100%' }}>
               <LayoutDashboard size={20} />
               <span>Üretim Paneli</span>
             </Link>
           </li>
           <li className={`menu-item ${isStationsActive ? 'active' : ''}`}>
-            <Link to="/istasyonlar" style={{ textDecoration: 'none', color: 'inherit', display: 'flex', alignItems: 'center', gap: '12px', width: '100%' }}>
+            <Link to="/istasyonlar" aria-current={isStationsActive ? 'page' : undefined} style={{ textDecoration: 'none', color: 'inherit', display: 'flex', alignItems: 'center', gap: '12px', width: '100%' }}>
               <Cpu size={20} />
               <span>İstasyonlar</span>
             </Link>
           </li>
           <li className={`menu-item ${isQualityActive ? 'active' : ''}`}>
-            <Link to="/kalite" style={{ textDecoration: 'none', color: 'inherit', display: 'flex', alignItems: 'center', gap: '12px', width: '100%' }}>
+            <Link to="/kalite" aria-current={isQualityActive ? 'page' : undefined} style={{ textDecoration: 'none', color: 'inherit', display: 'flex', alignItems: 'center', gap: '12px', width: '100%' }}>
               <Activity size={20} />
               <span>Kalite Raporları</span>
             </Link>
           </li>
           <li className={`menu-item ${isMetricsActive ? 'active' : ''}`}>
-            <Link to="/makine-metrikleri" style={{ textDecoration: 'none', color: 'inherit', display: 'flex', alignItems: 'center', gap: '12px', width: '100%' }}>
+            <Link to="/makine-metrikleri" aria-current={isMetricsActive ? 'page' : undefined} style={{ textDecoration: 'none', color: 'inherit', display: 'flex', alignItems: 'center', gap: '12px', width: '100%' }}>
               <Cpu size={20} />
               <span>Makine Metrikleri</span>
             </Link>
@@ -827,6 +827,7 @@ const yieldRate = totalCount > 0 ? ((okCount / totalCount) * 100).toFixed(1) : 0
                 loading: deletedLoading,
                 error: deletedError,
                 onRestore: handleRestore,
+                onHardDelete: canHardDelete ? handleHardDelete : undefined,
               }}
               production={{ records, onToggleQuality: handleToggleQuality, onDelete: handleDelete }}
               permissions={{
@@ -836,6 +837,7 @@ const yieldRate = totalCount > 0 ? ((okCount / totalCount) * 100).toFixed(1) : 0
                 canManageUsers,
                 canViewDeleted,
                 canManageProduction: canDeleteRecord,
+                canHardDelete,
                 canChangeQuality,
               }}
               alarmForm={{
@@ -855,7 +857,7 @@ const yieldRate = totalCount > 0 ? ((okCount / totalCount) * 100).toFixed(1) : 0
                 onSubmit: handleWorkOrderSubmit,
                 onDenied: (event) => {
                   event?.preventDefault();
-                  alert('Bu işlem için yetkiniz yok.');
+                  notify('Bu işlem için yetkiniz yok.', 'error');
                 },
               }}
             />
