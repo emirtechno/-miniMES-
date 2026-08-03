@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { UserPlus, Users } from 'lucide-react';
+import { Shield, UserPlus, Users } from 'lucide-react';
 import {
   createUser,
   fetchUsers,
@@ -7,8 +7,15 @@ import {
   updateUserRoles,
   updateUserStatus,
 } from '../services/api';
+import PermissionChips from './PermissionChips';
 
 const roles = ['Admin', 'Operator', 'Auditor'];
+
+const roleHints = {
+  Admin: 'Tüm üretim, alarm, iş emri ve kullanıcı yetkileri',
+  Operator: 'Üretim yazma, alarm oluşturma, metrik görüntüleme',
+  Auditor: 'Metrik ve silinen kayıtları görüntüleme (salt okuma ağırlıklı)',
+};
 
 const UserRolePanel = () => {
   const [users, setUsers] = useState([]);
@@ -51,7 +58,7 @@ const UserRolePanel = () => {
   const handleRoleChange = async (user, selectedRoles) => {
     try {
       const updated = await updateUserRoles(user.id, selectedRoles);
-      setUsers((current) => current.map((item) => item.id === user.id ? updated : item));
+      setUsers((current) => current.map((item) => (item.id === user.id ? updated : item)));
       setError('');
     } catch (requestError) {
       setError(getApiErrorMessage(requestError, 'Rol güncellenemedi.'));
@@ -61,7 +68,7 @@ const UserRolePanel = () => {
   const handleStatusChange = async (user) => {
     try {
       const updated = await updateUserStatus(user.id, !user.isActive);
-      setUsers((current) => current.map((item) => item.id === user.id ? updated : item));
+      setUsers((current) => current.map((item) => (item.id === user.id ? updated : item)));
       setError('');
     } catch (requestError) {
       setError(getApiErrorMessage(requestError, 'Hesap durumu güncellenemedi.'));
@@ -69,31 +76,45 @@ const UserRolePanel = () => {
   };
 
   return (
-    <section className="custom-card">
-      <div className="card-header">
-        <Users size={20} />
-        <span>Identity Kullanıcı ve Rol Yönetimi</span>
+    <section className="mes-surface p-5">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <Users size={20} className="text-[color:var(--color-vestel)]" />
+            <h2 className="mes-section-title m-0">Kullanıcı ve Rol Yönetimi</h2>
+          </div>
+          <p className="mes-helper mt-1 mb-0">
+            Teknik yetki kodları yerine saha diliyle etiketler gösterilir. Bir role tıklayınca yetkiler otomatik güncellenir.
+          </p>
+        </div>
+        <span className="mes-pill-neutral">
+          <Shield size={13} />
+          Identity + JWT
+        </span>
       </div>
 
-      <form onSubmit={handleCreate} style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '16px' }}>
+      <form
+        onSubmit={handleCreate}
+        className="mb-5 grid gap-2 rounded-xl border border-[color:var(--color-line)] bg-slate-50/80 p-3 sm:grid-cols-2 lg:grid-cols-5"
+      >
         <input
-          className="input-field"
+          className="mes-input"
           placeholder="Kullanıcı adı"
           value={form.username}
           onChange={(event) => setForm({ ...form, username: event.target.value })}
           required
         />
         <input
-          className="input-field"
+          className="mes-input"
           placeholder="Görünen ad"
           value={form.displayName}
           onChange={(event) => setForm({ ...form, displayName: event.target.value })}
           required
         />
         <input
-          className="input-field"
+          className="mes-input"
           type="password"
-          placeholder="Güçlü parola"
+          placeholder="Güçlü parola (≥12)"
           autoComplete="new-password"
           value={form.password}
           onChange={(event) => setForm({ ...form, password: event.target.value })}
@@ -101,57 +122,76 @@ const UserRolePanel = () => {
           required
         />
         <select
-          className="input-field"
+          className="mes-input"
           value={form.role}
           onChange={(event) => setForm({ ...form, role: event.target.value })}
+          title={roleHints[form.role]}
         >
-          {roles.map((role) => <option key={role}>{role}</option>)}
+          {roles.map((role) => (
+            <option key={role} value={role}>
+              {role}
+            </option>
+          ))}
         </select>
-        <button type="submit" className="btn-primary">
+        <button type="submit" className="mes-btn-primary">
           <UserPlus size={16} />
           Kullanıcı Ekle
         </button>
       </form>
 
-      {error && <p className="error">{error}</p>}
-      {loading ? <p>Kullanıcılar yükleniyor...</p> : (
-        <div className="table-wrapper">
-          <table className="modern-table">
+      {error && <p className="mb-3 text-sm font-medium text-[color:var(--color-nok)]">{error}</p>}
+
+      {loading ? (
+        <p className="mes-helper">Kullanıcılar yükleniyor...</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[720px] border-separate border-spacing-0 text-left text-sm">
             <thead>
-              <tr>
-                <th>Kullanıcı</th>
-                <th>Rol</th>
-                <th>Durum</th>
-                <th>Yetkiler</th>
+              <tr className="text-xs uppercase tracking-wide text-[color:var(--color-muted)]">
+                <th className="border-b border-[color:var(--color-line)] px-2 py-2 font-semibold">Kullanıcı</th>
+                <th className="border-b border-[color:var(--color-line)] px-2 py-2 font-semibold">Rol</th>
+                <th className="border-b border-[color:var(--color-line)] px-2 py-2 font-semibold">Durum</th>
+                <th className="border-b border-[color:var(--color-line)] px-2 py-2 font-semibold">Yetkiler</th>
               </tr>
             </thead>
             <tbody>
               {users.map((user) => (
-                <tr key={user.id}>
-                  <td><b>{user.displayName}</b><br /><small>{user.username}</small></td>
-                  <td>
+                <tr key={user.id} className="align-top">
+                  <td className="border-b border-[color:var(--color-line)] px-2 py-3">
+                    <div className="font-semibold text-[color:var(--color-ink)]">{user.displayName}</div>
+                    <div className="text-xs text-[color:var(--color-muted)]">{user.username}</div>
+                  </td>
+                  <td className="border-b border-[color:var(--color-line)] px-2 py-3">
                     <select
-                      className="input-field"
+                      className="mes-input min-h-20"
                       multiple
                       value={user.roles}
-                      onChange={(event) => handleRoleChange(
-                        user,
-                        Array.from(event.target.selectedOptions, (option) => option.value),
-                      )}
+                      onChange={(event) =>
+                        handleRoleChange(
+                          user,
+                          Array.from(event.target.selectedOptions, (option) => option.value),
+                        )
+                      }
                     >
-                      {roles.map((role) => <option key={role}>{role}</option>)}
+                      {roles.map((role) => (
+                        <option key={role} value={role} title={roleHints[role]}>
+                          {role}
+                        </option>
+                      ))}
                     </select>
                   </td>
-                  <td>
+                  <td className="border-b border-[color:var(--color-line)] px-2 py-3">
                     <button
                       type="button"
-                      className={user.isActive ? 'badge badge-ok' : 'badge badge-neutral'}
+                      className={user.isActive ? 'mes-pill-ok' : 'mes-pill-neutral'}
                       onClick={() => handleStatusChange(user)}
                     >
                       {user.isActive ? 'Aktif' : 'Pasif'}
                     </button>
                   </td>
-                  <td><small>{user.permissions.join(', ') || 'Salt okunur'}</small></td>
+                  <td className="border-b border-[color:var(--color-line)] px-2 py-3">
+                    <PermissionChips permissions={user.permissions || []} />
+                  </td>
                 </tr>
               ))}
             </tbody>

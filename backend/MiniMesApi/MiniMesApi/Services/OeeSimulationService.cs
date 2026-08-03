@@ -90,10 +90,17 @@ namespace MiniMesApi.Services
                 };
                 MachineMetricInvariants.Normalize(metric);
                 return metric;
-            });
+            }).ToList();
 
             dbContext.MachineMetrics.AddRange(metrics);
             await dbContext.SaveChangesAsync(cancellationToken);
+
+            var publisher = scope.ServiceProvider.GetRequiredService<IMesRealtimePublisher>();
+            var oeePayload = metrics
+                .Select(OeeCalculator.Calculate)
+                .ToArray();
+            await publisher.OeeUpdatedAsync(oeePayload, cancellationToken);
+
             _logger.LogDebug("OEE simülasyon verisi {RecordedAt} zamanında kaydedildi.", recordedAt);
         }
     }

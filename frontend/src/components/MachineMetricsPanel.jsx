@@ -1,15 +1,23 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Cpu } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { fetchLatestOee, fetchMachineMetrics } from '../services/api';
 import { useNonOverlappingPolling } from '../hooks/useNonOverlappingPolling';
-import { DEFAULT_STATION, STATIONS } from '../constants/stations';
+import { useMesHub } from '../hooks/useMesHub';
+import { DEFAULT_STATION, ACTIVE_STATION_DEFINITIONS, getStationDisplayName } from '../constants/stations';
 
 const MachineMetricsPanel = () => {
   const [metrics, setMetrics] = useState([]);
   const [selectedStation, setSelectedStation] = useState(DEFAULT_STATION);
   const [oeeData, setOeeData] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  const handleOeeUpdated = useCallback((payload) => {
+    const latest = (payload || []).find((item) => item.stationId === selectedStation);
+    if (latest) setOeeData(latest);
+  }, [selectedStation]);
+
+  useMesHub({ onOeeUpdated: handleOeeUpdated });
 
   useNonOverlappingPolling(async (signal) => {
     try {
@@ -31,11 +39,11 @@ const MachineMetricsPanel = () => {
     }
   }, {
     enabled: true,
-    intervalMs: 5000,
+    intervalMs: 20000,
     resetKey: selectedStation,
   });
 
-  const stationsList = ['Tümü', ...new Set([...STATIONS, ...metrics.map(m => m.stationId).filter(Boolean)])];
+  const stationsList = ['Tümü', ...new Set([...ACTIVE_STATION_DEFINITIONS.map((s) => s.id), ...metrics.map(m => m.stationId).filter(Boolean)])];
 
   const filteredMetrics = selectedStation === 'Tümü' 
     ? metrics 
@@ -55,7 +63,7 @@ const MachineMetricsPanel = () => {
       {oeeData && (
         <section className="kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', marginBottom: '20px' }}>
           <div className="custom-card" style={{ padding: '15px', borderLeft: '4px solid #3b82f6' }}>
-            <div className="info-card-title">Genel OEE ({selectedStation})</div>
+            <div className="info-card-title">Genel OEE ({getStationDisplayName(selectedStation)})</div>
             <div className="info-card-value" style={{ fontSize: '1.6rem', color: '#3b82f6' }}>%{oeeData.oee}</div>
           </div>
           <div className="custom-card" style={{ padding: '15px', borderLeft: '4px solid #10b981' }}>
@@ -115,7 +123,7 @@ const MachineMetricsPanel = () => {
           >
             <option value="Tümü">Tüm İstasyonlar</option>
             {stationsList.filter(s => s !== 'Tümü').map((station) => (
-              <option key={station} value={station}>{station}</option>
+              <option key={station} value={station}>{station === 'Tümü' ? 'Tüm İstasyonlar' : getStationDisplayName(station)}</option>
             ))}
           </select>
         </div>

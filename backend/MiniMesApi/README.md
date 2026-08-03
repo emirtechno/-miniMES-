@@ -76,6 +76,10 @@ Sağlık uçları (anonim):
 - `GET /health/live` — süreç ayakta mı
 - `GET /health/ready` — veritabanı hazır mı
 
+Canlı olaylar SignalR üzerinden yayınlanır:
+- Hub: `/hubs/mes` (JWT `access_token` query parametresi ile)
+- Olaylar: `alarmCreated`, `alarmUpdated`, `alarmDeleted`, `oeeUpdated`
+
 SQL Server bağlantısı yeniden deneme politikası (`EnableRetryOnFailure`) açıktır.
 `TrustServerCertificate=True` yalnızca güvenilir yerel geliştirme için kullanılmalıdır;
 üretimde TLS doğrulaması açık (`Encrypt=True`, `TrustServerCertificate=False`) tutulmalıdır.

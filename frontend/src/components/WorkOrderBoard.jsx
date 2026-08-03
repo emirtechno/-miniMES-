@@ -1,5 +1,5 @@
 import { ClipboardList, PlusCircle, ArrowRight } from 'lucide-react';
-import { STATIONS } from '../constants/stations';
+import { ACTIVE_STATION_DEFINITIONS, getStationDisplayName } from '../constants/stations';
 
 const WorkOrderBoard = ({ workOrders, formValues, onFieldChange, onSubmit, onAdvance }) => {
   return (
@@ -24,7 +24,9 @@ const WorkOrderBoard = ({ workOrders, formValues, onFieldChange, onSubmit, onAdv
           <label>İstasyon</label>
           <select className="input-field" value={formValues.station} onChange={(e) => onFieldChange('station', e.target.value)} required>
             <option value="">İstasyon seçin</option>
-            {STATIONS.map((station) => <option key={station}>{station}</option>)}
+            {ACTIVE_STATION_DEFINITIONS.map((station) => (
+              <option key={station.id} value={station.id}>{station.displayName}</option>
+            ))}
           </select>
         </div>
         <div className="input-group">
@@ -54,7 +56,7 @@ const WorkOrderBoard = ({ workOrders, formValues, onFieldChange, onSubmit, onAdv
               <tr key={order.id}>
                 <td><b>{order.orderNo}</b></td>
                 <td>{order.product}</td>
-                <td>{order.station}</td>
+                <td>{getStationDisplayName(order.station)}</td>
                 <td>{order.quantity}</td>
                 <td>
                   <span className={`badge ${order.status === 'Tamamlandı' ? 'badge-ok' : order.status === 'Devam Ediyor' ? 'badge-warning' : 'badge-neutral'}`}>

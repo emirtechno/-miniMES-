@@ -27,27 +27,35 @@ function LoginPage() {
   };
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', width: '100vw', backgroundColor: '#f1f5f9', boxSizing: 'border-box', padding: '20px' }}>
-      <div className="custom-card" style={{ width: '100%', maxWidth: '420px', padding: '36px', borderRadius: '16px', backgroundColor: '#ffffff' }}>
-        <div style={{ textAlign: 'center', marginBottom: '28px' }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '64px', height: '64px', borderRadius: '16px', backgroundColor: '#e0f2fe', marginBottom: '16px' }}>
-            <Factory size={36} color="#0284c7" />
+    <div className="relative flex min-h-dvh w-full items-center justify-center overflow-hidden px-4 py-8">
+      <div
+        className="pointer-events-none absolute inset-0"
+        aria-hidden="true"
+        style={{
+          background:
+            'radial-gradient(900px 420px at 15% 10%, rgba(200,16,46,0.18), transparent 60%), radial-gradient(700px 380px at 90% 20%, rgba(23,105,170,0.16), transparent 55%), linear-gradient(160deg, #0b1220 0%, #1a2332 45%, #0b1220 100%)',
+        }}
+      />
+      <div className="relative w-full max-w-md rounded-2xl border border-white/10 bg-white p-8 shadow-2xl shadow-black/30">
+        <div className="mb-7 text-center">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-[color:var(--color-vestel)] text-white">
+            <Factory size={34} />
           </div>
-          <h2 style={{ margin: 0, color: '#0f172a', fontSize: '1.6rem' }}>VESTEL miniMES</h2>
-          <p style={{ color: '#64748b', fontSize: '0.9rem', marginTop: '6px' }}>Üretim Takip ve Kontrol Sistemi</p>
+          <h1 className="font-display m-0 text-3xl font-semibold tracking-wide text-[color:var(--color-ink)]">VESTEL MES</h1>
+          <p className="mt-2 text-sm text-[color:var(--color-muted)]">Üretim Takip ve Kontrol Sistemi</p>
         </div>
 
-        <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <label className="input-group">
+        <form onSubmit={handleLogin} className="flex flex-col gap-4">
+          <label className="flex flex-col gap-1.5 text-sm font-medium text-[color:var(--color-ink)]">
             Kullanıcı adı
-            <input className="input-field" value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" required />
+            <input className="mes-input" value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" required />
           </label>
-          <label className="input-group">
+          <label className="flex flex-col gap-1.5 text-sm font-medium text-[color:var(--color-ink)]">
             Parola
-            <input className="input-field" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required />
+            <input className="mes-input" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required />
           </label>
-          {error && <p className="error" style={{ margin: 0 }}>{error}</p>}
-          <button type="submit" className="btn-primary" disabled={isSubmitting} style={{ width: '100%', padding: '12px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', fontWeight: 600, fontSize: '0.95rem', borderRadius: '8px', cursor: isSubmitting ? 'wait' : 'pointer' }}>
+          {error && <p className="m-0 text-sm font-medium text-[color:var(--color-nok)]">{error}</p>}
+          <button type="submit" className="mes-btn-primary w-full py-3" disabled={isSubmitting}>
             <LogIn size={18} />
             {isSubmitting ? 'Giriş yapılıyor...' : 'Sisteme Giriş Yap'}
           </button>

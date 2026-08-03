@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
+import { getStationDisplayName } from '../constants/stations';
 
 const DetailModal = ({ record, isOpen, onClose }) => {
   const closeRef = useRef(null);
@@ -54,7 +55,7 @@ const DetailModal = ({ record, isOpen, onClose }) => {
           <div className="modal-row"><span>ID</span><strong>#{record.id}</strong></div>
           <div className="modal-row"><span>20'li Ürün Kodu</span><strong>{record.urun20liKod}</strong></div>
           <div className="modal-row"><span>12'li Malzeme Kodu</span><strong>{record.malzeme12liKod}</strong></div>
-          <div className="modal-row"><span>İstasyon</span><strong>{record.istasyonAdi}</strong></div>
+          <div className="modal-row"><span>İstasyon</span><strong>{getStationDisplayName(record.istasyonAdi)}</strong></div>
           <div className="modal-row"><span>Kalite</span><strong>{record.kaliteDurumu}</strong></div>
           <div className="modal-row"><span>Üretim Tarihi</span><strong>{record.uretimTarihi ? new Date(record.uretimTarihi).toLocaleString('tr-TR') : '-'}</strong></div>
         </div>

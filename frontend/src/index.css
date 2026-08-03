@@ -1,37 +1,153 @@
-:root {
-  font-family: Inter, system-ui, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
-  color: #0f172a;
-  background: #f1f5f9;
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Barlow Semi Condensed", "IBM Plex Sans", sans-serif;
+  --color-vestel: #c8102e;
+  --color-vestel-dark: #9a0c23;
+  --color-ink: #0b1220;
+  --color-muted: #5b6b7c;
+  --color-canvas: #eef2f6;
+  --color-panel: #ffffff;
+  --color-line: #d7dee8;
+  --color-ok: #0f9f6e;
+  --color-nok: #d92d20;
+  --color-warn: #c47f17;
+  --color-info: #1769aa;
+  --color-run: #0f9f6e;
+  --color-stop: #d92d20;
+  --color-maint: #c47f17;
 }
 
-html,
-body,
-#root {
-  margin: 0;
-  padding: 0;
-  width: 100%;
-  height: 100%;
-  background: #f1f5f9;
-  overflow: hidden;
+@layer base {
+  html,
+  body,
+  #root {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    color: var(--color-ink);
+    background:
+      radial-gradient(1200px 600px at 10% -10%, rgba(200, 16, 46, 0.08), transparent 55%),
+      radial-gradient(900px 500px at 100% 0%, rgba(23, 105, 170, 0.08), transparent 50%),
+      linear-gradient(180deg, #f7f9fc 0%, var(--color-canvas) 100%);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  #root {
+    min-height: 100%;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
 }
 
-body {
-  display: flex;
-  justify-content: center;
-  align-items: stretch;
-  background: #f1f5f9;
-}
+@layer components {
+  .mes-shell {
+    @apply flex h-dvh w-full overflow-hidden;
+  }
 
-#root {
-  width: min(1600px, 100vw);
-  height: 100%;
-  display: flex;
-  box-sizing: border-box;
-  overflow: hidden;
+  .mes-sidebar {
+    @apply hidden w-64 shrink-0 flex-col gap-5 border-r border-slate-800/80 bg-slate-950 px-4 py-5 text-slate-200 md:flex;
+    background-image: linear-gradient(180deg, #0b1220 0%, #111827 55%, #0b1220 100%);
+  }
+
+  .mes-brand {
+    @apply flex items-center gap-3 px-2 font-display text-xl font-semibold tracking-wide text-white;
+  }
+
+  .mes-nav-link {
+    @apply flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-400 transition;
+  }
+
+  .mes-nav-link:hover,
+  .mes-nav-link[aria-current="page"] {
+    @apply bg-slate-800/80 text-white;
+  }
+
+  .mes-nav-link[aria-current="page"] {
+    box-shadow: inset 3px 0 0 var(--color-vestel);
+  }
+
+  .mes-main {
+    @apply flex min-w-0 flex-1 flex-col overflow-hidden;
+  }
+
+  .mes-topbar {
+    @apply flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--color-line)] bg-white/90 px-4 py-3 backdrop-blur md:px-6;
+  }
+
+  .mes-content {
+    @apply flex-1 overflow-y-auto px-4 py-5 md:px-6;
+  }
+
+  .mes-surface {
+    @apply rounded-xl border border-[color:var(--color-line)] bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)];
+  }
+
+  .mes-section-title {
+    @apply font-display text-lg font-semibold tracking-wide text-[color:var(--color-ink)];
+  }
+
+  .mes-helper {
+    @apply text-sm text-[color:var(--color-muted)];
+  }
+
+  .mes-btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-transparent px-3.5 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .mes-btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-transparent px-3.5 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 bg-[color:var(--color-vestel)] text-white hover:bg-[color:var(--color-vestel-dark)];
+  }
+
+  .mes-btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 border border-[color:var(--color-line)] bg-white text-[color:var(--color-ink)] hover:bg-slate-50;
+  }
+
+  .mes-btn-danger {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-transparent px-3.5 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 bg-[color:var(--color-nok)] text-white hover:brightness-95;
+  }
+
+  .mes-input {
+    @apply w-full rounded-lg border border-[color:var(--color-line)] bg-white px-3 py-2 text-sm text-[color:var(--color-ink)] outline-none transition focus:border-[color:var(--color-info)] focus:ring-2 focus:ring-[color:var(--color-info)]/20;
+  }
+
+  .mes-pill {
+    @apply inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold tracking-wide;
+  }
+
+  .mes-pill-ok {
+    @apply inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold tracking-wide bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200;
+  }
+
+  .mes-pill-nok {
+    @apply inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold tracking-wide bg-red-50 text-red-800 ring-1 ring-red-200;
+  }
+
+  .mes-pill-warn {
+    @apply inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold tracking-wide bg-amber-50 text-amber-900 ring-1 ring-amber-200;
+  }
+
+  .mes-pill-neutral {
+    @apply inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold tracking-wide bg-slate-100 text-slate-700 ring-1 ring-slate-200;
+  }
+
+  .mes-pill-run {
+    @apply inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold tracking-wide bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200;
+  }
+
+  .mes-pill-stop {
+    @apply inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold tracking-wide bg-red-50 text-red-800 ring-1 ring-red-200;
+  }
+
+  .mes-pill-maint {
+    @apply inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold tracking-wide bg-amber-50 text-amber-900 ring-1 ring-amber-200;
+  }
 }
