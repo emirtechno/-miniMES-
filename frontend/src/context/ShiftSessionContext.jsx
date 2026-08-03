@@ -87,7 +87,7 @@ export const ShiftSessionProvider = ({ children, user, notify, canCreateAlarms }
       secondaryOperator: null,
       summary: null,
     }));
-    notify?.('Vardiya başlatıldı — durum Aktif.', 'success');
+    notify?.('Vardiya başlatıldı — Live Stream (makine telemetrisi) açıldı.', 'success');
   }, [notify, user]);
 
   const endShift = useCallback(() => {
@@ -104,7 +104,7 @@ export const ShiftSessionProvider = ({ children, user, notify, canCreateAlarms }
         endedAt: new Date().toISOString(),
       };
       notify?.(
-        `Vardiya bitti · ${mins} dk · Fire: ${current.scrapCount}`,
+        `Vardiya bitti · Live Stream durduruldu · ${mins} dk · Fire: ${current.scrapCount}`,
         'info',
       );
       return {

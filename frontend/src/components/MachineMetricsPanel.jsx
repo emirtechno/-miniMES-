@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   Activity,
   Cpu,
-  PauseCircle,
-  PlayCircle,
   Thermometer,
   Gauge,
   Waves,
@@ -23,6 +21,7 @@ import { fetchLatestOee, fetchMachineMetrics } from '../services/api';
 import { useNonOverlappingPolling } from '../hooks/useNonOverlappingPolling';
 import { useMesHub } from '../hooks/useMesHub';
 import { DEFAULT_STATION, ACTIVE_STATION_DEFINITIONS, getStationDisplayName } from '../constants/stations';
+import { deriveLiveTelemetry } from '../utils/liveTelemetry';
 import CardHeader from './CardHeader';
 import TraceabilityPanel from './TraceabilityPanel';
 
@@ -33,36 +32,10 @@ const resolveInitialStation = (param) => {
   return match ? match.id : DEFAULT_STATION;
 };
 
-/** Derive shop-floor style gauges from metric counters (no separate PLC schema). */
-const deriveLiveTelemetry = (latestMetric, pulse = 0, streaming = false) => {
-  const downtime = Number(latestMetric?.downtimeSeconds) || 0;
-  const actual = Number(latestMetric?.actualProductionCount) || 0;
-  const good = Number(latestMetric?.goodProductionCount) || 0;
-  const scrapRatio = actual > 0 ? Math.max(0, (actual - good) / actual) : 0;
-  const cycle = Number(latestMetric?.idealCycleTimeSeconds) || 2;
-  const streamBoost = streaming ? 1 : 0;
-  const wobble = streaming ? Math.sin(pulse / 900) : 0;
-
-  const temperature = Math.round(
-    42 + downtime * 0.35 + scrapRatio * 28 + streamBoost * 6 + wobble * 2.5,
-  );
-  const rpm = Math.round(
-    Math.max(0, (60 / Math.max(cycle, 0.5)) * 18 * (streaming ? 1.08 : 0.92)
-      - downtime * 1.2
-      + wobble * 40),
-  );
-  const vibration = Number(
-    (0.4 + scrapRatio * 3.2 + downtime / 80 + (streaming ? 0.35 : 0) + Math.abs(wobble) * 0.2)
-      .toFixed(2),
-  );
-
-  return { temperature, rpm, vibration };
-};
-
 const MachineMetricsPanel = ({
   isFactorySimulationActive = false,
-  onToggleSimulation,
-  canControlSimulation = false,
+  shiftStationId,
+  shiftActive = false,
   productionRecords = [],
   batches = [],
 }) => {
@@ -191,28 +164,22 @@ const MachineMetricsPanel = ({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
             <p className="m-0 text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--color-muted)]">
-              Canlı simülasyon motoru
+              Makine telemetri & Live Stream
             </p>
             <h2 className="font-display m-0 mt-1 text-2xl font-semibold text-[color:var(--color-ink)]">
               {stationLabel}
             </h2>
             <p className="mes-helper mt-2 mb-0 max-w-2xl">
-              Simülasyon; telemetri (sıcaklık / RPM / titreşim), istasyon OK·NOK sayaçları, lot ilerleme çubukları,
-              vardiya OEE ve duruş/alarm sinyallerini aynı canlı akıştan besler.
+              Vardiya Başlat → Live Stream → sıcaklık / RPM / titreşim, OK·NOK, lot ilerleme, OEE ve Andon alarmları.
+              Manuel barkod girişi yoktur; kayıtlar sensör olaylarından gelir.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {renderStationSelect()}
-            {canControlSimulation && (
-              <button
-                type="button"
-                onClick={() => onToggleSimulation?.()}
-                className={isFactorySimulationActive ? 'mes-btn-danger' : 'mes-btn-primary'}
-                aria-pressed={isFactorySimulationActive}
-              >
-                {isFactorySimulationActive ? <PauseCircle size={16} /> : <PlayCircle size={16} />}
-                {isFactorySimulationActive ? 'Pause Live Stream' : 'Simülasyonu Çalıştır'}
-              </button>
+            {!shiftActive && (
+              <Link to="/operator" className="mes-btn-primary">
+                Vardiya Başlat
+              </Link>
             )}
           </div>
         </div>
@@ -227,8 +194,10 @@ const MachineMetricsPanel = ({
           <span className="inline-flex items-center gap-2 font-semibold">
             <Activity size={16} className={isFactorySimulationActive ? 'animate-pulse' : ''} />
             {isFactorySimulationActive
-              ? 'Live Stream açık — üretim kayıtları ve metrik yenilemesi aktif.'
-              : 'Live Stream kapalı — mevcut telemetri ve kayıtlar salt okunur gösterilir.'}
+              ? `Live Stream açık${shiftStationId ? ` · istasyon ${getStationDisplayName(shiftStationId)}` : ''} — telemetri ve lot ilerlemesi güncelleniyor.`
+              : shiftActive
+                ? 'Vardiya aktif ancak duruş/setup’ta — Live Stream duraklatıldı. Üretime dönünce akış devam eder.'
+                : 'Live Stream kapalı — Operatör Panelinden Vardiya Başlat ile telemetri motorunu açın.'}
           </span>
         </div>
 
@@ -323,7 +292,7 @@ const MachineMetricsPanel = ({
         <CardHeader
           icon={Cpu}
           title="Makine Telemetri Kayıtları"
-          subtitle="SCADA / PLC / simülasyon satırları"
+          subtitle="SCADA / PLC / Live Stream satırları (değiştirilemez)"
           actions={renderStationSelect()}
         />
         <div className="overflow-x-auto">

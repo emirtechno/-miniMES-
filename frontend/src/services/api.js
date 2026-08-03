@@ -88,8 +88,7 @@ export const fetchCurrentUser = async () => {
 
 export const fetchProductionRecords = (options) => fetchPage('/Uretim', options);
 
-export const fetchDeletedProductionRecords = (options) => fetchPage('/Uretim/deleted', options);
-
+/** Sensor / Live Stream ingestion — not for manual barcode forms. */
 export const createProductionRecord = async (payload, { signal } = {}) => {
   const response = await apiClient.post('/Uretim', payload, { signal });
   return response.data;
@@ -97,21 +96,6 @@ export const createProductionRecord = async (payload, { signal } = {}) => {
 
 export const updateProductionRecord = async (id, payload) => {
   const response = await apiClient.put(`/Uretim/${id}`, payload);
-  return response.data;
-};
-
-export const deleteProductionRecord = async (id) => {
-  const response = await apiClient.delete(`/Uretim/${id}`);
-  return response.data;
-};
-
-export const restoreProductionRecord = async (id) => {
-  const response = await apiClient.put(`/Uretim/restore/${id}`);
-  return response.data;
-};
-
-export const hardDeleteProductionRecord = async (id) => {
-  const response = await apiClient.delete(`/Uretim/hard-delete/${id}`);
   return response.data;
 };
 

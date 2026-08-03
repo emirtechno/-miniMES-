@@ -119,19 +119,30 @@ export function useAlarms({
     }
   }, [canCreateAlarms, connected, loadAlarms, notify]);
 
-  /** Quiet alarm helper for live simulation NOK events (no toast spam). */
-  const createSimulationAlarm = useCallback(async (stationId) => {
-    if (!canCreateAlarms) return;
-    if (Math.random() > 0.45) return;
-    const template = TEST_ALARM_TEMPLATES[Math.floor(Math.random() * TEST_ALARM_TEMPLATES.length)];
+  /** Raise Andon alarms from Live Stream anomaly detections (quiet, no toast spam). */
+  const raiseTelemetryAlarms = useCallback(async (stationId, anomalies = []) => {
+    if (!canCreateAlarms || !anomalies.length) return;
+    // At most one alarm per tick to avoid flooding Andon.
+    const anomaly = anomalies[Math.floor(Math.random() * anomalies.length)];
+    if (Math.random() > 0.55 && anomaly.kind !== 'vibration' && anomaly.kind !== 'nok') return;
     await createAlarm({
-      title: `Simülasyon · ${template.title}`,
+      title: `Live Stream · ${anomaly.title}`,
       station: stationId || DEFAULT_STATION,
-      severity: template.severity,
-      description: template.description,
+      severity: anomaly.severity || 'Uyarı',
+      description: anomaly.description || '',
     });
     if (!connected) await loadAlarms();
   }, [canCreateAlarms, connected, loadAlarms]);
+
+  /** @deprecated Prefer raiseTelemetryAlarms — kept for brief compatibility. */
+  const createSimulationAlarm = useCallback(async (stationId) => {
+    await raiseTelemetryAlarms(stationId, [{
+      kind: 'nok',
+      title: 'NOK Kalite Spike',
+      severity: 'Uyarı',
+      description: 'Sensör / vision hattı NOK üretti.',
+    }]);
+  }, [raiseTelemetryAlarms]);
 
   const createManualAlarm = useCallback(async (event) => {
     if (event?.preventDefault) event.preventDefault();
@@ -205,6 +216,7 @@ export function useAlarms({
     loadAlarms,
     createTestAlarm,
     createSimulationAlarm,
+    raiseTelemetryAlarms,
     createManualAlarm,
     handleResolveAlarm,
     handleAcknowledgeAlarm,

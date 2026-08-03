@@ -1,23 +1,24 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ClipboardList, History, Package } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Activity, ClipboardList, History, Package, Radio } from 'lucide-react';
 import OperatorShiftWidget from '../components/OperatorShiftWidget';
 import ShopFloorActionBar from '../components/ShopFloorActionBar';
-import ProductionForm from '../components/ProductionForm';
+import TraceabilityPanel from '../components/TraceabilityPanel';
 import CardHeader from '../components/CardHeader';
 import { useShiftSession } from '../context/ShiftSessionContext';
 import { ACTIVE_STATION_DEFINITIONS, DEFAULT_STATION, getStationDisplayName } from '../constants/stations';
 import { getShiftLabel } from '../constants/shifts';
 
 /**
- * Operator-focused workspace: assigned station, active WO, counters, HMI actions.
+ * Operator workspace: shift-driven Live Stream, station counters, HMI — no manual barcode entry.
  */
 const OperatorDashboardPage = ({
   currentUser,
   notify,
-  form,
   records = [],
   workOrders = [],
-  canSubmit = true,
+  batches = [],
+  liveStreaming = false,
 }) => {
   const {
     shift,
@@ -31,19 +32,17 @@ const OperatorDashboardPage = ({
     endShift,
   } = useShiftSession();
 
-  const [stationId, setLocalStationId] = useState(form?.istasyonAdi || shift.stationId || DEFAULT_STATION);
+  const [stationId, setLocalStationId] = useState(shift.stationId || DEFAULT_STATION);
 
   useEffect(() => {
     if (shift.stationId && shift.stationId !== stationId) {
       setLocalStationId(shift.stationId);
-      form?.onChangeStation?.({ target: { value: shift.stationId } });
     }
   }, [shift.stationId]); // eslint-disable-line react-hooks/exhaustive-deps -- sync from shift session only
 
   const handleStationChange = (nextStationId) => {
     setLocalStationId(nextStationId);
     setStationId(nextStationId);
-    form?.onChangeStation?.({ target: { value: nextStationId } });
   };
 
   const stationRecords = useMemo(
@@ -57,13 +56,18 @@ const OperatorDashboardPage = ({
     (order) => order.station === stationId && order.status !== 'Tamamlandı',
   ) || workOrders.find((order) => order.status !== 'Tamamlandı');
 
+  const stationBatches = useMemo(
+    () => batches.filter((batch) => batch.station === stationId),
+    [batches, stationId],
+  );
+
   return (
     <div className="flex flex-col gap-5">
       <section className="mes-surface p-5">
         <CardHeader
           icon={Package}
           title="Operatör Paneli"
-          subtitle="Atanan istasyon, aktif iş emri, vardiya ve saha HMI aksiyonları"
+          subtitle="Vardiya → Live Stream → telemetri / OEE / Andon. Manuel barkod girişi yoktur."
           actions={(
             <select
               className="mes-input h-10 w-auto min-w-[200px]"
@@ -77,6 +81,25 @@ const OperatorDashboardPage = ({
             </select>
           )}
         />
+        <div
+          className={`mb-4 rounded-xl border px-4 py-3 text-sm ${
+            liveStreaming
+              ? 'border-emerald-200 bg-emerald-50/80 text-emerald-950'
+              : 'border-[color:var(--color-line)] bg-slate-50 text-[color:var(--color-muted)]'
+          }`}
+        >
+          <span className="inline-flex items-center gap-2 font-semibold">
+            <Radio size={16} className={liveStreaming ? 'animate-pulse' : ''} />
+            {liveStreaming
+              ? 'Live Stream açık — PLC/sensör telemetrisi OK·NOK ve lot ilerlemesini besliyor.'
+              : 'Live Stream kapalı — Operatör Shift Widget’tan “Vardiya Başlat” ile telemetri motorunu açın.'}
+          </span>
+          {liveStreaming && (
+            <Link to={`/makine-metrikleri?stationId=${encodeURIComponent(stationId)}`} className="ml-3 underline">
+              Makine Metrikleri
+            </Link>
+          )}
+        </div>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-xl border border-[color:var(--color-line)] bg-slate-50 p-4">
             <div className="text-xs font-semibold uppercase tracking-wide text-[color:var(--color-muted)]">İstasyon</div>
@@ -155,29 +178,34 @@ const OperatorDashboardPage = ({
         )}
       </section>
 
-      <div className="grid gap-5 lg:grid-cols-2">
-        <ProductionForm
-          {...form}
-          istasyonAdi={stationId}
-          onChangeStation={(event) => handleStationChange(event.target.value)}
-          canSubmit={canSubmit}
-          hideStationSelect
+      <TraceabilityPanel batches={stationBatches} />
+
+      <section className="mes-surface p-5">
+        <CardHeader
+          icon={History}
+          title="Son Sensör Olayları"
+          subtitle="Live Stream üretim telemetrisi (değiştirilemez kayıtlar)"
+          actions={(
+            <span className="inline-flex items-center gap-1 text-xs text-[color:var(--color-muted)]">
+              <Activity size={13} />
+              {stationRecords.length} olay
+            </span>
+          )}
         />
-        <section className="mes-surface p-5">
-          <CardHeader icon={History} title="Son İstasyon Kayıtları" subtitle="En yeni 6 kayıt" />
-          <ul className="m-0 flex list-none flex-col gap-2 p-0">
-            {stationRecords.slice(0, 6).map((record) => (
-              <li key={record.id} className="flex items-center justify-between rounded-lg border border-[color:var(--color-line)] px-3 py-2 text-sm">
-                <span className="truncate font-medium">{record.urun20liKod}</span>
-                <span className={record.kaliteDurumu === 'OK' ? 'mes-pill-ok' : 'mes-pill-nok'}>{record.kaliteDurumu}</span>
-              </li>
-            ))}
-            {stationRecords.length === 0 && (
-              <li className="text-sm text-[color:var(--color-muted)]">Henüz kayıt yok.</li>
-            )}
-          </ul>
-        </section>
-      </div>
+        <ul className="m-0 flex list-none flex-col gap-2 p-0">
+          {stationRecords.slice(0, 8).map((record) => (
+            <li key={record.id} className="flex items-center justify-between rounded-lg border border-[color:var(--color-line)] px-3 py-2 text-sm">
+              <span className="truncate font-medium">{record.urun20liKod}</span>
+              <span className={record.kaliteDurumu === 'OK' ? 'mes-pill-ok' : 'mes-pill-nok'}>{record.kaliteDurumu}</span>
+            </li>
+          ))}
+          {stationRecords.length === 0 && (
+            <li className="text-sm text-[color:var(--color-muted)]">
+              Henüz telemetri yok. Vardiya başlatarak Live Stream’i açın.
+            </li>
+          )}
+        </ul>
+      </section>
     </div>
   );
 };
