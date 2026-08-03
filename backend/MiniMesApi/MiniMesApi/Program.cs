@@ -135,6 +135,17 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                     Status = StatusCodes.Status403Forbidden,
                     Title = "Bu işlem için yetkiniz bulunmuyor."
                 });
+            },
+            OnMessageReceived = context =>
+            {
+                var accessToken = context.Request.Query["access_token"];
+                var path = context.HttpContext.Request.Path;
+                if (!string.IsNullOrEmpty(accessToken) &&
+                    path.StartsWithSegments("/hubs"))
+                {
+                    context.Token = accessToken;
+                }
+                return Task.CompletedTask;
             }
         };
     });
@@ -194,6 +205,8 @@ builder.Services.AddRateLimiter(options =>
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IAuditLogService, AuditLogService>();
+builder.Services.AddSingleton<IMesRealtimePublisher, MesRealtimePublisher>();
+builder.Services.AddSignalR();
 
 builder.Services.AddEndpointsApiExplorer();
 
@@ -301,6 +314,7 @@ if (app.Environment.IsDevelopment())
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHub<MiniMesApi.Hubs.MesHub>(MiniMesApi.Hubs.MesHub.Route);
 app.MapHealthChecks("/health/live", new HealthCheckOptions
 {
     Predicate = _ => false
