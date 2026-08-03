@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using MiniMesApi.DTOs;
+using MiniMesApi.Infrastructure;
 using MiniMesApi.Models;
 using MiniMesApi.Security;
 
@@ -20,40 +21,62 @@ namespace MiniMesApi.Controllers
         }
 
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<WorkOrderDto>>> GetWorkOrders(
-            [FromQuery] int limit = 100,
+        public async Task<ActionResult<CursorPage<WorkOrderDto>>> GetWorkOrders(
+            [FromQuery] int limit = 50,
+            [FromQuery] string? cursor = null,
             CancellationToken cancellationToken = default)
         {
-            limit = Math.Clamp(limit, 1, 500);
+            limit = Math.Clamp(limit, 1, 200);
+            if (!CursorCodec.TryDecodeId(cursor, out var cursorId))
+            {
+                return Problem(statusCode: StatusCodes.Status400BadRequest, title: "Geçersiz sayfalama imleci.");
+            }
 
-            return await _context.WorkOrders
-                .AsNoTracking()
+            var query = _context.WorkOrders.AsNoTracking();
+            if (!string.IsNullOrWhiteSpace(cursor))
+            {
+                query = query.Where(order => order.Id < cursorId);
+            }
+
+            var orders = await query
                 .OrderByDescending(w => w.Id)
-                .Take(limit)
-                .Select(order => new WorkOrderDto
-                {
-                    Id = order.Id,
-                    OrderNo = order.OrderNo,
-                    Product = order.Product,
-                    Station = order.Station,
-                    Quantity = order.Quantity,
-                    Status = order.Status
-                })
+                .Take(limit + 1)
                 .ToListAsync(cancellationToken);
+            var items = orders.Take(limit).Select(ToDto).ToArray();
+
+            return Ok(new CursorPage<WorkOrderDto>
+            {
+                Items = items,
+                NextCursor = orders.Count > limit && items.Length > 0
+                    ? CursorCodec.EncodeId(items[^1].Id)
+                    : null
+            });
         }
 
         [HttpGet("{id:int}")]
-        public async Task<ActionResult<WorkOrderDto>> GetWorkOrder(int id)
+        public async Task<ActionResult<WorkOrderDto>> GetWorkOrder(
+            int id,
+            CancellationToken cancellationToken)
         {
-            var workOrder = await _context.WorkOrders.AsNoTracking().FirstOrDefaultAsync(order => order.Id == id);
+            var workOrder = await _context.WorkOrders
+                .AsNoTracking()
+                .FirstOrDefaultAsync(order => order.Id == id, cancellationToken);
             return workOrder is null ? NotFound() : Ok(ToDto(workOrder));
         }
 
         [HttpPost]
         [Authorize(Policy = PolicyNames.WorkOrderManage)]
-        public async Task<ActionResult<WorkOrderDto>> CreateWorkOrder([FromBody] CreateWorkOrderDto request)
+        public async Task<ActionResult<WorkOrderDto>> CreateWorkOrder(
+            [FromBody] CreateWorkOrderDto request,
+            CancellationToken cancellationToken)
         {
-            var exists = await _context.WorkOrders.AnyAsync(order => order.OrderNo == request.OrderNo);
+            if (!StationCatalog.Contains(request.Station))
+            {
+                return Problem(statusCode: StatusCodes.Status400BadRequest, title: "Geçersiz istasyon kimliği.");
+            }
+
+            var exists = await _context.WorkOrders
+                .AnyAsync(order => order.OrderNo == request.OrderNo, cancellationToken);
             if (exists)
             {
                 return Problem(
@@ -73,7 +96,7 @@ namespace MiniMesApi.Controllers
 
             try
             {
-                await _context.SaveChangesAsync();
+                await _context.SaveChangesAsync(cancellationToken);
             }
             catch (DbUpdateException)
             {
@@ -87,10 +110,24 @@ namespace MiniMesApi.Controllers
 
         [HttpPut("{id}/advance")]
         [Authorize(Policy = PolicyNames.WorkOrderManage)]
-        public async Task<IActionResult> AdvanceWorkOrder(int id)
+        public async Task<IActionResult> AdvanceWorkOrder(
+            int id,
+            AdvanceWorkOrderDto request,
+            CancellationToken cancellationToken)
         {
-            var order = await _context.WorkOrders.FindAsync(id);
+            byte[] rowVersion;
+            try
+            {
+                rowVersion = Convert.FromBase64String(request.RowVersion);
+            }
+            catch (FormatException)
+            {
+                return Problem(statusCode: StatusCodes.Status400BadRequest, title: "Geçersiz satır sürümü.");
+            }
+
+            var order = await _context.WorkOrders.FindAsync([id], cancellationToken);
             if (order == null) return NotFound();
+            _context.Entry(order).Property(item => item.RowVersion).OriginalValue = rowVersion;
 
             if (order.Status == "Bekliyor") order.Status = "Devam Ediyor";
             else if (order.Status == "Devam Ediyor") order.Status = "Tamamlandı";
@@ -99,8 +136,25 @@ namespace MiniMesApi.Controllers
             else
                 return Problem(statusCode: StatusCodes.Status409Conflict, title: "İş emri durumu geçersiz.");
 
-            await _context.SaveChangesAsync();
-            return Ok(ToDto(order));
+            try
+            {
+                await _context.SaveChangesAsync(cancellationToken);
+                return Ok(ToDto(order));
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                var current = await _context.WorkOrders
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
+                var problem = new ProblemDetails
+                {
+                    Status = StatusCodes.Status409Conflict,
+                    Title = "İş emri başka bir kullanıcı tarafından güncellendi.",
+                    Detail = "Güncel veriyi yükleyip işlemi yeniden deneyin."
+                };
+                problem.Extensions["current"] = current is null ? null : ToDto(current);
+                return Conflict(problem);
+            }
         }
 
         private static WorkOrderDto ToDto(WorkOrder order)
@@ -112,7 +166,8 @@ namespace MiniMesApi.Controllers
                 Product = order.Product,
                 Station = order.Station,
                 Quantity = order.Quantity,
-                Status = order.Status
+                Status = order.Status,
+                RowVersion = Convert.ToBase64String(order.RowVersion)
             };
         }
     }

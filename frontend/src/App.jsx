@@ -3,31 +3,11 @@ import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import MachineMetricsPanel from './components/MachineMetricsPanel';
 import * as XLSX from 'xlsx';
 import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  Tooltip, 
-  ResponsiveContainer, 
-  Cell, 
-  PieChart, 
-  Pie, 
-  Legend 
-} from 'recharts';
-import { 
   Factory, 
   Activity,
-  CheckCircle2, 
-  XCircle, 
-  Percent, 
   LayoutDashboard,
   Cpu,
-  AlertTriangle,
-  PieChart as PieIcon,
-  BarChart3,
   RefreshCw,
-  Trash2,
-  Lock,
   LogOut
 } from 'lucide-react';
 
@@ -52,23 +32,21 @@ import {
   getApiErrorMessage
 } from './services/api';
 
-import KpiCard from './components/KpiCard';
-import OeePanel from './components/OeePanel';
-import ProductionForm from './components/ProductionForm';
-import ProductionTable from './components/ProductionTable';
-import StationDetailPanel from './components/StationDetailPanel';
-import WorkOrderBoard from './components/WorkOrderBoard';
-import AlarmPanel from './components/AlarmPanel';
-import TraceabilityPanel from './components/TraceabilityPanel';
-import UserRolePanel from './components/UserRolePanel';
 import DetailModal from './components/DetailModal';
+import DashboardPage from './pages/DashboardPage';
 import LoginPage from './pages/LoginPage';
+import QualityPage from './pages/QualityPage';
+import StationsPage from './pages/StationsPage';
+import { useNonOverlappingPolling } from './hooks/useNonOverlappingPolling';
+import { DEFAULT_STATION, STATIONS } from './constants/stations';
 
 function MainLayout() {
   const { currentUser, logout, isAuthenticated } = useAuth();
   const location = useLocation();
 
   const [records, setRecords] = useState([]);
+  const [nextProductionCursor, setNextProductionCursor] = useState(null);
+  const [loadingMoreRecords, setLoadingMoreRecords] = useState(false);
   const [deletedRecords, setDeletedRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [deletedLoading, setDeletedLoading] = useState(false);
@@ -86,12 +64,13 @@ function MainLayout() {
   // Ref'ler
   const urunInputRef = useRef(null);
   const malzemeInputRef = useRef(null);
+  const productionRequestIdRef = useRef(0);
 
   // Filtreleme
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStation, setSelectedStation] = useState('Tümü');
   const [selectedQuality, setSelectedQuality] = useState('Tümü');
-  const [selectedStationDetail, setSelectedStationDetail] = useState('Montaj_Hatti_01');
+  const [selectedStationDetail, setSelectedStationDetail] = useState(DEFAULT_STATION);
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -104,7 +83,7 @@ function MainLayout() {
 
   // Manuel alarm form state
   const [manualTitle, setManualTitle] = useState('');
-  const [manualStation, setManualStation] = useState('Montaj_Hatti_01');
+  const [manualStation, setManualStation] = useState(DEFAULT_STATION);
   const [manualSeverity, setManualSeverity] = useState('Uyarı');
   const [manualDescription, setManualDescription] = useState('');
 
@@ -118,7 +97,6 @@ function MainLayout() {
   const canChangeQuality = hasPermission('production.manage');
   const canDeleteRecord = hasPermission('production.manage');
   const canHardDelete = hasPermission('production.hard-delete');
-  const canViewReports = isCurrentUserActive;
   const canManageWorkOrders = hasPermission('workorders.manage');
   const canCreateAlarms = hasPermission('alarms.write');
   const canManageAlarms = hasPermission('alarms.manage');
@@ -135,27 +113,59 @@ function MainLayout() {
     ? 'Sadece kalite durumlarını güncelleyebilirsiniz.'
     : 'Yalnızca raporları görüntüleyebilirsiniz.';
 
-  const fetchRecords = async () => {
+  const fetchRecords = async (signal, { background = false } = {}) => {
+    const requestId = ++productionRequestIdRef.current;
     try {
-      setLoading(true);
-      const data = await fetchProductionRecords();
-      setRecords(Array.isArray(data) ? data.filter((r) => !(r?.isDeleted ?? r?.IsDeleted ?? false)) : []);
+      if (!background) setLoading(true);
+      const page = await fetchProductionRecords({ signal });
+      if (requestId !== productionRequestIdRef.current) return;
+      const activeItems = page.items.filter((r) => !(r?.isDeleted ?? r?.IsDeleted ?? false));
+      if (background) {
+        setRecords((current) => {
+          const latestIds = new Set(activeItems.map((record) => record.id));
+          return [...activeItems, ...current.filter((record) => !latestIds.has(record.id))];
+        });
+      } else {
+        setRecords(activeItems);
+        setNextProductionCursor(page.nextCursor);
+      }
       setError(null);
     } catch (err) {
-      setError(getApiErrorMessage(err, 'API bağlantısı başarısız oldu.'));
+      if (err.name === 'CanceledError' || err.name === 'AbortError') return;
+      if (requestId === productionRequestIdRef.current) {
+        setError(getApiErrorMessage(err, 'API bağlantısı başarısız oldu.'));
+      }
       console.error(err);
     } finally {
-      setLoading(false);
+      if (!background && requestId === productionRequestIdRef.current) setLoading(false);
     }
   };
 
-  const fetchDeletedRecords = async () => {
+  const loadMoreRecords = async () => {
+    if (!nextProductionCursor || loadingMoreRecords) return;
+    setLoadingMoreRecords(true);
+    try {
+      const page = await fetchProductionRecords({ cursor: nextProductionCursor });
+      setRecords((current) => {
+        const ids = new Set(current.map((record) => record.id));
+        return [...current, ...page.items.filter((record) => !ids.has(record.id))];
+      });
+      setNextProductionCursor(page.nextCursor);
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Daha fazla kayıt yüklenemedi.'));
+    } finally {
+      setLoadingMoreRecords(false);
+    }
+  };
+
+  const fetchDeletedRecords = async (signal) => {
     try {
       setDeletedLoading(true);
-      const data = await fetchDeletedProductionRecords();
-      setDeletedRecords(Array.isArray(data) ? data : []);
+      const page = await fetchDeletedProductionRecords({ signal });
+      setDeletedRecords(page.items);
       setDeletedError(null);
     } catch (err) {
+      if (err.name === 'CanceledError' || err.name === 'AbortError') return;
       setDeletedError(getApiErrorMessage(err, 'Silinen kayıtlar alınamadı.'));
       console.error(err);
     } finally {
@@ -163,13 +173,14 @@ function MainLayout() {
     }
   };
 
-  const loadAlarms = async () => {
+  const loadAlarms = async (signal) => {
     try {
       setAlarmLoading(true);
-      const data = await fetchAlarms();
-      setAlarms(Array.isArray(data) ? data : []);
+      const page = await fetchAlarms({ signal });
+      setAlarms(page.items);
       setAlarmError(null);
     } catch (err) {
+      if (err.name === 'CanceledError' || err.name === 'AbortError') return;
       setAlarmError(getApiErrorMessage(err, 'Alarmlar alınırken hata oluştu.'));
       console.error(err);
     } finally {
@@ -177,98 +188,63 @@ function MainLayout() {
     }
   };
 
-  const loadWorkOrders = async () => {
+  const loadWorkOrders = async (signal) => {
     try {
-      const data = await fetchWorkOrders();
-      setWorkOrders(Array.isArray(data) ? data : []);
+      const page = await fetchWorkOrders({ signal });
+      setWorkOrders(page.items);
     } catch (err) {
+      if (err.name === 'CanceledError' || err.name === 'AbortError') return;
       console.error(err);
     }
   };
 
-  const loadBatches = async () => {
+  const loadBatches = async (signal) => {
     try {
-      const data = await fetchBatches();
-      setBatches(Array.isArray(data) ? data : []);
+      const page = await fetchBatches({ signal });
+      setBatches(page.items);
     } catch (err) {
+      if (err.name === 'CanceledError' || err.name === 'AbortError') return;
       console.error(err);
     }
   };
 
   useEffect(() => {
     if (!isAuthenticated) return;
-    fetchRecords();
-    if (canViewDeleted) fetchDeletedRecords();
-    loadAlarms();
-    loadWorkOrders();
-    loadBatches();
+    const controller = new AbortController();
+    fetchRecords(controller.signal);
+    if (canViewDeleted) fetchDeletedRecords(controller.signal);
+    loadAlarms(controller.signal);
+    loadWorkOrders(controller.signal);
+    loadBatches(controller.signal);
+    return () => controller.abort();
   }, [isAuthenticated, canViewDeleted]);
 
-  useEffect(() => {
-    if (!isAuthenticated || !autoRefresh) return;
-    const interval = window.setInterval(() => {
-      fetchRecords();
-    }, 10000);
-    return () => window.clearInterval(interval);
-  }, [autoRefresh, isAuthenticated]);
+  useNonOverlappingPolling(
+    (signal) => fetchRecords(signal, { background: true }),
+    {
+      enabled: isAuthenticated && autoRefresh,
+      intervalMs: 10000,
+      runImmediately: false,
+    },
+  );
 
-  // 🏭 GERÇEK ZAMANLI FABRİKA SİMÜLASYONU (1 - 60 sn arası rastgele POST)
-  useEffect(() => {
-    let timeoutId;
+  useNonOverlappingPolling(async (signal) => {
+    const timestamp = Date.now().toString();
+    const random7 = Math.floor(1000000 + Math.random() * 9000000).toString();
 
-    const runSimulation = async () => {
-      // Eğer simülasyon kapalıysa veya kullanıcının yetkisi yoksa dur
-      if (!isFactorySimulationActive || !canAddRecord) return;
-
-      try {
-        // 1. Rastgele Veriyi Oluştur
-        const timestamp = Date.now().toString();
-        const random7 = Math.floor(1000000 + Math.random() * 9000000).toString();
-        const urunCode = timestamp + random7;
-        const random12 = Math.floor(100000000000 + Math.random() * 900000000000).toString();
-        
-        const sampleStations = [
-          'Montaj_Hatti_01', 'Test_Ve_Paketleme_Istasyonu', 'Montaj_Hatti_02',
-          'Montaj_3', 'Havuz_1', 'SMT_Dizgi_Hatti_01', 'Kalite_Kontrol_Noktasi'
-        ];
-        const randomStation = sampleStations[Math.floor(Math.random() * sampleStations.length)];
-        
-        // %85 ihtimalle OK, %15 ihtimalle NOK üretsin (Gerçekçi bir fabrika verimi)
-        const randomQuality = Math.random() > 0.15 ? 'OK' : 'NOK';
-
-        // 2. Doğrudan Backend'e POST at (SQL'e yazılır)
-        await createProductionRecord({
-          urun20liKod: urunCode,
-          malzeme12liKod: random12,
-          istasyonAdi: randomStation,
-          kaliteDurumu: randomQuality,
-          uretimTarihi: new Date().toISOString()
-        });
-
-        // 3. Başarılı olunca verileri yenile ki ekrandaki tüm grafikler güncellensin
-        fetchRecords();
-        
-      } catch (error) {
-        console.error("Simülasyon verisi gönderilirken hata:", error);
-      }
-
-      // 4. Döngüyü devam ettir: Bir sonraki işlem için 1.000 ms (1 sn) ile 60.000 ms (60 sn) arası rastgele süre seç
-      if (isFactorySimulationActive) {
-        const nextInterval = Math.floor(Math.random() * (60000 - 1000 + 1)) + 1000;
-        timeoutId = setTimeout(runSimulation, nextInterval);
-      }
-    };
-
-    // Simülasyon butonu açıldığında döngüyü başlat
-    if (isFactorySimulationActive) {
-      // İlk kaydı atmak için 1 ile 3 saniye arası bekleyip başlasın
-      const initialDelay = Math.floor(Math.random() * (3000 - 1000 + 1)) + 1000;
-      timeoutId = setTimeout(runSimulation, initialDelay);
-    }
-
-    // Component unmount olduğunda veya state değiştiğinde timeout'u temizle
-    return () => clearTimeout(timeoutId);
-  }, [isFactorySimulationActive, canAddRecord]); // fetchRecords'u buraya eklemiyoruz ki sonsuz döngü olmasın
+    await createProductionRecord({
+      urun20liKod: timestamp + random7,
+      malzeme12liKod: Math.floor(100000000000 + Math.random() * 900000000000).toString(),
+      istasyonAdi: STATIONS[Math.floor(Math.random() * STATIONS.length)],
+      kaliteDurumu: Math.random() > 0.15 ? 'OK' : 'NOK',
+      uretimTarihi: new Date().toISOString(),
+    }, { signal });
+    await fetchRecords(signal, { background: true });
+  }, {
+    enabled: isFactorySimulationActive && canAddRecord,
+    intervalMs: 15000,
+    runImmediately: false,
+  });
 
   const createTestAlarm = async () => {
     if (!canCreateAlarms) {
@@ -279,7 +255,7 @@ function MainLayout() {
       setAlarmLoading(true);
       const newAlarm = {
         title: 'Test Alarmı - Sensör Uyarısı',
-        station: 'Montaj_Hatti_01',
+        station: DEFAULT_STATION,
         severity: 'Uyarı',
         description: 'Test amaçlı oluşturulmuş alarm.',
         status: 'Açık',
@@ -305,7 +281,7 @@ function MainLayout() {
       setAlarmLoading(true);
       const newAlarm = {
         title: manualTitle || 'Manuel Alarm',
-        station: manualStation || 'Montaj_Hatti_01',
+        station: manualStation || DEFAULT_STATION,
         severity: manualSeverity || 'Uyarı',
         description: manualDescription || '',
         status: 'Açık',
@@ -313,7 +289,7 @@ function MainLayout() {
       };
       await createAlarm(newAlarm);
       setManualTitle('');
-      setManualStation('Montaj_Hatti_01');
+      setManualStation(DEFAULT_STATION);
       setManualSeverity('Uyarı');
       setManualDescription('');
       await loadAlarms();
@@ -334,16 +310,7 @@ function MainLayout() {
     const random7 = Math.floor(1000000 + Math.random() * 9000000).toString();
     const urunCode = timestamp + random7;
     const random12 = Math.floor(100000000000 + Math.random() * 900000000000).toString();
-    const sampleStations = [
-      'Montaj_Hatti_01',
-      'Test_Ve_Paketleme_Istasyonu',
-      'Montaj_Hatti_02',
-      'Montaj_3',
-      'Havuz_1',
-      'SMT_Dizgi_Hatti_01',
-      'Kalite_Kontrol_Noktasi'
-    ];
-    const randomStation = sampleStations[Math.floor(Math.random() * sampleStations.length)];
+    const randomStation = STATIONS[Math.floor(Math.random() * STATIONS.length)];
     const randomQuality = Math.random() > 0.15 ? 'OK' : 'NOK';
 
     setUrun20liKod(urunCode);
@@ -387,7 +354,7 @@ function MainLayout() {
       await createProductionRecord({
         urun20liKod,
         malzeme12liKod,
-        istasyonAdi: istasyonAdi || 'Montaj_Hatti_01',
+        istasyonAdi: istasyonAdi || DEFAULT_STATION,
         kaliteDurumu,
         uretimTarihi: new Date().toISOString()
       });
@@ -534,7 +501,7 @@ function MainLayout() {
 
   const stationsList = [...new Set(records.map((r) => r.istasyonAdi).filter(Boolean))];
   const stationsFilterOptions = ['Tümü', ...stationsList];
-  const stationDetailOptions = stationsList.length > 0 ? stationsList : ['Montaj_Hatti_01'];
+  const stationDetailOptions = stationsList.length > 0 ? stationsList : [DEFAULT_STATION];
 
   const stationDetailRecords = records.filter((record) => record.istasyonAdi === selectedStationDetail);
   const stationMetrics = {
@@ -598,13 +565,13 @@ const yieldRate = totalCount > 0 ? ((okCount / totalCount) * 100).toFixed(1) : 0
     }
   };
 
-  const handleAdvanceWorkOrder = async (id) => {
+  const handleAdvanceWorkOrder = async (order) => {
     if (!canManageWorkOrders) {
       alert('İş emri durumunu değiştirme yetkiniz yok.');
       return;
     }
     try {
-      await advanceWorkOrder(id);
+      await advanceWorkOrder(order.id, order.rowVersion);
       await loadWorkOrders();
     } catch (err) {
       alert(getApiErrorMessage(err, 'İş emri durumu güncellenemedi.'));
@@ -780,97 +747,49 @@ const yieldRate = totalCount > 0 ? ((okCount / totalCount) * 100).toFixed(1) : 0
         <Routes>
           {/* 📊 ÜRETİM PANESİ */}
           <Route path="/dashboard" element={
-            <>
-              <section className="kpi-grid">
-                <KpiCard title="Toplam Üretim" value={totalCount} icon={Activity} accent={{ bg: '#e0f2fe', color: '#0284c7' }} />
-                <KpiCard title="Başarılı (OK)" value={okCount} icon={CheckCircle2} accent={{ bg: '#d1fae5', color: '#10b981' }} valueColor="#10b981" />
-                <KpiCard title="Hatalı (NOK)" value={nokCount} icon={XCircle} accent={{ bg: '#fee2e2', color: '#ef4444' }} valueColor="#ef4444" />
-                <KpiCard title="Verimlilik Oranı" value={`%${yieldRate}`} icon={Percent} accent={{ bg: '#fef3c7', color: '#f59e0b' }} valueColor="#f59e0b" />
-              </section>
-
-              <OeePanel records={records} isSimulationActive={isFactorySimulationActive} />
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '20px', marginBottom: '24px' }}>
-                <div className="custom-card" style={{ marginBottom: 0, borderLeft: !isCurrentUserActive ? '5px solid #ef4444' : '5px solid #0284c7' }}>
-                  <div className="card-header">
-                    <span>Aktif Kullanıcı Yetkisi</span>
-                  </div>
-                  <p style={{ margin: 0, color: !isCurrentUserActive ? '#ef4444' : '#475569', fontWeight: !isCurrentUserActive ? 600 : 400 }}>
-                    {permissionText}
-                  </p>
-                </div>
-
-                <ProductionForm
-                  urun20liKod={urun20liKod}
-                  malzeme12liKod={malzeme12liKod}
-                  istasyonAdi={istasyonAdi}
-                  kaliteDurumu={kaliteDurumu}
-                  onChangeUrun={(e) => setUrun20liKod(e.target.value)}
-                  onChangeMalzeme={(e) => setMalzeme12liKod(e.target.value)}
-                  onChangeStation={(e) => setIstasyonAdi(e.target.value)}
-                  onChangeQuality={(e) => setKaliteDurumu(e.target.value)}
-                  onSubmit={handleAddRecord}
-                  onGenerateRandom={generateRandomBarcodes}
-                  urunInputRef={urunInputRef}
-                  malzemeInputRef={malzemeInputRef}
-                  canSubmit={canAddRecord}
-                />
-
-                <section className="custom-card" style={{ marginBottom: 0, display: 'flex', flexDirection: 'column' }}>
-                  <div className="card-header">
-                    <PieIcon className="text-primary" size={20} />
-                    <span>Kalite Dağılım Grafiği</span>
-                  </div>
-                  <div style={{ flex: 1, minHeight: '260px', width: '100%' }}>
-                    {totalCount === 0 ? (
-                      <p style={{ textAlign: 'center', paddingTop: '80px', color: '#94a3b8' }}>Grafik için henüz veri yok.</p>
-                    ) : (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={qualityChartData}
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={50}
-                            outerRadius={80}
-                            paddingAngle={5}
-                            dataKey="value"
-                          >
-                            {qualityChartData.map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={entry.color} />
-                            ))}
-                          </Pie>
-                          <Tooltip formatter={(val) => [`${val} Adet`, 'Miktar']} />
-                          <Legend verticalAlign="bottom" height={36} />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    )}
-                  </div>
-                </section>
-              </div>
-
-              
-
-              <ProductionTable
-                records={records}
-                loading={loading}
-                error={error}
-                filteredRecords={filteredRecords}
-                searchTerm={searchTerm}
-                selectedStation={selectedStation}
-                selectedQuality={selectedQuality}
-                stationsFilterOptions={stationsFilterOptions}
-                onSearchChange={(e) => setSearchTerm(e.target.value)}
-                onStationChange={(e) => setSelectedStation(e.target.value)}
-                onQualityChange={(e) => setSelectedQuality(e.target.value)}
-                onExportExcel={handleExportExcel}
-                onToggleQuality={canChangeQuality ? handleToggleQuality : undefined}
-                canChangeQuality={canChangeQuality}
-                canDeleteRecord={canDeleteRecord}
-                onDelete={canDeleteRecord ? handleDelete : undefined}
-                onOpenDetail={handleOpenModal}
-              />
-            </>
+            <DashboardPage
+              metrics={{ totalCount, okCount, nokCount, yieldRate, qualityChartData }}
+              permission={{ isActive: isCurrentUserActive, text: permissionText }}
+              form={{
+                urun20liKod,
+                malzeme12liKod,
+                istasyonAdi,
+                kaliteDurumu,
+                onChangeUrun: (event) => setUrun20liKod(event.target.value),
+                onChangeMalzeme: (event) => setMalzeme12liKod(event.target.value),
+                onChangeStation: (event) => setIstasyonAdi(event.target.value),
+                onChangeQuality: (event) => setKaliteDurumu(event.target.value),
+                onSubmit: handleAddRecord,
+                onGenerateRandom: generateRandomBarcodes,
+                urunInputRef,
+                malzemeInputRef,
+                canSubmit: canAddRecord,
+              }}
+              table={{
+                records,
+                loading,
+                error,
+                filteredRecords,
+                searchTerm,
+                selectedStation,
+                selectedQuality,
+                stationsFilterOptions,
+                onSearchChange: (event) => setSearchTerm(event.target.value),
+                onStationChange: (event) => setSelectedStation(event.target.value),
+                onQualityChange: (event) => setSelectedQuality(event.target.value),
+                onExportExcel: handleExportExcel,
+                onToggleQuality: canChangeQuality ? handleToggleQuality : undefined,
+                canChangeQuality,
+                canDeleteRecord,
+                onDelete: canDeleteRecord ? handleDelete : undefined,
+                onOpenDetail: handleOpenModal,
+              }}
+              pagination={{
+                hasMore: Boolean(nextProductionCursor),
+                loadMore: loadMoreRecords,
+                loading: loadingMoreRecords,
+              }}
+            />
           } />
 
           <Route path="/makine-metrikleri" element={<MachineMetricsPanel />} />
@@ -878,319 +797,68 @@ const yieldRate = totalCount > 0 ? ((okCount / totalCount) * 100).toFixed(1) : 0
 
           {/* 🛠️ İSTASYONLAR SEKMESİ */}
           <Route path="/istasyonlar" element={
-            <>
-              <section className="custom-card">
-                <div className="card-header">
-                  <BarChart3 className="text-primary" size={20} />
-                  <span>İstasyon Bazlı Üretim Hacmi Analizi</span>
-                </div>
-                <div style={{ width: '100%', height: '380px' }}>
-                  {stationChartData.length === 0 ? (
-                    <p style={{ textAlign: 'center', paddingTop: '100px', color: '#94a3b8' }}>Grafik verisi bulunamadı.</p>
-                  ) : (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={stationChartData} margin={{ top: 20, right: 30, left: 0, bottom: 80 }}>
-                        <XAxis dataKey="name" interval={0} angle={-35} textAnchor="end" tick={{ fontSize: 11, fill: '#475569' }} />
-                        <YAxis allowDecimals={false} />
-                        <Tooltip />
-                        <Legend verticalAlign="top" height={36} />
-                        <Bar dataKey="OK" fill="#10b981" name="Başarılı (OK)" radius={[4, 4, 0, 0]} />
-                        <Bar dataKey="NOK" fill="#ef4444" name="Hatalı (NOK)" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  )}
-                </div>
-              </section>
-
-              <StationDetailPanel
-                stationsList={stationDetailOptions}
-                selectedStation={selectedStationDetail}
-                onStationChange={(e) => setSelectedStationDetail(e.target.value)}
-                stationMetrics={stationMetrics}
-                recentRecords={stationDetailRecords.slice(0, 4)}
-              />
-
-              <section className="custom-card">
-                <div className="card-header">
-                  <Cpu className="text-primary" size={20} />
-                  <span>Saha İstasyon Performansı ve İş Yükü</span>
-                </div>
-                
-                <div className="table-wrapper">
-                  <table className="modern-table">
-                    <thead>
-                      <tr>
-                        <th>İstasyon Adı</th>
-                        <th>Toplam İşlenen Ürün</th>
-                        <th>Başarılı (OK)</th>
-                        <th>Hatalı (NOK)</th>
-                        <th>İstasyon Verimliliği</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {stationsList.length === 0 ? (
-                        <tr>
-                          <td colSpan="5" style={{ textAlign: 'center', padding: '20px' }}>Veri bulunamadı.</td>
-                        </tr>
-                      ) : (
-                        stationsList.map((stName, idx) => {
-                          const stRecords = records.filter((r) => r.istasyonAdi === stName);
-                          const stTotal = stRecords.length;
-                          const stOk = stRecords.filter((r) => r.kaliteDurumu === 'OK').length;
-                          const stNok = stRecords.filter((r) => r.kaliteDurumu === 'NOK').length;
-                          const stRate = stTotal > 0 ? ((stOk / stTotal) * 100).toFixed(1) : 0;
-
-                          return (
-                            <tr key={idx}>
-                              <td><b>{stName}</b></td>
-                              <td>{stTotal} adet</td>
-                              <td style={{ color: '#10b981', fontWeight: 'bold' }}>{stOk}</td>
-                              <td style={{ color: '#ef4444', fontWeight: 'bold' }}>{stNok}</td>
-                              <td>
-                                <span 
-                                  className="badge" 
-                                  style={{ 
-                                    backgroundColor: stRate >= 80 ? '#d1fae5' : '#fef3c7', 
-                                    color: stRate >= 80 ? '#065f46' : '#b45309' 
-                                  }}
-                                >
-                                  %{stRate}
-                                </span>
-                              </td>
-                            </tr>
-                          );
-                        })
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-            </>
+            <StationsPage
+              stationChartData={stationChartData}
+              stationDetailOptions={stationDetailOptions}
+              selectedStation={selectedStationDetail}
+              onStationChange={(event) => setSelectedStationDetail(event.target.value)}
+              stationMetrics={stationMetrics}
+              recentRecords={stationDetailRecords.slice(0, 4)}
+              stations={stationsList}
+              records={records}
+            />
           } />
 
           {/* 📋 KALİTE VE RAPORLAR SEKMESİ */}
           <Route path="/kalite" element={
-            <>
-              <WorkOrderBoard
-                workOrders={workOrders}
-                formValues={workOrderForm}
-                onFieldChange={(field, value) => setWorkOrderForm((prev) => ({ ...prev, [field]: value }))}
-                onSubmit={canManageWorkOrders ? handleWorkOrderSubmit : (e) => { e.preventDefault(); alert('Yetkiniz yok!'); }}
-                onAdvance={canManageWorkOrders ? handleAdvanceWorkOrder : () => alert('Yetkiniz yok!')}
-                disabled={!canManageWorkOrders}
-              />
-
-              {canViewReports ? (
-                <>
-                  {canCreateAlarms && (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginBottom: '14px' }}>
-                      <button
-                        type="button"
-                        className="btn-primary"
-                        style={{ minWidth: '200px', padding: '10px 16px' }}
-                        onClick={createTestAlarm}
-                        disabled={alarmLoading}
-                      >
-                        {alarmLoading ? 'Alarm oluşturuluyor...' : 'Test Alarmı Oluştur'}
-                      </button>
-                      <form onSubmit={createManualAlarm} style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                        <input
-                          placeholder="Başlık"
-                          value={manualTitle}
-                          onChange={(e) => setManualTitle(e.target.value)}
-                          className="input-field"
-                          style={{ minWidth: '180px' }}
-                        />
-                        <select value={manualStation} onChange={(e) => setManualStation(e.target.value)} className="input-field">
-                          <option>Montaj_Hatti_01</option>
-                          <option>Montaj_Hatti_02</option>
-                          <option>Test_Ve_Paketleme_Istasyonu</option>
-                          <option>SMT_Dizgi_Hatti_01</option>
-                          <option>Kalite_Kontrol_Noktasi</option>
-                        </select>
-                        <select value={manualSeverity} onChange={(e) => setManualSeverity(e.target.value)} className="input-field">
-                          <option>Uyarı</option>
-                          <option>Düşük</option>
-                          <option>Yüksek</option>
-                          <option>Kritik</option>
-                        </select>
-                        <input
-                          placeholder="Açıklama (isteğe bağlı)"
-                          value={manualDescription}
-                          onChange={(e) => setManualDescription(e.target.value)}
-                          className="input-field"
-                          style={{ minWidth: '220px' }}
-                        />
-                        <button type="submit" className="btn-primary" disabled={alarmLoading} style={{ padding: '8px 12px' }}>
-                          {alarmLoading ? 'Ekleniyor...' : 'Manuel Alarm Ekle'}
-                        </button>
-                      </form>
-                      {alarmError && <span className="error" style={{ marginLeft: 'auto' }}>{alarmError}</span>}
-                    </div>
-                  )}
-
-                  <AlarmPanel 
-                    alarms={alarms} 
-                    onAcknowledge={canManageAlarms ? handleAcknowledgeAlarm : undefined} 
-                    onDelete={canManageAlarms ? handleDeleteAlarm : undefined} 
-                  />
-                  <TraceabilityPanel batches={batches} />
-                </>
-              ) : (
-                <section className="custom-card" style={{ borderLeft: '5px solid #f59e0b' }}>
-                  <div className="card-header" style={{ color: '#f59e0b' }}>
-                    <Lock size={20} />
-                    <span>Rapor Görüntüleme Yetkiniz Yok</span>
-                  </div>
-                  <p style={{ margin: 0, color: '#475569' }}>
-                    Seçili kullanıcı rolü, kalite ve saha raporlarını görüntüleme yetkisine sahip değildir.
-                  </p>
-                </section>
-              )}
-
-              {canManageUsers && (
-                <UserRolePanel />
-              )}
-
-              {canViewDeleted && (
-              <section className="custom-card">
-                <div className="card-header" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <RefreshCw className="text-primary" size={20} />
-                    <span>Çöp Kutusu / Silinen Kayıtlar</span>
-                  </div>
-                  <span style={{ color: '#64748b', fontSize: '0.9rem' }}>{deletedRecords.length} adet silinmiş kayıt</span>
-                </div>
-
-                <div className="table-wrapper">
-                  {deletedLoading && <p>Silinen kayıtlar yükleniyor...</p>}
-                  {deletedError && <p className="error">{deletedError}</p>}
-                  {!deletedLoading && !deletedError && (
-                    <table className="modern-table">
-                      <thead>
-                        <tr>
-                          <th>ID</th>
-                          <th>20'li Ürün Kodu</th>
-                          <th>12'li Malzeme Kodu</th>
-                          <th>İstasyon Adı</th>
-                          <th>Silinme Tarihi</th>
-                          <th>Aksiyon</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {deletedRecords.length === 0 ? (
-                          <tr>
-                            <td colSpan="6" style={{ textAlign: 'center', padding: '30px' }}>
-                              Çöp kutusunda henüz kayıt yok.
-                            </td>
-                          </tr>
-                        ) : (
-                          deletedRecords.map((r) => (
-                            <tr key={r.id}>
-                              <td><b>#{r.id}</b></td>
-                              <td><code style={{ background: '#f1f5f9', padding: '4px 8px', borderRadius: '4px' }}>{r.urun20liKod}</code></td>
-                              <td><code style={{ background: '#f1f5f9', padding: '4px 8px', borderRadius: '4px' }}>{r.malzeme12liKod}</code></td>
-                              <td>{r.istasyonAdi}</td>
-                              <td>{r.uretimTarihi ? new Date(r.uretimTarihi).toLocaleString('tr-TR') : '-'}</td>
-                              <td>
-                                {canDeleteRecord ? (
-                                  <button
-                                    type="button"
-                                    className="btn-primary"
-                                    onClick={() => handleRestore(r.id)}
-                                    style={{ padding: '8px 12px', fontSize: '0.85rem' }}
-                                  >
-                                    <RefreshCw size={16} />
-                                    Geri Yükle
-                                  </button>
-                                ) : (
-                                  <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>Yetki Yok</span>
-                                )}
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-              </section>
-              )}
-
-              <section className="custom-card" style={{ borderLeft: '5px solid #ef4444' }}>
-                <div className="card-header" style={{ color: '#ef4444' }}>
-                  <AlertTriangle size={20} />
-                  <span>Kalite Kontrol Alarm & Hata Özeti</span>
-                </div>
-                <p style={{ color: '#64748b', margin: 0 }}>
-                  Aşağıdaki tabloda üretim hattında <b>NOK (Hatalı)</b> olarak işaretlenmiş tüm ürünler listelenmektedir.
-                </p>
-              </section>
-
-              <section className="custom-card">
-                <div className="card-header">
-                  <XCircle style={{ color: '#ef4444' }} size={20} />
-                  <span>Hatalı Ürün Listesi (NOK) ({records.filter(r => r.kaliteDurumu === 'NOK').length})</span>
-                </div>
-
-                <div className="table-wrapper">
-                  <table className="modern-table">
-                    <thead>
-                      <tr>
-                        <th>ID</th>
-                        <th>20'li Ürün Kodu</th>
-                        <th>12'li Malzeme Kodu</th>
-                        <th>Hatalı İstasyon</th>
-                        <th>Durum</th>
-                        <th>Aksiyon</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {records.filter((r) => r.kaliteDurumu === 'NOK').length === 0 ? (
-                        <tr>
-                          <td colSpan="6" style={{ textAlign: 'center', padding: '30px', color: '#10b981', fontWeight: 'bold' }}>
-                            Harika! Şu anda sistemde hatalı (NOK) kayıt bulunmuyor. 🎉
-                          </td>
-                        </tr>
-                      ) : (
-                        records.filter((r) => r.kaliteDurumu === 'NOK').map((r) => (
-                          <tr key={r.id}>
-                            <td><b>#{r.id}</b></td>
-                            <td><code style={{ background: '#fee2e2', color: '#991b1b', padding: '4px 8px', borderRadius: '4px' }}>{r.urun20liKod}</code></td>
-                            <td><code style={{ background: '#f1f5f9', padding: '4px 8px', borderRadius: '4px' }}>{r.malzeme12liKod}</code></td>
-                            <td>{r.istasyonAdi}</td>
-                            <td>
-                              <span
-                                onClick={canChangeQuality ? () => handleToggleQuality(r) : undefined}
-                                className="badge badge-nok"
-                                title={canChangeQuality ? "Tıkla ve OK Yap" : "Yetkiniz Yok"}
-                                style={{ cursor: canChangeQuality ? 'pointer' : 'not-allowed', opacity: canChangeQuality ? 1 : 0.6 }}
-                              >
-                                <XCircle size={14} />
-                                {r.kaliteDurumu}
-                              </span>
-                            </td>
-                            <td>
-                              {canDeleteRecord ? (
-                                <button
-                                  onClick={() => handleDelete(r.id)}
-                                  className="btn-delete"
-                                  title="Kaydı Sil"
-                                >
-                                  <Trash2 size={18} />
-                                </button>
-                              ) : (
-                                <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>Yetki Yok</span>
-                              )}
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-            </>
+            <QualityPage
+              workOrders={{ items: workOrders, onAdvance: handleAdvanceWorkOrder }}
+              alarms={{
+                items: alarms,
+                loading: alarmLoading,
+                error: alarmError,
+                onCreateTest: createTestAlarm,
+                onAcknowledge: handleAcknowledgeAlarm,
+                onDelete: handleDeleteAlarm,
+              }}
+              batches={batches}
+              deleted={{
+                items: deletedRecords,
+                loading: deletedLoading,
+                error: deletedError,
+                onRestore: handleRestore,
+              }}
+              production={{ records, onToggleQuality: handleToggleQuality, onDelete: handleDelete }}
+              permissions={{
+                canManageWorkOrders,
+                canCreateAlarms,
+                canManageAlarms,
+                canManageUsers,
+                canViewDeleted,
+                canManageProduction: canDeleteRecord,
+                canChangeQuality,
+              }}
+              alarmForm={{
+                title: manualTitle,
+                station: manualStation,
+                severity: manualSeverity,
+                description: manualDescription,
+                onTitleChange: (event) => setManualTitle(event.target.value),
+                onStationChange: (event) => setManualStation(event.target.value),
+                onSeverityChange: (event) => setManualSeverity(event.target.value),
+                onDescriptionChange: (event) => setManualDescription(event.target.value),
+                onSubmit: createManualAlarm,
+              }}
+              workOrderForm={{
+                values: workOrderForm,
+                onFieldChange: (field, value) => setWorkOrderForm((current) => ({ ...current, [field]: value })),
+                onSubmit: handleWorkOrderSubmit,
+                onDenied: (event) => {
+                  event?.preventDefault();
+                  alert('Bu işlem için yetkiniz yok.');
+                },
+              }}
+            />
           } />
 
           {/* Varsayılan Yönlendirmeler */}

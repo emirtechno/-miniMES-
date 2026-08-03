@@ -23,7 +23,8 @@ const UserRolePanel = () => {
 
   const loadUsers = async () => {
     try {
-      setUsers(await fetchUsers());
+      const page = await fetchUsers();
+      setUsers(page.items);
       setError('');
     } catch (requestError) {
       setError(getApiErrorMessage(requestError, 'Kullanıcılar yüklenemedi.'));
