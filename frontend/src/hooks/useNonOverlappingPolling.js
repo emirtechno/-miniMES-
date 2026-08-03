@@ -7,7 +7,10 @@ export const useNonOverlappingPolling = (callback, {
   resetKey,
 }) => {
   const callbackRef = useRef(callback);
-  callbackRef.current = callback;
+
+  useEffect(() => {
+    callbackRef.current = callback;
+  }, [callback]);
 
   useEffect(() => {
     if (!enabled) return undefined;
