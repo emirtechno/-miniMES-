@@ -8,14 +8,13 @@ import CardHeader from '../components/CardHeader';
 import { useShiftSession } from '../context/ShiftSessionContext';
 import { ACTIVE_STATION_DEFINITIONS, DEFAULT_STATION, getStationDisplayName } from '../constants/stations';
 import { getShiftLabel } from '../constants/shifts';
+import { emptyStationKpi } from '../utils/telemetryAggregate';
 
-/**
- * Operator workspace: shift-driven Live Stream, station counters, HMI — no manual barcode entry.
- */
 const OperatorDashboardPage = ({
   currentUser,
   notify,
-  records = [],
+  stationKpi,
+  recentTicks = [],
   workOrders = [],
   batches = [],
   liveStreaming = false,
@@ -38,20 +37,19 @@ const OperatorDashboardPage = ({
     if (shift.stationId && shift.stationId !== stationId) {
       setLocalStationId(shift.stationId);
     }
-  }, [shift.stationId]); // eslint-disable-line react-hooks/exhaustive-deps -- sync from shift session only
+  }, [shift.stationId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleStationChange = (nextStationId) => {
     setLocalStationId(nextStationId);
     setStationId(nextStationId);
   };
 
-  const stationRecords = useMemo(
-    () => records.filter((record) => record.istasyonAdi === stationId),
-    [records, stationId],
+  const kpi = stationKpi?.(stationId) || emptyStationKpi(stationId);
+  const stationTicks = useMemo(
+    () => recentTicks.filter((tick) => tick.stationId === stationId).slice(0, 8),
+    [recentTicks, stationId],
   );
 
-  const ok = stationRecords.filter((r) => r.kaliteDurumu === 'OK').length;
-  const nok = stationRecords.filter((r) => r.kaliteDurumu === 'NOK').length;
   const activeOrder = workOrders.find(
     (order) => order.station === stationId && order.status !== 'Tamamlandı',
   ) || workOrders.find((order) => order.status !== 'Tamamlandı');
@@ -67,7 +65,7 @@ const OperatorDashboardPage = ({
         <CardHeader
           icon={Package}
           title="Operatör Paneli"
-          subtitle="Vardiya → Live Stream → telemetri / OEE / Andon. Manuel barkod girişi yoktur."
+          subtitle="Vardiya → Live Stream → MachineMetrics batch tick’leri. Sayaçlar Σ Actual / Σ Good."
           actions={(
             <select
               className="mes-input h-10 w-auto min-w-[200px]"
@@ -91,8 +89,8 @@ const OperatorDashboardPage = ({
           <span className="inline-flex items-center gap-2 font-semibold">
             <Radio size={16} className={liveStreaming ? 'animate-pulse' : ''} />
             {liveStreaming
-              ? 'Live Stream açık — PLC/sensör telemetrisi OK·NOK ve lot ilerlemesini besliyor.'
-              : 'Live Stream kapalı — Operatör Shift Widget’tan “Vardiya Başlat” ile telemetri motorunu açın.'}
+              ? 'Live Stream açık — her tick ~100–140 adet PLC batch yazar; lot/OEE senkron.'
+              : 'Live Stream kapalı — “Vardiya Başlat” ile MachineMetrics motorunu açın.'}
           </span>
           {liveStreaming && (
             <Link to={`/makine-metrikleri?stationId=${encodeURIComponent(stationId)}`} className="ml-3 underline">
@@ -106,24 +104,24 @@ const OperatorDashboardPage = ({
             <div className="font-display mt-1 text-2xl font-semibold">{getStationDisplayName(stationId)}</div>
           </div>
           <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4">
-            <div className="text-xs font-semibold uppercase tracking-wide text-emerald-800">OK Sayacı</div>
-            <div className="font-display mt-1 text-3xl font-semibold text-emerald-950">{ok}</div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-emerald-800">Σ Sağlam (OK)</div>
+            <div className="font-display mt-1 text-3xl font-semibold text-emerald-950">{kpi.good}</div>
           </div>
           <div className="rounded-xl border border-red-200 bg-red-50/70 p-4">
-            <div className="text-xs font-semibold uppercase tracking-wide text-red-800">NOK Sayacı</div>
-            <div className="font-display mt-1 text-3xl font-semibold text-red-950">{nok}</div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-red-800">Σ Fire (NOK)</div>
+            <div className="font-display mt-1 text-3xl font-semibold text-red-950">{kpi.nok}</div>
           </div>
           <div className={`rounded-xl border p-4 ${shift.active ? 'border-sky-200 bg-sky-50/80' : 'border-[color:var(--color-line)] bg-slate-50'}`}>
-            <div className="text-xs font-semibold uppercase tracking-wide text-[color:var(--color-muted)]">Vardiya</div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-[color:var(--color-muted)]">Vardiya · Verim</div>
             <div className="mt-1 flex flex-wrap items-center gap-2">
               <span className={shift.active ? 'mes-pill-ok' : 'mes-pill-neutral'}>
                 {shift.active ? 'Aktif' : 'Pasif'}
               </span>
-              <span className="text-sm font-semibold">{elapsedLabel}</span>
+              <span className="text-sm font-semibold">%{kpi.yield} · {elapsedLabel}</span>
             </div>
             {shift.active && (
               <div className="mt-1 text-xs text-slate-600">
-                {shift.operatorName} · {getShiftLabel(shift.shiftCode)}
+                {shift.operatorName} · {getShiftLabel(shift.shiftCode)} · Σ {kpi.actual}
               </div>
             )}
           </div>
@@ -149,11 +147,7 @@ const OperatorDashboardPage = ({
       />
 
       <section className="mes-surface p-5">
-        <CardHeader
-          icon={ClipboardList}
-          title="Aktif İş Emri"
-          subtitle="İstasyona bağlı açık iş emri"
-        />
+        <CardHeader icon={ClipboardList} title="Aktif İş Emri" subtitle="İstasyona bağlı açık iş emri" />
         {activeOrder ? (
           <div className="grid gap-3 rounded-xl border border-[color:var(--color-line)] bg-slate-50/80 p-4 sm:grid-cols-4">
             <div>
@@ -183,23 +177,32 @@ const OperatorDashboardPage = ({
       <section className="mes-surface p-5">
         <CardHeader
           icon={History}
-          title="Son Sensör Olayları"
-          subtitle="Live Stream üretim telemetrisi (değiştirilemez kayıtlar)"
+          title="Son PLC Tick’leri"
+          subtitle="MachineMetrics batch satırları (Gerçekleşen / Sağlam / Duruş)"
           actions={(
             <span className="inline-flex items-center gap-1 text-xs text-[color:var(--color-muted)]">
               <Activity size={13} />
-              {stationRecords.length} olay
+              {stationTicks.length} tick
             </span>
           )}
         />
         <ul className="m-0 flex list-none flex-col gap-2 p-0">
-          {stationRecords.slice(0, 8).map((record) => (
-            <li key={record.id} className="flex items-center justify-between rounded-lg border border-[color:var(--color-line)] px-3 py-2 text-sm">
-              <span className="truncate font-medium">{record.urun20liKod}</span>
-              <span className={record.kaliteDurumu === 'OK' ? 'mes-pill-ok' : 'mes-pill-nok'}>{record.kaliteDurumu}</span>
-            </li>
-          ))}
-          {stationRecords.length === 0 && (
+          {stationTicks.map((tick) => {
+            const scrap = Math.max(0, (tick.actualProductionCount || 0) - (tick.goodProductionCount || 0));
+            return (
+              <li key={`${tick.id}-${tick.recordedAt}`} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[color:var(--color-line)] px-3 py-2 text-sm">
+                <span className="font-medium">
+                  {tick.actualProductionCount} / {tick.goodProductionCount}
+                  {scrap > 0 ? ` · fire ${scrap}` : ''}
+                  <span className="ml-2 text-xs text-[color:var(--color-muted)]">duruş {tick.downtimeSeconds}sn</span>
+                </span>
+                <span className={scrap > 0 ? 'mes-pill-nok' : 'mes-pill-ok'}>
+                  {scrap > 0 ? `Fire ${scrap}` : 'OK batch'}
+                </span>
+              </li>
+            );
+          })}
+          {stationTicks.length === 0 && (
             <li className="text-sm text-[color:var(--color-muted)]">
               Henüz telemetri yok. Vardiya başlatarak Live Stream’i açın.
             </li>

@@ -6,37 +6,37 @@ const sections = [
     icon: Factory,
     title: 'Fabrika Genel Bakış',
     path: '/fabrika',
-    body: 'Yönetici komuta merkezi. Hatlar arası OEE, durum şeridi ve OK/NOK hacmi Live Stream telemetrisinden beslenir.',
+    body: 'Σ Actual / Σ Good / Σ Fire ve OEE, MachineMetrics özetinden gelir. 1-by-1 barkod sayacı yoktur.',
   },
   {
     icon: HardHat,
     title: 'Operatör Paneli',
     path: '/operator',
-    body: 'Vardiya Başlat ile Live Stream motorunu açarsınız. Manuel barkod formu yoktur — OK/NOK ve lot ilerleme sensör olaylarından gelir. Duruş/setup Live Stream’i duraklatır.',
+    body: 'Vardiya Başlat Live Stream’i açar; her tick PLC batch (ör. 128/125) yazar. Sayaçlar Σ Good / Σ Fire.',
   },
   {
     icon: Wrench,
     title: 'İstasyonlar',
     path: '/istasyonlar',
-    body: 'Kartlar sıcaklık, RPM, titreşim, OK/NOK ve OEE gösterir. “Detayı Aç” Makine Metrikleri’ne istasyon filtresiyle gider.',
+    body: 'Kart KPI’ları telemetri aggregate + sıcaklık/RPM/OEE. Detayı Aç → Makine Metrikleri.',
   },
   {
     icon: Shield,
     title: 'Kalite Raporları',
     path: '/kalite',
-    body: 'İş emirleri, Andon alarmları, lot izlenebilirlik. Telemetri kayıtları silinmez; yetkili kullanıcı yalnızca NOK→OK sınıflandırması yapabilir.',
+    body: 'Fire listesi Actual−Good > 0 olan MachineMetrics tick’leridir. Lot progress Σ Good ile senkron.',
   },
   {
     icon: Gauge,
     title: 'Makine Metrikleri',
     path: '/makine-metrikleri',
-    body: 'Merkezi telemetri hub’ı. Vardiya ile senkron Live Stream; OEE, lot progress ve Andon anomali eşikleri burada birleşir.',
+    body: 'SSOT hub: trend, tablo, OEE, lot. Live Stream durumu vardiyaya bağlıdır.',
   },
   {
     icon: Monitor,
-    title: 'Andon Ekranı',
+    title: 'Andon',
     path: '/andon',
-    body: 'Yüksek titreşim, aşırı ısınma, duruş eşiği ve NOK spike alarmları Live Stream’den SignalR ile düşer.',
+    body: 'OEE latest + Live Stream anomali alarmları (SignalR).',
   },
 ];
 
@@ -48,8 +48,7 @@ const OperatorGuidePage = () => (
         <div>
           <h1 className="font-display m-0 text-3xl font-semibold tracking-wide">Kullanım Kılavuzu</h1>
           <p className="mes-helper mt-2 mb-0 max-w-2xl">
-            Mimari tamamen sensör / PLC telemetrisi ve vardiya odaklı Live Stream üzerine kuruludur.
-            Manuel üretim kaydı veya çöp kutusu yoktur.
+            Tüm KPI’lar MachineMetrics telemetri akışından türetilir. Barkod 1-by-1 üretim formu kaldırılmıştır.
           </p>
         </div>
       </div>
@@ -68,31 +67,22 @@ const OperatorGuidePage = () => (
                 <p className="mes-helper mt-2 mb-0">{body}</p>
               </div>
             </div>
-            <Link to={path} className="mes-btn-secondary">
-              Ekrana Git
-            </Link>
+            <Link to={path} className="mes-btn-secondary">Ekrana Git</Link>
           </div>
         </article>
       ))}
     </section>
 
     <section className="mes-surface p-5">
-      <h2 className="mes-section-title m-0">Ana akış</h2>
-      <ol className="mt-3 space-y-2 text-sm text-[color:var(--color-ink)]">
-        <li><strong>1. Vardiya Başlat</strong> — Operatör Paneli / Shift Widget.</li>
-        <li><strong>2. Live Stream</strong> — Makine telemetrisi OK·NOK, sıcaklık/RPM/titreşim üretir.</li>
-        <li><strong>3. Lot & OEE</strong> — Parti ilerleme çubukları ve vardiya OEE anlık güncellenir.</li>
-        <li><strong>4. Andon</strong> — Anomali eşikleri alarm yaratır; SignalR ile büyük ekrana düşer.</li>
-        <li><strong>5. Vardiya Bitir</strong> — Live Stream durur.</li>
+      <h2 className="mes-section-title m-0">Akış</h2>
+      <ol className="mt-3 space-y-2 text-sm">
+        <li>1. Vardiya Başlat</li>
+        <li>2. Live Stream → POST MachineMetrics (batch Actual/Good/Downtime)</li>
+        <li>3. Summary / OEE / Lot / Andon senkron güncellenir</li>
+        <li>4. Vardiya Bitir → stream durur</li>
       </ol>
       <div className="mt-4 flex flex-wrap gap-2">
-        <Link to="/sistem" className="mes-btn-primary">
-          <Radio size={16} />
-          Sistem Akışı
-        </Link>
-        <Link to="/operator" className="mes-btn-secondary">
-          Operatör Paneli
-        </Link>
+        <Link to="/sistem" className="mes-btn-primary"><Radio size={16} /> Sistem Akışı</Link>
       </div>
     </section>
   </div>

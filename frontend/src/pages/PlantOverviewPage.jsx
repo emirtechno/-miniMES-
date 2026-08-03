@@ -25,7 +25,13 @@ const toneForOee = (value) => {
 /**
  * Plant manager command center: factory-wide OEE and multi-line status timeline.
  */
-const PlantOverviewPage = ({ stationChartData = [], records = [], workOrders = [], liveStreaming = false }) => {
+const PlantOverviewPage = ({
+  stationChartData = [],
+  plantKpi = { good: 0, nok: 0, actual: 0, yield: 0 },
+  byStation = {},
+  workOrders = [],
+  liveStreaming = false,
+}) => {
   const [oeeByStation, setOeeByStation] = useState({});
   const [focusStation, setFocusStation] = useState(DEFAULT_STATION);
 
@@ -42,7 +48,7 @@ const PlantOverviewPage = ({ stationChartData = [], records = [], workOrders = [
       }),
     ).then((entries) => setOeeByStation(Object.fromEntries(entries)));
     return () => controller.abort();
-  }, []);
+  }, [liveStreaming, plantKpi.actual]);
 
   const plantAverage = useMemo(() => {
     const values = Object.values(oeeByStation)
@@ -61,8 +67,8 @@ const PlantOverviewPage = ({ stationChartData = [], records = [], workOrders = [
   );
 
   const activeWo = workOrders.filter((order) => order.status !== 'Tamamlandı').length;
-  const totalOk = records.filter((r) => r.kaliteDurumu === 'OK').length;
-  const totalNok = records.filter((r) => r.kaliteDurumu === 'NOK').length;
+  const totalOk = plantKpi.good || 0;
+  const totalNok = plantKpi.nok || 0;
 
   return (
     <div className="flex flex-col gap-5">
@@ -89,11 +95,11 @@ const PlantOverviewPage = ({ stationChartData = [], records = [], workOrders = [
             </div>
           </div>
           <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4">
-            <div className="text-xs font-semibold uppercase tracking-wide text-emerald-800">OK Üretim</div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-emerald-800">Σ Sağlam (OK)</div>
             <div className="font-display mt-1 text-3xl font-semibold text-emerald-950">{totalOk}</div>
           </div>
           <div className="rounded-xl border border-red-200 bg-red-50/70 p-4">
-            <div className="text-xs font-semibold uppercase tracking-wide text-red-800">NOK</div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-red-800">Σ Fire (NOK)</div>
             <div className="font-display mt-1 text-3xl font-semibold text-red-950">{totalNok}</div>
           </div>
           <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4">
@@ -110,9 +116,9 @@ const PlantOverviewPage = ({ stationChartData = [], records = [], workOrders = [
             const metric = oeeByStation[station.id];
             const oee = metric?.oee;
             const tone = toneForOee(oee);
-            const stationRecords = records.filter((r) => r.istasyonAdi === station.id);
-            const nokRatio = stationRecords.length
-              ? stationRecords.filter((r) => r.kaliteDurumu === 'NOK').length / stationRecords.length
+            const kpi = byStation[station.id] || {};
+            const nokRatio = kpi.actual
+              ? (kpi.nok || 0) / kpi.actual
               : 0;
             const segments = [
               { key: 'prod', label: 'Production', flex: tone === 'good' ? 5 : tone === 'warn' ? 3 : 2, color: '#0f9f6e' },

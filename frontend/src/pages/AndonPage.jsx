@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Navigate, Link } from 'react-router-dom';
 import { Activity, AlertTriangle, Factory, Radio } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { fetchAlarms, fetchLatestOee, fetchMachineMetrics } from '../services/api';
+import { fetchAlarms, fetchLatestOee, fetchTelemetrySummary } from '../services/api';
 import { useMesHub } from '../hooks/useMesHub';
 import { ACTIVE_STATION_DEFINITIONS, getStationDisplayName } from '../constants/stations';
 import './AndonPage.css';
@@ -20,6 +20,7 @@ const AndonPage = () => {
   const { isAuthenticated, currentUser } = useAuth();
   const [oeeByStation, setOeeByStation] = useState({});
   const [alarms, setAlarms] = useState([]);
+  const [plantGood, setPlantGood] = useState(null);
   const [clock, setClock] = useState(new Date());
   const [hubConnected, setHubConnected] = useState(false);
 
@@ -34,11 +35,13 @@ const AndonPage = () => {
 
     const load = async () => {
       try {
-        const [alarmPage] = await Promise.all([
+        const [alarmPage, summaries] = await Promise.all([
           fetchAlarms({ signal: controller.signal, limit: 20 }),
-          fetchMachineMetrics({ signal: controller.signal, limit: 50 }),
+          fetchTelemetrySummary({ signal: controller.signal }),
         ]);
         setAlarms(alarmPage.items.filter((alarm) => (alarm.status || '').toLowerCase() !== 'onaylandı').slice(0, 8));
+        const plant = (summaries || []).find((row) => !row.stationId);
+        setPlantGood(plant ? Number(plant.good) || 0 : null);
 
         const entries = await Promise.all(
           ANDON_STATIONS.map(async (stationId) => {
@@ -52,8 +55,9 @@ const AndonPage = () => {
         );
         setOeeByStation(Object.fromEntries(entries));
       } catch (error) {
-        if (error.name === 'CanceledError' || error.name === 'AbortError') return;
-        console.error(error);
+        if (error.name !== 'CanceledError' && error.name !== 'AbortError') {
+          console.error(error);
+        }
       }
     };
 
@@ -136,8 +140,8 @@ const AndonPage = () => {
           <strong>{openAlarmCount}</strong>
         </article>
         <article>
-          <small>İstasyon</small>
-          <strong>{ANDON_STATIONS.length}</strong>
+          <small>Σ Sağlam (Telemetri)</small>
+          <strong>{plantGood == null ? '—' : plantGood}</strong>
         </article>
       </section>
 
@@ -160,6 +164,7 @@ const AndonPage = () => {
                 <div><dt>Kullanılabilirlik</dt><dd>{metric?.availability ?? '—'}%</dd></div>
                 <div><dt>Performans</dt><dd>{metric?.performance ?? '—'}%</dd></div>
                 <div><dt>Kalite</dt><dd>{metric?.quality ?? '—'}%</dd></div>
+                <div><dt>Sağlam / Fire</dt><dd>{metric?.goodProduction ?? '—'} / {metric?.scrapProduction ?? '—'}</dd></div>
                 <div><dt>Duruş</dt><dd>{metric?.downtimeReason || 'Yok'}</dd></div>
               </dl>
             </article>

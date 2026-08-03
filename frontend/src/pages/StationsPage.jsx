@@ -48,10 +48,10 @@ const StationsPage = ({
   selectedStation,
   onStationChange,
   stationMetrics,
-  recentRecords,
+  recentTicks = [],
   stations,
-  records,
   onSelectStation,
+  byStation = {},
   liveStreaming = false,
   activeShiftStationId = null,
 }) => {
@@ -150,10 +150,10 @@ const StationsPage = ({
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {visibleStations.map((station) => {
-            const stationRecords = (records || []).filter((record) => record.istasyonAdi === station.id);
-            const total = stationRecords.length;
-            const ok = stationRecords.filter((record) => record.kaliteDurumu === 'OK').length;
-            const nok = stationRecords.filter((record) => record.kaliteDurumu === 'NOK').length;
+            const kpi = byStation[station.id] || { actual: 0, good: 0, nok: 0, yield: 0 };
+            const total = kpi.actual || 0;
+            const ok = kpi.good || 0;
+            const nok = kpi.nok || 0;
             const streamingHere = liveStreaming && activeShiftStationId === station.id;
             const status = statusFromMetrics({ total, ok, nok, streaming: streamingHere });
             const StatusIcon = status.Icon;
@@ -302,7 +302,7 @@ const StationsPage = ({
         selectedStation={selectedStation}
         onStationChange={onStationChange}
         stationMetrics={stationMetrics}
-        recentRecords={recentRecords}
+        recentTicks={recentTicks}
       />
     </div>
   );
