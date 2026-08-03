@@ -24,12 +24,17 @@ namespace MiniMesApi.Controllers
         }
 
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Alarm>>> GetAlarms()
+        public async Task<ActionResult<IEnumerable<Alarm>>> GetAlarms(
+            [FromQuery] int limit = 100,
+            CancellationToken cancellationToken = default)
         {
+            limit = Math.Clamp(limit, 1, 500);
+
             return await _context.Alarms
                 .AsNoTracking()
                 .OrderByDescending(a => a.Time)
-                .ToListAsync();
+                .Take(limit)
+                .ToListAsync(cancellationToken);
         }
 
         [HttpPost]

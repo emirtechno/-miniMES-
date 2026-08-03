@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MiniMesApi.Models;
@@ -9,6 +10,7 @@ namespace MiniMesApi.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize]
     public class OeeController : ControllerBase
     {
         private readonly MesDbContext _context;
@@ -19,12 +21,15 @@ namespace MiniMesApi.Controllers
         }
 
         [HttpGet("latest/{stationId}")]
-public async Task<IActionResult> GetLatestMetrics(string stationId)
+public async Task<IActionResult> GetLatestMetrics(
+    string stationId,
+    CancellationToken cancellationToken)
 {
     var metric = await _context.MachineMetrics
+        .AsNoTracking()
         .Where(m => m.StationId == stationId)
         .OrderByDescending(m => m.RecordedAt)
-        .FirstOrDefaultAsync();
+        .FirstOrDefaultAsync(cancellationToken);
 
     if (metric == null)
     {

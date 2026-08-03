@@ -23,22 +23,25 @@ namespace MiniMesApi.Middlewares
             }
             catch (Exception ex)
             {
-                // Hatayı konsola/log dosyasına detaylıca basıyoruz
-                _logger.LogError(ex, $"[MES AKIŞ HATASI]: {ex.Message}");
-                
-                await HandleExceptionAsync(httpContext, ex);
+                _logger.LogError(
+                    ex,
+                    "[MES AKIŞ HATASI] {Method} {Path} işlenirken hata oluştu. TraceId: {TraceId}",
+                    httpContext.Request.Method,
+                    httpContext.Request.Path,
+                    httpContext.TraceIdentifier);
+
+                await HandleExceptionAsync(httpContext);
             }
         }
 
-        private static Task HandleExceptionAsync(HttpContext context, Exception exception)
+        private static Task HandleExceptionAsync(HttpContext context)
         {
             context.Response.ContentType = "application/json";
             context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
 
-            // Senin mevcut ApiResponse.FailResult metodunu kullanıyoruz
             var response = ApiResponse<string>.FailResult(
                 message: "Sunucu tarafında beklenmeyen bir hata oluştu.",
-                errors: new List<string> { exception.Message }
+                errors: new List<string> { $"Hata referansı: {context.TraceIdentifier}" }
             );
 
             var jsonOptions = new JsonSerializerOptions

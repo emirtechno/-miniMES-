@@ -1,71 +1,83 @@
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using MiniMesApi.Models;
-using System;
-using System.Threading;
-using System.Threading.Tasks;
+using MiniMesApi.Options;
 
 namespace MiniMesApi.Services
 {
     public class OeeSimulationService : BackgroundService
     {
-        private readonly IServiceProvider _serviceProvider;
+        private static readonly string[] Stations = ["STATION-01", "STATION-02", "STATION-03"];
+        private readonly IServiceScopeFactory _scopeFactory;
         private readonly ILogger<OeeSimulationService> _logger;
-        private readonly Random _random = new();
+        private readonly TimeSpan _interval;
 
-        // 🏭 Fabrikadaki İstasyon Listesi
-        private readonly string[] _stations = { "STATION-01", "STATION-02", "STATION-03" };
-
-        public OeeSimulationService(IServiceProvider serviceProvider, ILogger<OeeSimulationService> logger)
+        public OeeSimulationService(
+            IServiceScopeFactory scopeFactory,
+            IOptions<OeeSimulationOptions> options,
+            ILogger<OeeSimulationService> logger)
         {
-            _serviceProvider = serviceProvider;
+            _scopeFactory = scopeFactory;
             _logger = logger;
+            _interval = TimeSpan.FromSeconds(options.Value.IntervalSeconds);
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            _logger.LogInformation("OEE Çoklu İstasyon Simülasyon Servisi Başlatıldı.");
+            _logger.LogInformation(
+                "OEE simülasyon servisi {IntervalSeconds} saniye aralıkla başlatıldı.",
+                _interval.TotalSeconds);
 
+            var retryDelay = TimeSpan.FromSeconds(5);
             while (!stoppingToken.IsCancellationRequested)
             {
-                using (var scope = _serviceProvider.CreateScope())
+                try
                 {
-                    var dbContext = scope.ServiceProvider.GetRequiredService<MesDbContext>();
-
-                    // Her bir istasyon için döngüye girip ayrı ayrı veri üretelim
-                    foreach (var stationId in _stations)
-                    {
-                        var plannedSeconds = 300.0; 
-                        var downtimeSeconds = _random.Next(10, 60); 
-                        var idealCycleTime = 2.0; 
-
-                        var totalProduced = _random.Next(100, 140);
-                        var scrapCount = _random.Next(0, 8); 
-                        var goodCount = totalProduced - scrapCount;
-
-                        var metric = new MachineMetric
-                        {
-                            StationId = stationId, // Dinamik istasyon adı
-                            PlannedProductionSeconds = plannedSeconds,
-                            DowntimeSeconds = downtimeSeconds,
-                            IdealCycleTimeSeconds = idealCycleTime,
-                            ActualProductionCount = totalProduced,
-                            GoodProductionCount = goodCount,
-                            RecordedAt = DateTime.UtcNow
-                        };
-
-                        dbContext.MachineMetrics.Add(metric);
-                        _logger.LogInformation("Simülasyon Verisi Eklendi: Station={Station}, Good={Good}, Total={Total}", 
-                            metric.StationId, metric.GoodProductionCount, metric.ActualProductionCount);
-                    }
-
-                    await dbContext.SaveChangesAsync(stoppingToken);
+                    await WriteMetricsAsync(stoppingToken);
+                    retryDelay = TimeSpan.FromSeconds(5);
+                    await Task.Delay(_interval, stoppingToken);
                 }
-
-                // 15 saniyede bir tüm istasyonlar için yeni veriler üret
-                await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken);
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(
+                        ex,
+                        "OEE simülasyon verisi yazılamadı. {RetrySeconds} saniye sonra yeniden denenecek.",
+                        retryDelay.TotalSeconds);
+                    await Task.Delay(retryDelay, stoppingToken);
+                    retryDelay = TimeSpan.FromSeconds(Math.Min(retryDelay.TotalSeconds * 2, 60));
+                }
             }
+        }
+
+        private async Task WriteMetricsAsync(CancellationToken cancellationToken)
+        {
+            await using var scope = _scopeFactory.CreateAsyncScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<MesDbContext>();
+            var recordedAt = DateTime.UtcNow;
+
+            var metrics = Stations.Select(stationId =>
+            {
+                var totalProduced = Random.Shared.Next(100, 140);
+                var scrapCount = Random.Shared.Next(0, 8);
+
+                return new MachineMetric
+                {
+                    StationId = stationId,
+                    PlannedProductionSeconds = 300,
+                    DowntimeSeconds = Random.Shared.Next(10, 60),
+                    IdealCycleTimeSeconds = 2,
+                    ActualProductionCount = totalProduced,
+                    GoodProductionCount = totalProduced - scrapCount,
+                    RecordedAt = recordedAt
+                };
+            });
+
+            dbContext.MachineMetrics.AddRange(metrics);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            _logger.LogDebug("OEE simülasyon verisi {RecordedAt} zamanında kaydedildi.", recordedAt);
         }
     }
 }
