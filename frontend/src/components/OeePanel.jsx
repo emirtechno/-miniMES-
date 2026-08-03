@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { fetchLatestOee } from '../services/api';
 import { useNonOverlappingPolling } from '../hooks/useNonOverlappingPolling';
+import { useMesHub } from '../hooks/useMesHub';
 import { DEFAULT_STATION } from '../constants/stations';
 
 const Gauge = ({ label, value, detail }) => {
@@ -34,6 +35,13 @@ const Gauge = ({ label, value, detail }) => {
 const OeePanel = ({ stationId = DEFAULT_STATION }) => {
   const [metric, setMetric] = useState(null);
 
+  const handleOeeUpdated = useCallback((metrics) => {
+    const latest = (metrics || []).find((item) => item.stationId === stationId);
+    if (latest) setMetric(latest);
+  }, [stationId]);
+
+  useMesHub({ onOeeUpdated: handleOeeUpdated });
+
   useNonOverlappingPolling(async (signal) => {
     try {
       setMetric(await fetchLatestOee(stationId, { signal }));
@@ -43,7 +51,7 @@ const OeePanel = ({ stationId = DEFAULT_STATION }) => {
     }
   }, {
     enabled: Boolean(stationId),
-    intervalMs: 10000,
+    intervalMs: 30000,
     resetKey: stationId,
   });
 

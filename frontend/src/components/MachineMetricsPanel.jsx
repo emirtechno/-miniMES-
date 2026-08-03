@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Cpu } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { fetchLatestOee, fetchMachineMetrics } from '../services/api';
 import { useNonOverlappingPolling } from '../hooks/useNonOverlappingPolling';
+import { useMesHub } from '../hooks/useMesHub';
 import { DEFAULT_STATION, STATIONS } from '../constants/stations';
 
 const MachineMetricsPanel = () => {
@@ -10,6 +11,13 @@ const MachineMetricsPanel = () => {
   const [selectedStation, setSelectedStation] = useState(DEFAULT_STATION);
   const [oeeData, setOeeData] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  const handleOeeUpdated = useCallback((payload) => {
+    const latest = (payload || []).find((item) => item.stationId === selectedStation);
+    if (latest) setOeeData(latest);
+  }, [selectedStation]);
+
+  useMesHub({ onOeeUpdated: handleOeeUpdated });
 
   useNonOverlappingPolling(async (signal) => {
     try {
@@ -31,7 +39,7 @@ const MachineMetricsPanel = () => {
     }
   }, {
     enabled: true,
-    intervalMs: 5000,
+    intervalMs: 20000,
     resetKey: selectedStation,
   });
 

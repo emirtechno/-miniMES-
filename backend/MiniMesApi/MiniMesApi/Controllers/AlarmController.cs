@@ -10,6 +10,8 @@ using MiniMesApi.Infrastructure;
 using MiniMesApi.Security;
 using MiniMesApi.Models;
 
+using MiniMesApi.Services;
+
 namespace MiniMesApi.Controllers
 {
     [Route("api/[controller]")]
@@ -19,11 +21,16 @@ namespace MiniMesApi.Controllers
     {
         private readonly MesDbContext _context;
         private readonly ILogger<AlarmController> _logger;
+        private readonly IMesRealtimePublisher _realtime;
 
-        public AlarmController(MesDbContext context, ILogger<AlarmController> logger)
+        public AlarmController(
+            MesDbContext context,
+            ILogger<AlarmController> logger,
+            IMesRealtimePublisher realtime)
         {
             _context = context;
             _logger = logger;
+            _realtime = realtime;
         }
 
         [HttpGet]
@@ -97,8 +104,10 @@ namespace MiniMesApi.Controllers
             {
                 _context.Alarms.Add(alarm);
                 await _context.SaveChangesAsync(cancellationToken);
+                var dto = ToDto(alarm);
+                await _realtime.AlarmCreatedAsync(dto, cancellationToken);
 
-                return CreatedAtAction(nameof(GetAlarms), ToDto(alarm));
+                return CreatedAtAction(nameof(GetAlarms), dto);
             }
             catch (Exception ex)
             {
@@ -121,7 +130,9 @@ namespace MiniMesApi.Controllers
 
                 alarm.Status = "Onaylandı";
                 await _context.SaveChangesAsync(cancellationToken);
-                return Ok(ToDto(alarm));
+                var dto = ToDto(alarm);
+                await _realtime.AlarmUpdatedAsync(dto, cancellationToken);
+                return Ok(dto);
             }
             catch (Exception ex)
             {
@@ -147,6 +158,7 @@ namespace MiniMesApi.Controllers
 
                 _context.Alarms.Remove(alarm);
                 await _context.SaveChangesAsync(cancellationToken);
+                await _realtime.AlarmDeletedAsync(id, cancellationToken);
 
                 return Ok(new { success = true, message = "Alarm başarıyla silindi.", id });
             }
