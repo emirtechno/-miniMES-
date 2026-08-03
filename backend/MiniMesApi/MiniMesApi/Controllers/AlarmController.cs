@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Claims;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
@@ -57,19 +58,9 @@ namespace MiniMesApi.Controllers
                 .OrderByDescending(a => a.Time)
                 .ThenByDescending(a => a.Id)
                 .Take(limit + 1)
-                .Select(alarm => new AlarmDto
-                {
-                    Id = alarm.Id,
-                    Title = alarm.Title,
-                    Station = alarm.Station,
-                    Severity = alarm.Severity,
-                    Time = alarm.Time,
-                    Status = alarm.Status,
-                    Description = alarm.Description
-                })
                 .ToListAsync(cancellationToken);
 
-            var items = alarms.Take(limit).ToArray();
+            var items = alarms.Take(limit).Select(ToDto).ToArray();
             return Ok(new CursorPage<AlarmDto>
             {
                 Items = items,
@@ -118,7 +109,7 @@ namespace MiniMesApi.Controllers
 
         [HttpPut("acknowledge/{id}")]
         [Authorize(Policy = PolicyNames.AlarmManage)]
-        public async Task<IActionResult> AcknowledgeAlarm(int id, CancellationToken cancellationToken)
+        public async Task<ActionResult<AlarmDto>> AcknowledgeAlarm(int id, CancellationToken cancellationToken)
         {
             try
             {
@@ -128,7 +119,14 @@ namespace MiniMesApi.Controllers
                     return Problem(statusCode: StatusCodes.Status404NotFound, title: "Alarm bulunamadı.");
                 }
 
+                if (alarm.Status == "Çözüldü")
+                {
+                    return Problem(statusCode: StatusCodes.Status409Conflict, title: "Çözülmüş alarm yeniden onaylanamaz.");
+                }
+
                 alarm.Status = "Onaylandı";
+                alarm.AcknowledgedAt = DateTimeOffset.UtcNow;
+                alarm.AcknowledgedBy = ResolveActor();
                 await _context.SaveChangesAsync(cancellationToken);
                 var dto = ToDto(alarm);
                 await _realtime.AlarmUpdatedAsync(dto, cancellationToken);
@@ -141,32 +139,52 @@ namespace MiniMesApi.Controllers
             }
         }
 
-        // ==========================================
-        // 🚨 ALARM SİLME (DELETE) ENDPOINT'İ (EKLENDİ)
-        // ==========================================
-        [HttpDelete("{id}")]
+        [HttpPut("resolve/{id}")]
         [Authorize(Policy = PolicyNames.AlarmManage)]
-        public async Task<IActionResult> DeleteAlarm(int id, CancellationToken cancellationToken)
+        public async Task<ActionResult<AlarmDto>> ResolveAlarm(int id, CancellationToken cancellationToken)
         {
             try
             {
                 var alarm = await _context.Alarms.FindAsync([id], cancellationToken);
                 if (alarm == null)
                 {
-                    return Problem(statusCode: StatusCodes.Status404NotFound, title: "Silinecek alarm bulunamadı.");
+                    return Problem(statusCode: StatusCodes.Status404NotFound, title: "Alarm bulunamadı.");
                 }
 
-                _context.Alarms.Remove(alarm);
-                await _context.SaveChangesAsync(cancellationToken);
-                await _realtime.AlarmDeletedAsync(id, cancellationToken);
+                if (alarm.Status == "Çözüldü")
+                {
+                    return Ok(ToDto(alarm));
+                }
 
-                return Ok(new { success = true, message = "Alarm başarıyla silindi.", id });
+                // Soft-close for audit: never hard-delete downtime records.
+                if (alarm.AcknowledgedAt is null)
+                {
+                    alarm.AcknowledgedAt = DateTimeOffset.UtcNow;
+                    alarm.AcknowledgedBy = ResolveActor();
+                }
+
+                alarm.Status = "Çözüldü";
+                alarm.ResolvedAt = DateTimeOffset.UtcNow;
+                alarm.ResolvedBy = ResolveActor();
+                await _context.SaveChangesAsync(cancellationToken);
+                var dto = ToDto(alarm);
+                await _realtime.AlarmUpdatedAsync(dto, cancellationToken);
+                return Ok(dto);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "{AlarmId} numaralı alarm silinirken beklenmeyen hata oluştu.", id);
-                return Problem(statusCode: StatusCodes.Status500InternalServerError, title: "Alarm silinemedi.");
+                _logger.LogError(ex, "{AlarmId} numaralı alarm çözülürken beklenmeyen hata oluştu.", id);
+                return Problem(statusCode: StatusCodes.Status500InternalServerError, title: "Alarm çözülemedi.");
             }
+        }
+
+        private string ResolveActor()
+        {
+            return User.FindFirstValue("display_name")
+                ?? User.Identity?.Name
+                ?? User.FindFirstValue(ClaimTypes.Name)
+                ?? User.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? "sistem";
         }
 
         private static AlarmDto ToDto(Alarm alarm)
@@ -179,7 +197,11 @@ namespace MiniMesApi.Controllers
                 Severity = alarm.Severity,
                 Time = alarm.Time,
                 Status = alarm.Status,
-                Description = alarm.Description
+                Description = alarm.Description,
+                AcknowledgedAt = alarm.AcknowledgedAt,
+                AcknowledgedBy = alarm.AcknowledgedBy,
+                ResolvedAt = alarm.ResolvedAt,
+                ResolvedBy = alarm.ResolvedBy
             };
         }
     }

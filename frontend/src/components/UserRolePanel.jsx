@@ -4,6 +4,7 @@ import {
   createUser,
   fetchUsers,
   getApiErrorMessage,
+  getApiValidationErrors,
   updateUserRoles,
   updateUserStatus,
 } from '../services/api';
@@ -49,9 +50,15 @@ const UserRolePanel = () => {
     try {
       await createUser(form);
       setForm({ username: '', displayName: '', password: '', role: 'Operator' });
+      setError('');
       await loadUsers();
     } catch (requestError) {
-      setError(getApiErrorMessage(requestError, 'Kullanıcı oluşturulamadı.'));
+      const details = getApiValidationErrors(requestError);
+      setError(
+        details.length
+          ? details.join(' · ')
+          : getApiErrorMessage(requestError, 'Kullanıcı oluşturulamadı.'),
+      );
     }
   };
 
@@ -116,12 +123,13 @@ const UserRolePanel = () => {
         <input
           className="mes-input"
           type="password"
-          placeholder="Parola (≥3 karakter)"
+          placeholder="Parola (büyük/küçük harf, rakam, özel karakter)"
           autoComplete="new-password"
           value={form.password}
           onChange={(event) => setForm({ ...form, password: event.target.value })}
           minLength={3}
           required
+          title="Identity kuralları: en az 3 karakter; büyük harf, küçük harf, rakam ve alfanümerik olmayan karakter gerekir."
         />
         <select
           className="mes-input"
@@ -141,7 +149,15 @@ const UserRolePanel = () => {
         </button>
       </form>
 
-      {error && <p className="mb-3 text-sm font-medium text-[color:var(--color-nok)]">{error}</p>}
+      {error && (
+        <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-800" role="alert">
+          {error}
+        </div>
+      )}
+
+      <p className="mes-helper mb-3">
+        Parola kuralları: büyük harf, küçük harf, rakam ve özel karakter; Identity doğrulama hataları burada ayrıntılı gösterilir.
+      </p>
 
       {loading ? (
         <p className="mes-helper">Kullanıcılar yükleniyor...</p>

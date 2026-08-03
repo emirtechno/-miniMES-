@@ -10,7 +10,6 @@ const QualityPage = ({
   workOrders,
   alarms,
   batches,
-  batchActions,
   deleted,
   production,
   permissions,
@@ -67,17 +66,10 @@ const QualityPage = ({
       <AlarmPanel
         alarms={alarms.items}
         onAcknowledge={permissions.canManageAlarms ? alarms.onAcknowledge : undefined}
-        onDelete={permissions.canManageAlarms ? alarms.onDelete : undefined}
+        onResolve={permissions.canManageAlarms ? alarms.onResolve : undefined}
       />
 
-      <TraceabilityPanel
-        batches={batches}
-        canManage={permissions.canManageWorkOrders}
-        onAdvance={batchActions?.onAdvance}
-        onReopen={batchActions?.onReopen}
-        onProgress={batchActions?.onProgress}
-        busyId={batchActions?.busyId}
-      />
+      <TraceabilityPanel batches={batches} />
 
       {permissions.canManageUsers && <UserRolePanel />}
 

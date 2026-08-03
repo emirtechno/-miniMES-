@@ -53,16 +53,27 @@ const fetchPage = async (path, { cursor, limit = 50, signal } = {}) => {
 
 export const getApiErrorMessage = (error, fallback = 'İşlem tamamlanamadı.') => {
   const data = error?.response?.data;
-  if (data?.detail) return data.detail;
-  if (data?.title) return data.title;
-  if (data?.message) return data.message;
   if (data?.errors) {
     const validationErrors = Array.isArray(data.errors)
       ? data.errors
-      : Object.values(data.errors).flat();
-    if (validationErrors.length) return validationErrors.join(' ');
+      : Object.values(data.errors).flat().filter(Boolean);
+    if (validationErrors.length) return validationErrors.join(' · ');
   }
+  if (data?.detail) return data.detail;
+  if (data?.title && data.title !== 'One or more validation errors occurred.') return data.title;
+  if (data?.message) return data.message;
   return error?.message || fallback;
+};
+
+/** Collect all ASP.NET validation error strings for multi-line UI display. */
+export const getApiValidationErrors = (error) => {
+  const data = error?.response?.data;
+  if (!data?.errors) return [];
+  if (Array.isArray(data.errors)) return data.errors.filter(Boolean);
+  return Object.entries(data.errors).flatMap(([field, messages]) => {
+    const list = Array.isArray(messages) ? messages : [messages];
+    return list.filter(Boolean).map((message) => (field && field !== '' ? `${field}: ${message}` : message));
+  });
 };
 
 export const login = async (username, password) => {
@@ -113,6 +124,11 @@ export const createAlarm = async (payload) => {
 
 export const acknowledgeAlarm = async (id) => {
   const response = await apiClient.put(`/Alarm/acknowledge/${id}`);
+  return response.data;
+};
+
+export const resolveAlarm = async (id) => {
+  const response = await apiClient.put(`/Alarm/resolve/${id}`);
   return response.data;
 };
 

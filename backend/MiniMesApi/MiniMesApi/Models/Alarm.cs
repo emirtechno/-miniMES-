@@ -28,5 +28,15 @@ namespace MiniMesApi.Models
 
         [StringLength(400)]
         public string Description { get; set; } = string.Empty;
+
+        public DateTimeOffset? AcknowledgedAt { get; set; }
+
+        [StringLength(100)]
+        public string? AcknowledgedBy { get; set; }
+
+        public DateTimeOffset? ResolvedAt { get; set; }
+
+        [StringLength(100)]
+        public string? ResolvedBy { get; set; }
     }
 }

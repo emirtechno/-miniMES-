@@ -2,11 +2,17 @@ import { useCallback, useState } from 'react';
 import { fetchLatestOee } from '../services/api';
 import { useNonOverlappingPolling } from '../hooks/useNonOverlappingPolling';
 import { useMesHub } from '../hooks/useMesHub';
-import { DEFAULT_STATION, getStationDisplayName } from '../constants/stations';
+import {
+  ACTIVE_STATION_DEFINITIONS,
+  DEFAULT_STATION,
+  getStationDisplayName,
+} from '../constants/stations';
 import OeeInsight from './OeeInsight';
 import InfoTip from './InfoTip';
+import CardHeader from './CardHeader';
+import { Gauge } from 'lucide-react';
 
-const Gauge = ({ label, value, detail }) => {
+const GaugeMeter = ({ label, value, detail }) => {
   const isAvailable = typeof value === 'number' && !Number.isNaN(value);
   const normalizedValue = isAvailable ? Math.max(0, Math.min(value, 100)) : 0;
   const radius = 42;
@@ -42,8 +48,23 @@ const Gauge = ({ label, value, detail }) => {
   );
 };
 
-const OeePanel = ({ stationId = DEFAULT_STATION }) => {
+/**
+ * OEE gauges with interactive station selector (Availability / Performance / Quality / OEE).
+ */
+const OeePanel = ({
+  stationId: controlledStationId,
+  onStationChange,
+  showStationSelector = true,
+  defaultStationId = DEFAULT_STATION,
+}) => {
+  const [internalStationId, setInternalStationId] = useState(controlledStationId || defaultStationId);
+  const stationId = controlledStationId || internalStationId;
   const [metric, setMetric] = useState(null);
+
+  const handleStationSelect = (nextId) => {
+    if (!controlledStationId) setInternalStationId(nextId);
+    onStationChange?.(nextId);
+  };
 
   const handleOeeUpdated = useCallback((metrics) => {
     const latest = (metrics || []).find((item) => item.stationId === stationId);
@@ -71,35 +92,57 @@ const OeePanel = ({ stationId = DEFAULT_STATION }) => {
 
   return (
     <section className="mes-surface p-5">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <h2 className="mes-section-title m-0 flex items-center gap-2">
-            OEE / Hat Verimliliği — {getStationDisplayName(stationId)}
-            <InfoTip text="OEE = Kullanılabilirlik × Performans × Kalite. Veriler API ve (açıksa) arka plan simülasyonundan gelir; SignalR ile canlı güncellenir." />
-          </h2>
-          <p className="mes-helper mt-1 mb-0">Son güncelleme: {lastUpdated}</p>
-        </div>
-      </div>
+      <CardHeader
+        icon={Gauge}
+        title={`OEE / Hat Verimliliği — ${getStationDisplayName(stationId)}`}
+        subtitle={`Son güncelleme: ${lastUpdated}`}
+        actions={showStationSelector ? (
+          <select
+            className="mes-input h-10 w-auto min-w-[200px]"
+            value={stationId}
+            onChange={(event) => handleStationSelect(event.target.value)}
+            aria-label="OEE istasyon seçimi"
+          >
+            {ACTIVE_STATION_DEFINITIONS.map((station) => (
+              <option key={station.id} value={station.id}>
+                {station.displayName}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <InfoTip text="OEE = Kullanılabilirlik × Performans × Kalite. Veriler API ve (açıksa) arka plan simülasyonundan gelir; SignalR ile canlı güncellenir." />
+        )}
+      />
+
+      {showStationSelector && (
+        <p className="mes-helper -mt-2 mb-3">
+          İstasyon seçerek Availability, Performance, Quality ve OEE metriklerini yenileyin.
+          <InfoTip
+            className="ml-1"
+            text="OEE = Kullanılabilirlik × Performans × Kalite. Veriler API ve (açıksa) arka plan simülasyonundan gelir."
+          />
+        </p>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Gauge
+        <GaugeMeter
           label="Kullanılabilirlik"
           value={metric?.availability}
           detail={metric?.downtimeReason
             ? `${metric.downtimeReason}${metric.isPlannedDowntime ? ' (planlı)' : ''}`
             : 'Planlı süre ve duruş verisi'}
         />
-        <Gauge
+        <GaugeMeter
           label="Performans"
           value={metric?.performance}
           detail={metric?.shiftName || 'İdeal çevrim ve gerçekleşen üretim'}
         />
-        <Gauge
+        <GaugeMeter
           label="Kalite"
           value={metric?.quality}
           detail={`${metric?.goodProduction ?? 0} OK / ${metric?.totalProduction ?? 0} Toplam`}
         />
-        <Gauge
+        <GaugeMeter
           label="OEE"
           value={metric?.oee}
           detail={`${metric?.scrapProduction ?? 0} fire`}

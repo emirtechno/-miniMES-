@@ -453,15 +453,9 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
                     error: alarms.alarmError,
                     onCreateTest: alarms.createTestAlarm,
                     onAcknowledge: alarms.handleAcknowledgeAlarm,
-                    onDelete: alarms.handleDeleteAlarm,
+                    onResolve: alarms.handleResolveAlarm,
                   }}
                   batches={workOrders.batches}
-                  batchActions={{
-                    onAdvance: workOrders.handleAdvanceBatch,
-                    onReopen: workOrders.handleReopenBatch,
-                    onProgress: workOrders.handleUpdateBatchProgress,
-                    busyId: workOrders.batchBusyId,
-                  }}
                   deleted={{
                     items: production.deletedRecords,
                     loading: production.deletedLoading,
