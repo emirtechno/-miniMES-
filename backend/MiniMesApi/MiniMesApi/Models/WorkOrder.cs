@@ -23,5 +23,8 @@ namespace MiniMesApi.Models
         [Required]
         [StringLength(30)]
         public string Status { get; set; } = "Bekliyor";
+
+        [Timestamp]
+        public byte[] RowVersion { get; set; } = [];
     }
 }

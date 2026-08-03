@@ -1,5 +1,6 @@
 using FluentValidation;
 using MiniMesApi.DTOs;
+using MiniMesApi.Models;
 
 namespace MiniMesApi.Validators
 {
@@ -18,7 +19,8 @@ namespace MiniMesApi.Validators
 
             RuleFor(x => x.IstasyonAdi)
                 .NotEmpty().WithMessage("İstasyon adı seçilmelidir.")
-                .MaximumLength(50).WithMessage("İstasyon adı 50 karakterden uzun olamaz.");
+                .MaximumLength(50).WithMessage("İstasyon adı 50 karakterden uzun olamaz.")
+                .Must(StationCatalog.Contains).WithMessage("Geçersiz istasyon kimliği.");
 
             RuleFor(x => x.KaliteDurumu)
                 .NotEmpty().WithMessage("Kalite durumu belirtilmelidir.")

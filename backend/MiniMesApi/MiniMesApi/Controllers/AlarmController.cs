@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using MiniMesApi.DTOs;
+using MiniMesApi.Infrastructure;
 using MiniMesApi.Security;
 using MiniMesApi.Models;
 
@@ -26,16 +27,29 @@ namespace MiniMesApi.Controllers
         }
 
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<AlarmDto>>> GetAlarms(
-            [FromQuery] int limit = 100,
+        public async Task<ActionResult<CursorPage<AlarmDto>>> GetAlarms(
+            [FromQuery] int limit = 50,
+            [FromQuery] string? cursor = null,
             CancellationToken cancellationToken = default)
         {
-            limit = Math.Clamp(limit, 1, 500);
+            limit = Math.Clamp(limit, 1, 200);
+            if (!CursorCodec.TryDecodeTimestamp(cursor, out var cursorTime, out var cursorId))
+            {
+                return Problem(statusCode: StatusCodes.Status400BadRequest, title: "Geçersiz sayfalama imleci.");
+            }
 
-            return await _context.Alarms
-                .AsNoTracking()
+            var query = _context.Alarms.AsNoTracking();
+            if (!string.IsNullOrWhiteSpace(cursor))
+            {
+                query = query.Where(alarm =>
+                    alarm.Time < cursorTime ||
+                    (alarm.Time == cursorTime && alarm.Id < cursorId));
+            }
+
+            var alarms = await query
                 .OrderByDescending(a => a.Time)
-                .Take(limit)
+                .ThenByDescending(a => a.Id)
+                .Take(limit + 1)
                 .Select(alarm => new AlarmDto
                 {
                     Id = alarm.Id,
@@ -47,12 +61,28 @@ namespace MiniMesApi.Controllers
                     Description = alarm.Description
                 })
                 .ToListAsync(cancellationToken);
+
+            var items = alarms.Take(limit).ToArray();
+            return Ok(new CursorPage<AlarmDto>
+            {
+                Items = items,
+                NextCursor = alarms.Count > limit && items.Length > 0
+                    ? CursorCodec.EncodeTimestamp(items[^1].Time, items[^1].Id)
+                    : null
+            });
         }
 
         [HttpPost]
         [Authorize(Policy = PolicyNames.AlarmWrite)]
-        public async Task<ActionResult<AlarmDto>> CreateAlarm([FromBody] CreateAlarmDto request)
+        public async Task<ActionResult<AlarmDto>> CreateAlarm(
+            [FromBody] CreateAlarmDto request,
+            CancellationToken cancellationToken)
         {
+            if (!StationCatalog.Contains(request.Station))
+            {
+                return Problem(statusCode: StatusCodes.Status400BadRequest, title: "Geçersiz istasyon kimliği.");
+            }
+
             var alarm = new Alarm
             {
                 Title = request.Title,
@@ -66,7 +96,7 @@ namespace MiniMesApi.Controllers
             try
             {
                 _context.Alarms.Add(alarm);
-                await _context.SaveChangesAsync();
+                await _context.SaveChangesAsync(cancellationToken);
 
                 return CreatedAtAction(nameof(GetAlarms), ToDto(alarm));
             }
@@ -79,18 +109,18 @@ namespace MiniMesApi.Controllers
 
         [HttpPut("acknowledge/{id}")]
         [Authorize(Policy = PolicyNames.AlarmManage)]
-        public async Task<IActionResult> AcknowledgeAlarm(int id)
+        public async Task<IActionResult> AcknowledgeAlarm(int id, CancellationToken cancellationToken)
         {
             try
             {
-                var alarm = await _context.Alarms.FindAsync(id);
+                var alarm = await _context.Alarms.FindAsync([id], cancellationToken);
                 if (alarm == null)
                 {
                     return Problem(statusCode: StatusCodes.Status404NotFound, title: "Alarm bulunamadı.");
                 }
 
                 alarm.Status = "Onaylandı";
-                await _context.SaveChangesAsync();
+                await _context.SaveChangesAsync(cancellationToken);
                 return Ok(ToDto(alarm));
             }
             catch (Exception ex)
@@ -105,18 +135,18 @@ namespace MiniMesApi.Controllers
         // ==========================================
         [HttpDelete("{id}")]
         [Authorize(Policy = PolicyNames.AlarmManage)]
-        public async Task<IActionResult> DeleteAlarm(int id)
+        public async Task<IActionResult> DeleteAlarm(int id, CancellationToken cancellationToken)
         {
             try
             {
-                var alarm = await _context.Alarms.FindAsync(id);
+                var alarm = await _context.Alarms.FindAsync([id], cancellationToken);
                 if (alarm == null)
                 {
                     return Problem(statusCode: StatusCodes.Status404NotFound, title: "Silinecek alarm bulunamadı.");
                 }
 
                 _context.Alarms.Remove(alarm);
-                await _context.SaveChangesAsync();
+                await _context.SaveChangesAsync(cancellationToken);
 
                 return Ok(new { success = true, message = "Alarm başarıyla silindi.", id });
             }

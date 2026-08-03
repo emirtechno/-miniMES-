@@ -6,7 +6,7 @@ namespace MiniMesApi.Services
 {
     public class OeeSimulationService : BackgroundService
     {
-        private static readonly string[] Stations = ["STATION-01", "STATION-02", "STATION-03"];
+        private static readonly IReadOnlyCollection<string> Stations = StationCatalog.All;
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly ILogger<OeeSimulationService> _logger;
         private readonly TimeSpan _interval;
