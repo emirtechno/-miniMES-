@@ -49,7 +49,7 @@ const SystemFlowPage = () => (
         <ul className="mt-3 space-y-2 text-sm">
           <li>Gerçek PLC / SCADA yerine <em>demo telemetrisi</em>dir.</li>
           <li>Vardiya ve duruş nedeni kataloglarından seçilir.</li>
-          <li>Üretim Paneli’ndeki “Simülasyonu Başlat” düğmesi istemci tarafı üretim kaydı üretmeye yarar; OEE simülasyonundan ayrıdır.</li>
+          <li>Makine Metrikleri’ndeki “Simülasyonu Çalıştır / Pause Live Stream” istemci tarafı üretim kaydı + NOK alarmı üretir; backend OEE simülasyonundan ayrıdır ama aynı canlı durumları besler.</li>
         </ul>
       </article>
 
@@ -63,9 +63,10 @@ const SystemFlowPage = () => (
           Simülasyon kapalı olsa bile bu akış çalışır.
         </p>
         <ul className="mt-3 space-y-2 text-sm">
-          <li><strong>Üretim kaydı:</strong> Üretim Paneli formu</li>
+          <li><strong>Üretim kaydı:</strong> Operatör Paneli formu</li>
           <li><strong>Alarm:</strong> Kalite ekranı</li>
-          <li><strong>Metrik:</strong> Makine Metrikleri formu</li>
+          <li><strong>Metrik / Live Stream:</strong> Makine Metrikleri</li>
+          <li><strong>Fabrika özeti:</strong> Fabrika Genel Bakış</li>
         </ul>
       </article>
     </section>
@@ -83,13 +84,14 @@ const SystemFlowPage = () => (
       |                           +--OeeSimulationService (dev)--+
       |                                                          |
       +------------- SignalR /hubs/mes <-------------------------+
-           (oeeUpdated, alarmCreated/Updated/Deleted)`}
+           (oeeUpdated, alarmCreated/Updated/Deleted)
+[Makine Metrikleri Live Stream] --> üretim OK/NOK + lot progress + alarm`}
       </pre>
     </section>
 
     <div className="flex flex-wrap gap-2">
       <Link to="/kilavuz" className="mes-btn-secondary">Kullanım Kılavuzuna Dön</Link>
-      <Link to="/dashboard" className="mes-btn-primary">Üretim Paneline Git</Link>
+      <Link to="/makine-metrikleri" className="mes-btn-primary">Makine Metriklerine Git</Link>
     </div>
   </div>
 );

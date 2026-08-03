@@ -1,10 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import MachineMetricsPanel from './components/MachineMetricsPanel';
 import {
   Factory,
   Activity,
-  LayoutDashboard,
   Cpu,
   RefreshCw,
   LogOut,
@@ -23,13 +22,9 @@ import { useAuth } from './context/AuthContext';
 import { useNotify } from './context/NotificationContext';
 import { PersonaProvider, usePersona } from './context/PersonaContext';
 import { ShiftSessionProvider, useShiftSession } from './context/ShiftSessionContext';
-import { downloadWorkbook } from './utils/excelExport';
-import { getApiErrorMessage } from './services/api';
 
-import DetailModal from './components/DetailModal';
 import AppNavLinks from './components/AppNavLinks';
 import PersonaSwitcher from './components/PersonaSwitcher';
-import DashboardPage from './pages/DashboardPage';
 import LoginPage from './pages/LoginPage';
 import QualityPage from './pages/QualityPage';
 import StationsPage from './pages/StationsPage';
@@ -44,7 +39,6 @@ import { useWorkOrders } from './hooks/useWorkOrders';
 import {
   ACTIVE_STATION_DEFINITIONS,
   DEFAULT_STATION,
-  getStationDisplayName,
 } from './constants/stations';
 import { getShiftLabel } from './constants/shifts';
 
@@ -84,14 +78,10 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
   const { shift, elapsedLabel } = useShiftSession();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedStation, setSelectedStation] = useState('Tümü');
-  const [selectedQuality, setSelectedQuality] = useState('Tümü');
   const [selectedStationDetail, setSelectedStationDetail] = useState(DEFAULT_STATION);
-  const [selectedRecord, setSelectedRecord] = useState(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [isFactorySimulationActive, setIsFactorySimulationActive] = useState(false);
+  const [simulationStationId, setSimulationStationId] = useState(null);
 
   const isCurrentUserActive = currentUser?.status === 'Aktif';
   const hasPermission = (permission) => isCurrentUserActive && currentUser.permissions.includes(permission);
@@ -106,20 +96,27 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
   const canManageUsers = hasPermission('users.manage');
   const canViewDeleted = hasPermission('deleted-records.read');
 
+  const alarms = useAlarms({
+    isAuthenticated: true,
+    canCreateAlarms,
+    canManageAlarms,
+    notify,
+    confirm,
+  });
+
+  const { createSimulationAlarm } = alarms;
+  const onSimulatedNok = useCallback(async (stationId) => {
+    await createSimulationAlarm(stationId);
+  }, [createSimulationAlarm]);
+
   const production = useProduction({
     isAuthenticated: true,
     canViewDeleted,
     canAddRecord,
     autoRefresh,
     factorySimulationActive: isFactorySimulationActive,
-    notify,
-    confirm,
-  });
-
-  const alarms = useAlarms({
-    isAuthenticated: true,
-    canCreateAlarms,
-    canManageAlarms,
+    simulationStationId,
+    onSimulatedNok: canCreateAlarms ? onSimulatedNok : undefined,
     notify,
     confirm,
   });
@@ -135,7 +132,6 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
     return [...new Set([...ACTIVE_STATION_DEFINITIONS.map((s) => s.id), ...fromRecords])];
   }, [production.records]);
 
-  const stationsFilterOptions = ['Tümü', ...stationsList];
   const stationDetailOptions = stationsList.length > 0 ? stationsList : [DEFAULT_STATION];
   const stationDetailRecords = production.records
     .filter((record) => record.istasyonAdi === selectedStationDetail)
@@ -150,25 +146,6 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
       : 0,
   };
 
-  const filteredRecords = production.records.filter((r) => {
-    const matchesSearch =
-      (r.urun20liKod && r.urun20liKod.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (r.malzeme12liKod && r.malzeme12liKod.toLowerCase().includes(searchTerm.toLowerCase()));
-    const matchesStation = selectedStation === 'Tümü' || r.istasyonAdi === selectedStation;
-    const matchesQuality = selectedQuality === 'Tümü' || r.kaliteDurumu === selectedQuality;
-    return matchesSearch && matchesStation && matchesQuality;
-  });
-
-  const liveOk = production.records.filter((r) => r.kaliteDurumu === 'OK').length;
-  const liveNok = production.records.filter((r) => r.kaliteDurumu === 'NOK').length;
-  const totalCount = liveOk + liveNok;
-  const okCount = liveOk;
-  const nokCount = liveNok;
-  const yieldRate = totalCount > 0 ? ((okCount / totalCount) * 100).toFixed(1) : 0;
-  const qualityChartData = [
-    { name: 'OK (Başarılı)', value: okCount, color: '#0f9f6e' },
-    { name: 'NOK (Hatalı)', value: nokCount, color: '#d92d20' },
-  ];
   const stationChartData = stationsList.map((st) => {
     const stRecords = production.records.filter((r) => r.istasyonAdi === st);
     return {
@@ -178,47 +155,11 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
     };
   });
 
-  const handleExportExcel = async () => {
-    const exportData = filteredRecords.length > 0 ? filteredRecords : production.records;
-    if (!exportData || exportData.length === 0) {
-      notify('Dışa aktarılacak veri bulunamadı!', 'error');
-      return;
-    }
-    try {
-      const tarih = new Date().toLocaleDateString('tr-TR').replace(/\./g, '_');
-      await downloadWorkbook({
-        sheetName: 'Üretim Raporu',
-        fileName: `Vestel_MES_Uretim_Raporu_${tarih}.xlsx`,
-        columns: [
-          { header: 'Kayıt ID', key: 'id', width: 10 },
-          { header: "20'li Ürün Kodu", key: 'urun', width: 25 },
-          { header: "12'li Malzeme Kodu", key: 'malzeme', width: 18 },
-          { header: 'İstasyon Adı', key: 'istasyon', width: 25 },
-          { header: 'Kalite Durumu', key: 'kalite', width: 15 },
-          { header: 'Üretim Tarihi (UTC)', key: 'tarih', width: 28 },
-        ],
-        rows: exportData.map((r) => ({
-          id: r.id,
-          urun: r.urun20liKod,
-          malzeme: r.malzeme12liKod,
-          istasyon: getStationDisplayName(r.istasyonAdi),
-          kalite: r.kaliteDurumu,
-          tarih: r.uretimTarihi
-            ? `${new Date(r.uretimTarihi).toLocaleString('tr-TR', { timeZone: 'UTC' })} UTC`
-            : '-',
-        })),
-      });
-    } catch (err) {
-      notify(getApiErrorMessage(err, 'Excel dışa aktarma başarısız oldu.'), 'error');
-    }
-  };
-
   const homePath = isOperatorPersona ? '/operator' : '/fabrika';
 
   const navItems = [
     ...(isExecutivePersona ? [{ to: '/fabrika', label: 'Fabrika Genel Bakış', icon: Building2, match: (path) => path === '/fabrika' }] : []),
     { to: '/operator', label: 'Operatör Paneli', icon: HardHat, match: (path) => path === '/operator' },
-    { to: '/dashboard', label: 'Üretim Paneli', icon: LayoutDashboard, match: (path) => path === '/dashboard' },
     { to: '/istasyonlar', label: 'İstasyonlar', icon: Cpu, match: (path) => path === '/istasyonlar' },
     { to: '/kalite', label: 'Kalite Raporları', icon: Activity, match: (path) => path === '/kalite' },
     { to: '/makine-metrikleri', label: 'Makine Metrikleri', icon: GaugeNavIcon, match: (path) => path === '/makine-metrikleri' },
@@ -228,6 +169,28 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
   ];
 
   const pageTitle = navItems.find((item) => item.match(location.pathname))?.label || 'VESTEL MES';
+
+  const handleToggleSimulation = useCallback(() => {
+    setIsFactorySimulationActive((prev) => {
+      const next = !prev;
+      if (next) {
+        const params = new URLSearchParams(location.search);
+        const stationId = params.get('stationId');
+        setSimulationStationId(
+          location.pathname === '/makine-metrikleri' && stationId ? stationId : null,
+        );
+      } else {
+        setSimulationStationId(null);
+      }
+      return next;
+    });
+  }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    if (!isFactorySimulationActive || location.pathname !== '/makine-metrikleri') return;
+    const stationId = new URLSearchParams(location.search).get('stationId');
+    setSimulationStationId(stationId && stationId !== 'Tümü' ? stationId : null);
+  }, [isFactorySimulationActive, location.pathname, location.search]);
 
   return (
     <div className="mes-shell">
@@ -273,6 +236,7 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
                 </h1>
                 <p className="m-0 text-xs text-[color:var(--color-muted)] md:text-sm">
                   {isOperatorPersona ? 'Shop-floor operatör görünümü' : 'Yönetici / Ana Merkez görünümü'}
+                  {isFactorySimulationActive ? ' · Live Stream açık' : ''}
                 </p>
               </div>
             </div>
@@ -292,14 +256,12 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
                 {shift.operatorName || 'Operatör'} · {getShiftLabel(shift.shiftCode)} · {elapsedLabel}
               </span>
             )}
-            <button
-              type="button"
-              onClick={() => setIsFactorySimulationActive((prev) => !prev)}
-              className={isFactorySimulationActive ? 'mes-btn-primary' : 'mes-btn-secondary'}
-            >
-              <Activity size={14} />
-              {isFactorySimulationActive ? 'Simülasyon: Açık' : 'Simülasyonu Başlat'}
-            </button>
+            {isFactorySimulationActive && (
+              <span className="mes-pill-warn" title="Simülasyon Makine Metrikleri ekranından yönetilir">
+                <Activity size={14} />
+                Simülasyon
+              </span>
+            )}
             <button
               type="button"
               onClick={() => setAutoRefresh((prev) => !prev)}
@@ -367,58 +329,20 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
               )}
             />
 
+            <Route path="/dashboard" element={<Navigate to={homePath} replace />} />
+
             <Route
-              path="/dashboard"
+              path="/makine-metrikleri"
               element={(
-                <DashboardPage
-                  metrics={{ totalCount, okCount, nokCount, yieldRate, qualityChartData }}
-                  form={{
-                    urun20liKod: production.form.urun20liKod,
-                    malzeme12liKod: production.form.malzeme12liKod,
-                    istasyonAdi: production.form.istasyonAdi,
-                    kaliteDurumu: production.form.kaliteDurumu,
-                    onChangeUrun: (event) => production.form.setUrun20liKod(event.target.value),
-                    onChangeMalzeme: (event) => production.form.setMalzeme12liKod(event.target.value),
-                    onChangeStation: (event) => production.form.setIstasyonAdi(event.target.value),
-                    onChangeQuality: (event) => production.form.setKaliteDurumu(event.target.value),
-                    onSubmit: production.form.onSubmit,
-                    onGenerateRandom: production.form.onGenerateRandom,
-                    urunInputRef: production.form.urunInputRef,
-                    malzemeInputRef: production.form.malzemeInputRef,
-                    canSubmit: canAddRecord,
-                  }}
-                  table={{
-                    records: production.records,
-                    loading: production.loading,
-                    error: production.error,
-                    filteredRecords,
-                    searchTerm,
-                    selectedStation,
-                    selectedQuality,
-                    stationsFilterOptions,
-                    onSearchChange: (event) => setSearchTerm(event.target.value),
-                    onStationChange: (event) => setSelectedStation(event.target.value),
-                    onQualityChange: (event) => setSelectedQuality(event.target.value),
-                    onExportExcel: handleExportExcel,
-                    onToggleQuality: canChangeQuality ? production.handleToggleQuality : undefined,
-                    canChangeQuality,
-                    canDeleteRecord,
-                    onDelete: canDeleteRecord ? production.handleDelete : undefined,
-                    onOpenDetail: (record) => {
-                      setSelectedRecord(record);
-                      setIsModalOpen(true);
-                    },
-                  }}
-                  pagination={{
-                    hasMore: Boolean(production.nextProductionCursor),
-                    loadMore: production.loadMoreRecords,
-                    loading: production.loadingMoreRecords,
-                  }}
+                <MachineMetricsPanel
+                  isFactorySimulationActive={isFactorySimulationActive}
+                  onToggleSimulation={handleToggleSimulation}
+                  canControlSimulation={canAddRecord}
+                  productionRecords={production.records}
+                  batches={workOrders.batches}
                 />
               )}
             />
-
-            <Route path="/makine-metrikleri" element={<MachineMetricsPanel />} />
 
             <Route
               path="/istasyonlar"
@@ -491,15 +415,6 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
           </Routes>
         </div>
       </main>
-
-      <DetailModal
-        record={selectedRecord}
-        isOpen={isModalOpen}
-        onClose={() => {
-          setIsModalOpen(false);
-          setSelectedRecord(null);
-        }}
-      />
     </div>
   );
 }

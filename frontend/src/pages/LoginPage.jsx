@@ -15,7 +15,7 @@ const homeForUser = (user) => {
     return '/operator';
   }
   sessionStorage.setItem('mm_active_persona', 'admin');
-  return '/dashboard';
+  return '/fabrika';
 };
 
 function LoginPage() {

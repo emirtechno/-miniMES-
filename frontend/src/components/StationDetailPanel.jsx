@@ -52,7 +52,7 @@ const StationDetailPanel = ({ stationsList, selectedStation, onStationChange, st
       </div>
       <RecentRecordsList
         records={recentRecords}
-        emptyText="Bu istasyon için henüz üretim kaydı yok. Üretim Panelinden yeni kayıt ekleyebilirsiniz."
+        emptyText="Bu istasyon için henüz üretim kaydı yok. Operatör Panelinden veya Makine Metrikleri simülasyonundan yeni kayıt ekleyebilirsiniz."
       />
     </div>
   </section>

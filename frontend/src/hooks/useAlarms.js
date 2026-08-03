@@ -119,6 +119,20 @@ export function useAlarms({
     }
   }, [canCreateAlarms, connected, loadAlarms, notify]);
 
+  /** Quiet alarm helper for live simulation NOK events (no toast spam). */
+  const createSimulationAlarm = useCallback(async (stationId) => {
+    if (!canCreateAlarms) return;
+    if (Math.random() > 0.45) return;
+    const template = TEST_ALARM_TEMPLATES[Math.floor(Math.random() * TEST_ALARM_TEMPLATES.length)];
+    await createAlarm({
+      title: `Simülasyon · ${template.title}`,
+      station: stationId || DEFAULT_STATION,
+      severity: template.severity,
+      description: template.description,
+    });
+    if (!connected) await loadAlarms();
+  }, [canCreateAlarms, connected, loadAlarms]);
+
   const createManualAlarm = useCallback(async (event) => {
     if (event?.preventDefault) event.preventDefault();
     if (!canCreateAlarms) {
@@ -190,6 +204,7 @@ export function useAlarms({
     liveConnected: connected,
     loadAlarms,
     createTestAlarm,
+    createSimulationAlarm,
     createManualAlarm,
     handleResolveAlarm,
     handleAcknowledgeAlarm,

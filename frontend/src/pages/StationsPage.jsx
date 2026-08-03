@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   BarChart3,
   ClipboardList,
@@ -46,7 +47,13 @@ const StationsPage = ({
   records,
   onSelectStation,
 }) => {
+  const navigate = useNavigate();
   const [lineFilter, setLineFilter] = useState('Tümü');
+
+  const openStationMetrics = (stationId) => {
+    onSelectStation?.(stationId);
+    navigate(`/makine-metrikleri?stationId=${encodeURIComponent(stationId)}`);
+  };
 
   const catalogStations = useMemo(() => {
     const ids = new Set([
@@ -81,7 +88,7 @@ const StationsPage = ({
             </h2>
             <p className="mes-helper mt-1 mb-0 max-w-3xl">
               Her kart bir fiziksel istasyonu temsil eder. Durum; son üretim kayıtlarındaki OK/NOK dengesinden
-              türetilir. Detay için kartı seçin.
+              türetilir. “Detayı Aç” Makine Metrikleri ekranına istasyon filtresiyle gider.
               <InfoTip text="Çalışıyor = sağlıklı akış, Dikkat = yüksek NOK oranı, Durdu = NOK baskın veya kritik sapma." className="ml-1" />
             </p>
           </div>
@@ -166,16 +173,17 @@ const StationsPage = ({
                   <button
                     type="button"
                     className="mes-btn-primary flex-1"
-                    onClick={() => onSelectStation?.(station.id)}
+                    onClick={() => openStationMetrics(station.id)}
                   >
                     Detayı Aç
                   </button>
                   <button
                     type="button"
                     className="mes-btn-secondary"
-                    title="İstasyon kodu (API kimliği)"
+                    title="Özet paneli için seç"
+                    onClick={() => onSelectStation?.(station.id)}
                   >
-                    {station.id.split('_').slice(-1)[0]}
+                    Özet
                   </button>
                 </div>
               </article>

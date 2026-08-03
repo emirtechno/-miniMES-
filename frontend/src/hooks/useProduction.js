@@ -20,6 +20,8 @@ export function useProduction({
   canAddRecord,
   autoRefresh,
   factorySimulationActive,
+  simulationStationId,
+  onSimulatedNok,
   notify,
   confirm,
 }) {
@@ -119,18 +121,32 @@ export function useProduction({
   useNonOverlappingPolling(async (signal) => {
     const timestamp = Date.now().toString();
     const random7 = Math.floor(1000000 + Math.random() * 9000000).toString();
+    const focusedStation = simulationStationId
+      && simulationStationId !== 'Tümü'
+      && ACTIVE_STATIONS.includes(simulationStationId)
+      ? simulationStationId
+      : ACTIVE_STATIONS[Math.floor(Math.random() * ACTIVE_STATIONS.length)];
+    const kaliteDurumu = Math.random() > 0.15 ? 'OK' : 'NOK';
     await createProductionRecord({
       urun20liKod: timestamp + random7,
       malzeme12liKod: Math.floor(100000000000 + Math.random() * 900000000000).toString(),
-      istasyonAdi: ACTIVE_STATIONS[Math.floor(Math.random() * ACTIVE_STATIONS.length)],
-      kaliteDurumu: Math.random() > 0.15 ? 'OK' : 'NOK',
+      istasyonAdi: focusedStation,
+      kaliteDurumu,
       uretimTarihi: new Date().toISOString(),
     }, { signal });
+    if (kaliteDurumu === 'NOK' && typeof onSimulatedNok === 'function') {
+      try {
+        await onSimulatedNok(focusedStation, { signal });
+      } catch (err) {
+        console.error(err);
+      }
+    }
     await fetchRecords(signal, { background: true });
   }, {
     enabled: factorySimulationActive && canAddRecord,
-    intervalMs: 15000,
+    intervalMs: 12000,
     runImmediately: false,
+    resetKey: `${simulationStationId || ''}:${factorySimulationActive}`,
   });
 
   const generateRandomBarcodes = useCallback(() => {
