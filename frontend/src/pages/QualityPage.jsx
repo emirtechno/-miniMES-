@@ -77,11 +77,18 @@ const QualityPage = ({
                       <td>{record.istasyonAdi}</td>
                       <td>{new Date(record.uretimTarihi).toLocaleString('tr-TR')}</td>
                       <td>
-                        {permissions.canManageProduction ? (
-                          <button type="button" className="btn-primary" onClick={() => deleted.onRestore(record.id)}>
-                            <RefreshCw size={16} /> Geri Yükle
-                          </button>
-                        ) : <span>Yetki Yok</span>}
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                          {permissions.canManageProduction ? (
+                            <button type="button" className="btn-primary" onClick={() => deleted.onRestore(record.id)}>
+                              <RefreshCw size={16} /> Geri Yükle
+                            </button>
+                          ) : <span>Yetki Yok</span>}
+                          {permissions.canHardDelete && deleted.onHardDelete && (
+                            <button type="button" className="btn-delete" onClick={() => deleted.onHardDelete(record.id)}>
+                              <Trash2 size={16} /> Kalıcı Sil
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
