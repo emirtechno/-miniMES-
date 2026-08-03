@@ -5,11 +5,11 @@ namespace MiniMesApi.DTOs;
 public sealed class CreateWorkOrderDto
 {
     [Required]
-    [StringLength(50)]
+    [StringLength(50, MinimumLength = 3)]
     public string OrderNo { get; init; } = string.Empty;
 
     [Required]
-    [StringLength(100)]
+    [StringLength(100, MinimumLength = 3)]
     public string Product { get; init; } = string.Empty;
 
     [Required]
