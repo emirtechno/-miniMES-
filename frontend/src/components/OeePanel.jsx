@@ -64,12 +64,14 @@ const OeePanel = ({ stationId = DEFAULT_STATION }) => {
         <Gauge
           label="Kullanılabilirlik"
           value={metric?.availability}
-          detail="Planlı süre ve duruş verisi"
+          detail={metric?.downtimeReason
+            ? `${metric.downtimeReason}${metric.isPlannedDowntime ? ' (planlı)' : ''}`
+            : 'Planlı süre ve duruş verisi'}
         />
         <Gauge
           label="Performans"
           value={metric?.performance}
-          detail="İdeal çevrim ve gerçekleşen üretim"
+          detail={metric?.shiftName || 'İdeal çevrim ve gerçekleşen üretim'}
         />
         <Gauge
           label="Kalite"

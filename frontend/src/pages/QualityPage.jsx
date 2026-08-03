@@ -67,15 +67,17 @@ const QualityPage = ({
           {!deleted.loading && !deleted.error && (
             <div className="table-wrapper">
               <table className="modern-table">
-                <thead><tr><th>ID</th><th>Ürün Kodu</th><th>Malzeme</th><th>İstasyon</th><th>Tarih</th><th>Aksiyon</th></tr></thead>
+                <thead><tr><th>ID</th><th>Ürün Kodu</th><th>Malzeme</th><th>İstasyon</th><th>Üretim Tarihi</th><th>Silen</th><th>Silinme Zamanı</th><th>Aksiyon</th></tr></thead>
                 <tbody>
                   {deleted.items.length === 0 ? (
-                    <tr><td colSpan="6" style={{ textAlign: 'center' }}>Çöp kutusunda kayıt yok.</td></tr>
+                    <tr><td colSpan="8" style={{ textAlign: 'center' }}>Çöp kutusunda kayıt yok.</td></tr>
                   ) : deleted.items.map((record) => (
                     <tr key={record.id}>
                       <td>#{record.id}</td><td>{record.urun20liKod}</td><td>{record.malzeme12liKod}</td>
                       <td>{record.istasyonAdi}</td>
                       <td>{new Date(record.uretimTarihi).toLocaleString('tr-TR')}</td>
+                      <td>{record.deletedByUsername || '—'}</td>
+                      <td>{record.deletedAtUtc ? new Date(record.deletedAtUtc).toLocaleString('tr-TR') : '—'}</td>
                       <td>
                         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                           {permissions.canManageProduction ? (
