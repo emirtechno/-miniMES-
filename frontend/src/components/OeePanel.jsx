@@ -1,5 +1,10 @@
+import { useState } from 'react';
+import { fetchLatestOee } from '../services/api';
+import { useNonOverlappingPolling } from '../hooks/useNonOverlappingPolling';
+import { DEFAULT_STATION } from '../constants/stations';
+
 const Gauge = ({ label, value, detail }) => {
-  const isAvailable = typeof value === 'number' && !isNaN(value);
+  const isAvailable = typeof value === 'number' && !Number.isNaN(value);
   const normalizedValue = isAvailable ? Math.max(0, Math.min(value, 100)) : 0;
   const radius = 42;
   const circumference = 2 * Math.PI * radius;
@@ -26,63 +31,55 @@ const Gauge = ({ label, value, detail }) => {
   );
 };
 
-const OeePanel = ({ records = [] }) => {
-  const totalProduction = records.length;
-  const goodProduction = records.filter((r) => r.kaliteDurumu === 'OK').length;
+const OeePanel = ({ stationId = DEFAULT_STATION }) => {
+  const [metric, setMetric] = useState(null);
 
-  // --- SAHADA ÜRETİLEN VERİLERE BAĞLI SENKRON HESAPLAMA ---
-  // Bağımsız zamanlayıcılar yerine, toplam üretim adedine ve son kayda dayalı türetilmiş fabrika simülasyonu
-  
-  // 1. Kalite (Q) = Tamamen gerçek veritabanı verisi
-  const quality = totalProduction > 0 ? (goodProduction / totalProduction) * 100 : 0;
+  useNonOverlappingPolling(async (signal) => {
+    try {
+      setMetric(await fetchLatestOee(stationId, { signal }));
+    } catch (error) {
+      if (error.response?.status === 404) setMetric(null);
+      else throw error;
+    }
+  }, {
+    enabled: Boolean(stationId),
+    intervalMs: 10000,
+    resetKey: stationId,
+  });
 
-  // 2. Kullanılabilirlik (A) = Toplam üretime bağlı kararlı simülasyon (Üretim arttıkça hafifçe gerçekçi dalgalanır)
-  // İlk açılışta veya 0 kayıtta 0 başlar, veri geldikçe oturur.
-  const downtime = totalProduction > 0 ? 25 + (totalProduction % 7) * 2 : 30; // Duruş süresi (dk)
-  const plannedTime = 480; // Vardiya planlanan süre
-  const availability = totalProduction > 0 ? ((plannedTime - downtime) / plannedTime) * 100 : 0;
-
-  // 3. Performans (P) = Son üretilen kaydın karakteristiğine bağlı hız simülaskunu
-  const targetSpeed = 120;
-  // Her yeni kayıtta farklı bir performans üretmek için record uzunluğunu hash mantığıyla kullanalım
-  const currentSpeed = totalProduction > 0 ? 100 + ((totalProduction * 13) % 25) : 0; 
-  let performance = (currentSpeed / targetSpeed) * 100;
-  if (performance > 100) performance = 100;
-
-  // 4. OEE = (A x P x Q) / 10000
-  const oee = totalProduction > 0 ? (availability * performance * quality) / 10000 : 0;
-
-  const lastUpdated = totalProduction > 0 ? new Date().toLocaleTimeString() : 'Bekleniyor...';
+  const lastUpdated = metric?.lastUpdated
+    ? new Date(metric.lastUpdated).toLocaleTimeString('tr-TR')
+    : 'Bekleniyor...';
 
   return (
     <section className="custom-card oee-panel">
       <div className="card-header oee-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <span>OEE / Hat Verimliliği</span>
+          <span>OEE / Hat Verimliliği — {stationId}</span>
           <small>Son Güncelleme: {lastUpdated}</small>
         </div>
       </div>
 
       <div className="oee-grid">
-        <Gauge 
-          label="Kullanılabilirlik" 
-          value={availability} 
-          detail={`Çalışma: ${plannedTime - downtime} dk / Duruş: ${downtime} dk`} 
+        <Gauge
+          label="Kullanılabilirlik"
+          value={metric?.availability}
+          detail="Planlı süre ve duruş verisi"
         />
-        <Gauge 
-          label="Performans" 
-          value={performance} 
-          detail={`Hız: ${currentSpeed} / ${targetSpeed} (Birim/Saat)`} 
+        <Gauge
+          label="Performans"
+          value={metric?.performance}
+          detail="İdeal çevrim ve gerçekleşen üretim"
         />
-        <Gauge 
-          label="Kalite" 
-          value={quality} 
-          detail={`${goodProduction} OK / ${totalProduction} Toplam`} 
+        <Gauge
+          label="Kalite"
+          value={metric?.quality}
+          detail={`${metric?.goodProduction ?? 0} OK / ${metric?.totalProduction ?? 0} Toplam`}
         />
-        <Gauge 
-          label="OEE" 
-          value={oee} 
-          detail="A x P x Q Bileşimi" 
+        <Gauge
+          label="OEE"
+          value={metric?.oee}
+          detail={`${metric?.scrapProduction ?? 0} fire`}
         />
       </div>
     </section>

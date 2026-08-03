@@ -1,39 +1,41 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Cpu } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { fetchLatestOee, fetchMachineMetrics } from '../services/api';
+import { useNonOverlappingPolling } from '../hooks/useNonOverlappingPolling';
+import { DEFAULT_STATION, STATIONS } from '../constants/stations';
 
 const MachineMetricsPanel = () => {
   const [metrics, setMetrics] = useState([]);
-  const [selectedStation, setSelectedStation] = useState('STATION-01');
+  const [selectedStation, setSelectedStation] = useState(DEFAULT_STATION);
   const [oeeData, setOeeData] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const data = await fetchMachineMetrics();
-        setMetrics(Array.isArray(data) ? data : []);
-        
-        if (selectedStation && selectedStation !== 'Tümü') {
-          setOeeData(await fetchLatestOee(selectedStation));
-        } else {
-          setOeeData(null);
+  useNonOverlappingPolling(async (signal) => {
+    try {
+      const page = await fetchMachineMetrics({ signal });
+      setMetrics(page.items);
+
+      if (selectedStation && selectedStation !== 'Tümü') {
+        try {
+          setOeeData(await fetchLatestOee(selectedStation, { signal }));
+        } catch (error) {
+          if (error.response?.status === 404) setOeeData(null);
+          else throw error;
         }
-        
-        setLoading(false);
-      } catch (err) {
-        console.error("Veriler çekilemedi:", err);
-        setLoading(false);
+      } else {
+        setOeeData(null);
       }
-    };
+    } finally {
+      setLoading(false);
+    }
+  }, {
+    enabled: true,
+    intervalMs: 5000,
+    resetKey: selectedStation,
+  });
 
-    loadData();
-    const interval = setInterval(loadData, 5000);
-    return () => clearInterval(interval);
-  }, [selectedStation]);
-
-  const stationsList = ['Tümü', ...new Set(metrics.map(m => m.stationId).filter(Boolean))];
+  const stationsList = ['Tümü', ...new Set([...STATIONS, ...metrics.map(m => m.stationId).filter(Boolean)])];
 
   const filteredMetrics = selectedStation === 'Tümü' 
     ? metrics 

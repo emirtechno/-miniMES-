@@ -28,10 +28,10 @@ namespace MiniMesApi.Models
 
             modelBuilder.Entity<MachineMetric>(entity =>
             {
-                entity.HasIndex(metric => new { metric.StationId, metric.RecordedAt })
-                    .IsDescending(false, true);
-                entity.HasIndex(metric => metric.RecordedAt)
-                    .IsDescending();
+                entity.HasIndex(metric => new { metric.StationId, metric.RecordedAt, metric.Id })
+                    .IsDescending(false, true, true);
+                entity.HasIndex(metric => new { metric.RecordedAt, metric.Id })
+                    .IsDescending(true, true);
                 entity.ToTable(table =>
                 {
                     table.HasCheckConstraint(
@@ -44,13 +44,13 @@ namespace MiniMesApi.Models
             });
 
             modelBuilder.Entity<Alarm>()
-                .HasIndex(alarm => alarm.Time)
-                .IsDescending();
+                .HasIndex(alarm => new { alarm.Time, alarm.Id })
+                .IsDescending(true, true);
 
             modelBuilder.Entity<UretimKayit>(entity =>
             {
-                entity.HasIndex(record => new { record.IsDeleted, record.UretimTarihi })
-                    .IsDescending(false, true);
+                entity.HasIndex(record => new { record.IsDeleted, record.UretimTarihi, record.ID })
+                    .IsDescending(false, true, true);
                 entity.HasIndex(record => record.Urun20liKod)
                     .IsUnique()
                     .HasFilter("[IsDeleted] = 0");
@@ -62,6 +62,7 @@ namespace MiniMesApi.Models
             modelBuilder.Entity<WorkOrder>(entity =>
             {
                 entity.HasIndex(order => order.OrderNo).IsUnique();
+                entity.Property(order => order.RowVersion).IsRowVersion();
                 entity.ToTable(table => table.HasCheckConstraint(
                     "CK_WorkOrders_Quantity",
                     "[Quantity] > 0"));

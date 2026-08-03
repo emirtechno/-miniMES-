@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MiniMesApi.DTOs;
+using MiniMesApi.Infrastructure;
 using MiniMesApi.Models;
 using MiniMesApi.Security;
 
@@ -14,22 +15,43 @@ namespace MiniMesApi.Controllers;
 public sealed class UsersController(UserManager<ApplicationUser> userManager) : ControllerBase
 {
     [HttpGet]
-    public async Task<ActionResult<IReadOnlyCollection<IdentityUserDto>>> GetUsers(
-        CancellationToken cancellationToken)
+    public async Task<ActionResult<CursorPage<IdentityUserDto>>> GetUsers(
+        [FromQuery] int limit = 50,
+        [FromQuery] string? cursor = null,
+        CancellationToken cancellationToken = default)
     {
-        var users = await userManager.Users
-            .AsNoTracking()
-            .OrderBy(user => user.UserName)
-            .Take(500)
-            .ToListAsync(cancellationToken);
-        var responses = new List<IdentityUserDto>(users.Count);
+        limit = Math.Clamp(limit, 1, 200);
+        if (!CursorCodec.TryDecodeString(cursor, out var cursorId))
+        {
+            return Problem(statusCode: StatusCodes.Status400BadRequest, title: "Geçersiz sayfalama imleci.");
+        }
 
-        foreach (var user in users)
+        var query = userManager.Users.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(cursor))
+        {
+            query = query.Where(user => user.Id.CompareTo(cursorId) > 0);
+        }
+
+        var users = await query
+            .AsNoTracking()
+            .OrderBy(user => user.Id)
+            .Take(limit + 1)
+            .ToListAsync(cancellationToken);
+        var pageUsers = users.Take(limit).ToArray();
+        var responses = new List<IdentityUserDto>(pageUsers.Length);
+
+        foreach (var user in pageUsers)
         {
             responses.Add(await ToDtoAsync(user));
         }
 
-        return Ok(responses);
+        return Ok(new CursorPage<IdentityUserDto>
+        {
+            Items = responses,
+            NextCursor = users.Count > limit && pageUsers.Length > 0
+                ? CursorCodec.EncodeString(pageUsers[^1].Id)
+                : null
+        });
     }
 
     [HttpPost]
