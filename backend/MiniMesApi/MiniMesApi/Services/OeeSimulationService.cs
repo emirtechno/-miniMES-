@@ -56,7 +56,7 @@ namespace MiniMesApi.Services
         {
             await using var scope = _scopeFactory.CreateAsyncScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<MesDbContext>();
-            var recordedAt = DateTime.UtcNow;
+            var recordedAt = DateTimeOffset.UtcNow;
 
             var metrics = Stations.Select(stationId =>
             {

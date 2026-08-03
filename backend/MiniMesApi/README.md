@@ -80,3 +80,10 @@ SQL Server bağlantısı yeniden deneme politikası (`EnableRetryOnFailure`) aç
 `TrustServerCertificate=True` yalnızca güvenilir yerel geliştirme için kullanılmalıdır;
 üretimde TLS doğrulaması açık (`Encrypt=True`, `TrustServerCertificate=False`) tutulmalıdır.
 
+## Zaman Damgaları (UTC)
+
+Kalıcı zaman alanları `DateTimeOffset` olarak saklanır ve API yazma yolları
+`DateTimeOffset.UtcNow` kullanır (`UretimTarihi`, alarm `Time`, metrik `RecordedAt`,
+ürün `CreatedAt`, izlenebilirlik giriş/çıkış, parti `UpdatedAt`, JWT `ExpiresAtUtc`).
+İstemci tarafında gösterim için `toLocaleString` / UTC etiketi kullanın.
+

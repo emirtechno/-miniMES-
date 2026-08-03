@@ -20,7 +20,7 @@ namespace MiniMesApi.Models
         [StringLength(20)]
         public string Severity { get; set; } = "Uyarı";
 
-        public DateTime Time { get; set; } = DateTime.Now;
+        public DateTimeOffset Time { get; set; } = DateTimeOffset.UtcNow;
 
         [Required]
         [StringLength(20)]

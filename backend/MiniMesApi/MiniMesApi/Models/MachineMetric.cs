@@ -28,6 +28,6 @@ namespace MiniMesApi.Models
         public int GoodProductionCount { get; set; }
 
         // Kayıt Tarihi
-        public DateTime RecordedAt { get; set; } = DateTime.UtcNow;
+        public DateTimeOffset RecordedAt { get; set; } = DateTimeOffset.UtcNow;
     }
 }

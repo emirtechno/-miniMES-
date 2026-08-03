@@ -17,7 +17,7 @@ namespace MiniMesApi.Models
         [StringLength(12)]
         public string Malzeme12liKod { get; set; } = string.Empty;
 
-        public DateTime UretimTarihi { get; set; } = DateTime.Now;
+        public DateTimeOffset UretimTarihi { get; set; } = DateTimeOffset.UtcNow;
 
         [Required]
         [StringLength(50)]
