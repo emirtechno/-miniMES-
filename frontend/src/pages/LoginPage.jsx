@@ -4,6 +4,13 @@ import { useAuth } from '../context/AuthContext';
 import { getApiErrorMessage } from '../services/api';
 import { Factory, LogIn } from 'lucide-react';
 
+const homeForUser = (user) => {
+  const roles = user?.roles || [];
+  if (roles.includes('Admin')) return '/fabrika';
+  if (roles.includes('Operator')) return '/operator';
+  return '/dashboard';
+};
+
 function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -17,8 +24,8 @@ function LoginPage() {
     setIsSubmitting(true);
     setError('');
     try {
-      await login(username, password);
-      navigate('/dashboard');
+      const user = await login(username, password);
+      navigate(homeForUser(user));
     } catch (loginError) {
       setError(getApiErrorMessage(loginError, 'Giriş yapılamadı.'));
     } finally {

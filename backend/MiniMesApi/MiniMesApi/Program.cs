@@ -297,7 +297,9 @@ if (!isTesting)
                             LotNo = "LOT-2026-001",
                             Product = "Montaj Kiti A",
                             Station = StationCatalog.AssemblyLine1,
-                            Status = "Tamamlandı",
+                            Status = BatchStatuses.Completed,
+                            TargetQuantity = 120,
+                            ProducedQuantity = 120,
                             UpdatedAt = DateTimeOffset.UtcNow.AddHours(-6)
                         },
                         new Batch
@@ -305,7 +307,9 @@ if (!isTesting)
                             LotNo = "LOT-2026-002",
                             Product = "Elektronik Kart B",
                             Station = StationCatalog.ElectronicsBoardAssembly,
-                            Status = "İşlemde",
+                            Status = BatchStatuses.InProgress,
+                            TargetQuantity = 200,
+                            ProducedQuantity = 134,
                             UpdatedAt = DateTimeOffset.UtcNow.AddHours(-2)
                         },
                         new Batch
@@ -313,7 +317,9 @@ if (!isTesting)
                             LotNo = "LOT-2026-003",
                             Product = "Paketleme Ünitesi C",
                             Station = StationCatalog.PackagingLine1,
-                            Status = "Bekliyor",
+                            Status = BatchStatuses.Waiting,
+                            TargetQuantity = 80,
+                            ProducedQuantity = 0,
                             UpdatedAt = DateTimeOffset.UtcNow.AddMinutes(-45)
                         },
                         new Batch
@@ -321,7 +327,9 @@ if (!isTesting)
                             LotNo = "LOT-2026-004",
                             Product = "Final Kontrol Lotu D",
                             Station = StationCatalog.FinalInspection,
-                            Status = "Tamamlandı",
+                            Status = BatchStatuses.Completed,
+                            TargetQuantity = 50,
+                            ProducedQuantity = 50,
                             UpdatedAt = DateTimeOffset.UtcNow.AddHours(-1)
                         },
                         new Batch
@@ -329,7 +337,9 @@ if (!isTesting)
                             LotNo = "LOT-2026-005",
                             Product = "Montaj Kiti A",
                             Station = StationCatalog.AssemblyLine3,
-                            Status = "İşlemde",
+                            Status = BatchStatuses.InProgress,
+                            TargetQuantity = 150,
+                            ProducedQuantity = 72,
                             UpdatedAt = DateTimeOffset.UtcNow.AddMinutes(-20)
                         }
                     );

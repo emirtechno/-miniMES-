@@ -135,7 +135,42 @@ export const advanceWorkOrder = async (id, rowVersion) => {
 
 export const fetchBatches = (options) => fetchPage('/Batch', options);
 
-export const fetchMachineMetrics = (options) => fetchPage('/MachineMetrics', options);
+export const advanceBatch = async (id) => {
+  const response = await apiClient.post(`/Batch/${id}/advance`);
+  return response.data;
+};
+
+export const reopenBatch = async (id) => {
+  const response = await apiClient.post(`/Batch/${id}/reopen`);
+  return response.data;
+};
+
+export const updateBatchProgress = async (id, payload) => {
+  const response = await apiClient.put(`/Batch/${id}/progress`, payload);
+  return response.data;
+};
+
+export const fetchMachineMetrics = async ({ stationId, cursor, limit = 50, signal } = {}) => {
+  const response = await apiClient.get('/MachineMetrics', {
+    params: {
+      stationId: stationId && stationId !== 'Tümü' ? stationId : undefined,
+      cursor: cursor || undefined,
+      limit,
+    },
+    signal,
+  });
+  return unwrapPage(response);
+};
+
+export const fetchOeeShifts = async ({ signal } = {}) => {
+  const response = await apiClient.get('/Oee/shifts', { signal });
+  return response.data || [];
+};
+
+export const fetchDowntimeReasons = async ({ signal } = {}) => {
+  const response = await apiClient.get('/Oee/downtime-reasons', { signal });
+  return response.data || [];
+};
 
 export const fetchLatestOee = async (stationId, { signal } = {}) => {
   const response = await apiClient.get(`/Oee/latest/${encodeURIComponent(stationId)}`, { signal });

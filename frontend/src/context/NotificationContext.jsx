@@ -54,10 +54,10 @@ export const NotificationProvider = ({ children }) => {
             <h3 id="confirm-dialog-title">Onay gerekli</h3>
             <p>{confirmState.message}</p>
             <div className="confirm-actions">
-              <button type="button" className="btn-secondary" onClick={() => confirmState.resolve(false)}>
+              <button type="button" className="mes-btn-secondary" onClick={() => confirmState.resolve(false)}>
                 Vazgeç
               </button>
-              <button type="button" className="btn-primary" onClick={() => confirmState.resolve(true)} autoFocus>
+              <button type="button" className="mes-btn-primary" onClick={() => confirmState.resolve(true)} autoFocus>
                 Onayla
               </button>
             </div>

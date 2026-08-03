@@ -10,6 +10,7 @@ import {
 import {
   Bar,
   BarChart,
+  CartesianGrid,
   Legend,
   ResponsiveContainer,
   Tooltip,
@@ -17,6 +18,7 @@ import {
   YAxis,
 } from 'recharts';
 import StationDetailPanel from '../components/StationDetailPanel';
+import CardHeader from '../components/CardHeader';
 import InfoTip from '../components/InfoTip';
 import {
   ACTIVE_STATION_DEFINITIONS,
@@ -183,25 +185,24 @@ const StationsPage = ({
       </section>
 
       <section className="mes-surface p-5">
-        <div className="card-header mb-2 flex items-center gap-2">
-          <BarChart3 className="text-[color:var(--color-vestel)]" size={20} />
-          <div>
-            <span className="mes-section-title">İstasyon Bazlı Üretim Hacmi</span>
-            <p className="mes-helper mt-0.5 mb-0">OK / NOK adetleri canlı üretim kayıtlarından hesaplanır.</p>
-          </div>
-        </div>
+        <CardHeader
+          icon={BarChart3}
+          title="İstasyon Bazlı Üretim Hacmi"
+          subtitle="OK / NOK adetleri canlı üretim kayıtlarından hesaplanır"
+        />
         <div className="h-[340px] w-full">
           {chartData.length === 0 ? (
             <p className="pt-24 text-center text-[color:var(--color-muted)]">Grafik verisi bulunamadı.</p>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} margin={{ top: 20, right: 20, left: 0, bottom: 70 }}>
-                <XAxis dataKey="name" interval={0} angle={-28} textAnchor="end" tick={{ fontSize: 11, fill: '#475569' }} />
-                <YAxis allowDecimals={false} />
-                <Tooltip />
+              <BarChart data={chartData} margin={{ top: 12, right: 12, left: 0, bottom: 56 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                <XAxis dataKey="name" interval={0} angle={-28} textAnchor="end" tick={{ fontSize: 11, fill: '#5b6b7c' }} axisLine={false} tickLine={false} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#5b6b7c' }} axisLine={false} tickLine={false} width={36} />
+                <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #d7dee8' }} />
                 <Legend verticalAlign="top" height={36} />
-                <Bar dataKey="OK" fill="#0f9f6e" name="Başarılı (OK)" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="NOK" fill="#d92d20" name="Hatalı (NOK)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="OK" fill="#0f9f6e" name="Başarılı (OK)" radius={[8, 8, 0, 0]} maxBarSize={42} />
+                <Bar dataKey="NOK" fill="#d92d20" name="Hatalı (NOK)" radius={[8, 8, 0, 0]} maxBarSize={42} />
               </BarChart>
             </ResponsiveContainer>
           )}

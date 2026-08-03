@@ -87,6 +87,22 @@ namespace MiniMesApi.Models
                 });
             });
 
+            modelBuilder.Entity<Batch>(entity =>
+            {
+                entity.ToTable(table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_Batches_TargetQuantity",
+                        "[TargetQuantity] > 0");
+                    table.HasCheckConstraint(
+                        "CK_Batches_ProducedQuantity",
+                        "[ProducedQuantity] >= 0");
+                    table.HasCheckConstraint(
+                        "CK_Batches_Status",
+                        "[Status] IN (N'Bekliyor', N'İşlemde', N'Tamamlandı')");
+                });
+            });
+
             modelBuilder.Entity<AuditLog>(entity =>
             {
                 entity.HasIndex(log => new { log.EntityType, log.EntityId, log.OccurredAtUtc })

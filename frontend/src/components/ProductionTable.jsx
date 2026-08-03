@@ -112,7 +112,7 @@ const ProductionTable = ({
                         <button
                           type="button"
                           onClick={() => onOpenDetail(r)}
-                          className="btn-delete"
+                          className="mes-btn-ghost"
                           title="Detayı Aç"
                         >
                           <Eye size={18} />
@@ -120,10 +120,9 @@ const ProductionTable = ({
                         <button
                           type="button"
                           onClick={() => onDelete(r.id)}
-                          className="btn-delete"
+                          className="mes-btn-ghost text-[color:var(--color-nok)] hover:bg-red-50"
                           title={canDeleteRecord ? 'Kaydı Sil' : 'Silme izniniz yok'}
                           disabled={!canDeleteRecord}
-                          style={{ opacity: canDeleteRecord ? 1 : 0.45, cursor: canDeleteRecord ? 'pointer' : 'not-allowed' }}
                         >
                           <Trash2 size={18} />
                         </button>
