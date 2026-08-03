@@ -1,4 +1,3 @@
-using System;
 using System.ComponentModel.DataAnnotations;
 
 namespace MiniMesApi.Models
@@ -17,6 +16,14 @@ namespace MiniMesApi.Models
 
         // Toplam Duruş Süresi (Saniye)
         public double DowntimeSeconds { get; set; }
+
+        [Required]
+        [StringLength(40)]
+        public string DowntimeReasonCode { get; set; } = DowntimeReasonCatalog.None;
+
+        [Required]
+        [StringLength(20)]
+        public string ShiftCode { get; set; } = ShiftCatalog.ShiftA;
 
         // Parça Başına Olması Gereken İdeal Süre (Saniye)
         public double IdealCycleTimeSeconds { get; set; }

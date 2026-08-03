@@ -193,6 +193,7 @@ builder.Services.AddRateLimiter(options =>
 });
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
+builder.Services.AddScoped<IAuditLogService, AuditLogService>();
 
 builder.Services.AddEndpointsApiExplorer();
 

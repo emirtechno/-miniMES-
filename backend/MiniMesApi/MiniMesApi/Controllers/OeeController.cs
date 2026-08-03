@@ -17,6 +17,23 @@ public sealed class OeeController(MesDbContext context) : ControllerBase
     public ActionResult<IReadOnlyCollection<string>> GetStations() =>
         Ok(StationCatalog.All);
 
+    [HttpGet("shifts")]
+    public ActionResult<IReadOnlyCollection<object>> GetShifts() =>
+        Ok(ShiftCatalog.All.Select(code => new
+        {
+            code,
+            name = ShiftCatalog.DisplayName(code)
+        }).ToArray());
+
+    [HttpGet("downtime-reasons")]
+    public ActionResult<IReadOnlyCollection<object>> GetDowntimeReasons() =>
+        Ok(DowntimeReasonCatalog.All.Select(code => new
+        {
+            code,
+            name = DowntimeReasonCatalog.DisplayName(code),
+            isPlanned = DowntimeReasonCatalog.IsPlanned(code)
+        }).ToArray());
+
     [HttpGet("latest/{stationId}")]
     public async Task<ActionResult<OeeMetricDto>> GetLatestMetrics(
         string stationId,

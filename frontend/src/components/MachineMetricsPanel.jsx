@@ -70,6 +70,11 @@ const MachineMetricsPanel = () => {
             <div className="info-card-title">Kalite Oranı</div>
             <div className="info-card-value" style={{ fontSize: '1.6rem', color: '#8b5cf6' }}>%{oeeData.quality}</div>
           </div>
+          <div className="custom-card" style={{ padding: '15px', borderLeft: '4px solid #0f172a' }}>
+            <div className="info-card-title">Vardiya</div>
+            <div className="info-card-value" style={{ fontSize: '1rem', color: '#0f172a' }}>{oeeData.shiftName || oeeData.shiftCode || '—'}</div>
+            <small style={{ color: '#64748b' }}>{oeeData.downtimeReason || 'Duruş nedeni yok'}</small>
+          </div>
         </section>
       )}
 
@@ -125,8 +130,10 @@ const MachineMetricsPanel = () => {
               <thead>
                 <tr>
                   <th>İstasyon</th>
+                  <th>Vardiya</th>
                   <th>Planlanan Süre</th>
                   <th>Duruş (sn)</th>
+                  <th>Duruş Nedeni</th>
                   <th>İdeal Çevrim</th>
                   <th>Gerçekleşen Üretim</th>
                   <th>Sağlam (OK)</th>
@@ -137,10 +144,12 @@ const MachineMetricsPanel = () => {
                 {filteredMetrics.map((item, index) => (
                   <tr key={index}>
                     <td><b>{item.stationId}</b></td>
+                    <td>{item.shiftName || item.shiftCode || '—'}</td>
                     <td>{item.plannedProductionSeconds} sn</td>
                     <td style={{ color: item.downtimeSeconds > 30 ? '#ef4444' : 'inherit', fontWeight: item.downtimeSeconds > 30 ? 'bold' : 'normal' }}>
                       {item.downtimeSeconds} sn
                     </td>
+                    <td>{item.downtimeReason || item.downtimeReasonCode || '—'}</td>
                     <td>{item.idealCycleTimeSeconds} sn</td>
                     <td><b>{item.actualProductionCount}</b></td>
                     <td style={{ color: '#10b981', fontWeight: 'bold' }}>{item.goodProductionCount}</td>

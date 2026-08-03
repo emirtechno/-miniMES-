@@ -38,5 +38,11 @@ namespace MiniMesApi.DTOs
 
         [JsonPropertyName("uretimTarihi")]
         public DateTimeOffset UretimTarihi { get; set; }
+
+        [JsonPropertyName("deletedAtUtc")]
+        public DateTimeOffset? DeletedAtUtc { get; set; }
+
+        [JsonPropertyName("deletedByUsername")]
+        public string? DeletedByUsername { get; set; }
     }
 }
