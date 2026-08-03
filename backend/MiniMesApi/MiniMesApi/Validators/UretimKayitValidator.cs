@@ -18,7 +18,7 @@ namespace MiniMesApi.Validators
 
             RuleFor(x => x.IstasyonAdi)
                 .NotEmpty().WithMessage("İstasyon adı seçilmelidir.")
-                .MaximumLength(80).WithMessage("İstasyon adı 80 karakterden uzun olamaz.");
+                .MaximumLength(50).WithMessage("İstasyon adı 50 karakterden uzun olamaz.");
 
             RuleFor(x => x.KaliteDurumu)
                 .NotEmpty().WithMessage("Kalite durumu belirtilmelidir.")

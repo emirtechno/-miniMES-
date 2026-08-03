@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { getApiErrorMessage } from '../services/api';
 import { Factory, LogIn } from 'lucide-react';
 
 function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('123');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -19,7 +20,7 @@ function LoginPage() {
       await login(username, password);
       navigate('/dashboard');
     } catch (loginError) {
-      setError(loginError.response?.data?.message || loginError.message || 'Giriş yapılamadı.');
+      setError(getApiErrorMessage(loginError, 'Giriş yapılamadı.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -51,7 +52,6 @@ function LoginPage() {
             {isSubmitting ? 'Giriş yapılıyor...' : 'Sisteme Giriş Yap'}
           </button>
         </form>
-        <p style={{ margin: '18px 0 0', color: '#64748b', fontSize: '0.8rem', textAlign: 'center' }}>Geliştirme: admin/123 veya operator/123</p>
       </div>
     </div>
   );

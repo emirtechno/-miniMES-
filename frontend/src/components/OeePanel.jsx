@@ -1,5 +1,3 @@
-import React from 'react';
-
 const Gauge = ({ label, value, detail }) => {
   const isAvailable = typeof value === 'number' && !isNaN(value);
   const normalizedValue = isAvailable ? Math.max(0, Math.min(value, 100)) : 0;

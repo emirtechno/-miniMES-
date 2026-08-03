@@ -48,7 +48,8 @@ import {
   fetchWorkOrders,
   createWorkOrder,
   advanceWorkOrder,
-  fetchBatches
+  fetchBatches,
+  getApiErrorMessage
 } from './services/api';
 
 import KpiCard from './components/KpiCard';
@@ -64,7 +65,7 @@ import DetailModal from './components/DetailModal';
 import LoginPage from './pages/LoginPage';
 
 function MainLayout() {
-  const { users, activeUserId, setActiveUserId, currentUser, logout, isAuthenticated } = useAuth();
+  const { currentUser, logout, isAuthenticated } = useAuth();
   const location = useLocation();
 
   const [records, setRecords] = useState([]);
@@ -111,14 +112,18 @@ function MainLayout() {
   // 🎯 KESİN ROL VE YETKİ KONTROLLERİ
   // ==========================================
   const isCurrentUserActive = currentUser?.status === 'Aktif';
+  const hasPermission = (permission) => isCurrentUserActive && currentUser.permissions.includes(permission);
 
-  const canAddRecord = isCurrentUserActive && ['Üretim Girişi', 'Tam Yetki'].includes(currentUser.permission);
-  const canChangeQuality = isCurrentUserActive && ['Kalite Onayı', 'Tam Yetki'].includes(currentUser.permission);
-  const canDeleteRecord = isCurrentUserActive && currentUser.permission === 'Tam Yetki';
-  const canViewReports = isCurrentUserActive && ['Admin', 'Kalite', 'Saha Müdürü', 'Bakım'].includes(currentUser.role);
-  const canManageWorkOrders = isCurrentUserActive && (currentUser.role === 'Admin' || currentUser.role === 'Saha Müdürü' || currentUser.permission === 'Tam Yetki');
-  const canManageAlarms = isCurrentUserActive && ['Admin', 'Kalite', 'Saha Müdürü'].includes(currentUser.role);
-  const canManageUsers = isCurrentUserActive && ['Admin', 'Saha Müdürü'].includes(currentUser.role);
+  const canAddRecord = hasPermission('production.write');
+  const canChangeQuality = hasPermission('production.manage');
+  const canDeleteRecord = hasPermission('production.manage');
+  const canHardDelete = hasPermission('production.hard-delete');
+  const canViewReports = isCurrentUserActive;
+  const canManageWorkOrders = hasPermission('workorders.manage');
+  const canCreateAlarms = hasPermission('alarms.write');
+  const canManageAlarms = hasPermission('alarms.manage');
+  const canManageUsers = hasPermission('users.manage');
+  const canViewDeleted = hasPermission('deleted-records.read');
 
   const permissionText = !isCurrentUserActive 
     ? 'Kullanıcınız PASİF durumdadır. İşlem yapamazsınız.'
@@ -130,13 +135,6 @@ function MainLayout() {
     ? 'Sadece kalite durumlarını güncelleyebilirsiniz.'
     : 'Yalnızca raporları görüntüleyebilirsiniz.';
 
-  const rolePermissionDefaults = {
-    'Operatör': 'Üretim Girişi',
-    'Kalite': 'Kalite Onayı',
-    'Saha Müdürü': 'Tam Yetki',
-    'Bakım': 'Rapor Görüntüleme'
-  };
-
   const fetchRecords = async () => {
     try {
       setLoading(true);
@@ -144,7 +142,7 @@ function MainLayout() {
       setRecords(Array.isArray(data) ? data.filter((r) => !(r?.isDeleted ?? r?.IsDeleted ?? false)) : []);
       setError(null);
     } catch (err) {
-      setError('API bağlantısı başarısız oldu.');
+      setError(getApiErrorMessage(err, 'API bağlantısı başarısız oldu.'));
       console.error(err);
     } finally {
       setLoading(false);
@@ -158,7 +156,7 @@ function MainLayout() {
       setDeletedRecords(Array.isArray(data) ? data : []);
       setDeletedError(null);
     } catch (err) {
-      setDeletedError('Silinen kayıtlar alınamadı.');
+      setDeletedError(getApiErrorMessage(err, 'Silinen kayıtlar alınamadı.'));
       console.error(err);
     } finally {
       setDeletedLoading(false);
@@ -172,7 +170,7 @@ function MainLayout() {
       setAlarms(Array.isArray(data) ? data : []);
       setAlarmError(null);
     } catch (err) {
-      setAlarmError('Alarmlar alınırken hata oluştu.');
+      setAlarmError(getApiErrorMessage(err, 'Alarmlar alınırken hata oluştu.'));
       console.error(err);
     } finally {
       setAlarmLoading(false);
@@ -200,11 +198,11 @@ function MainLayout() {
   useEffect(() => {
     if (!isAuthenticated) return;
     fetchRecords();
-    fetchDeletedRecords();
+    if (canViewDeleted) fetchDeletedRecords();
     loadAlarms();
     loadWorkOrders();
     loadBatches();
-  }, [isAuthenticated]);
+  }, [isAuthenticated, canViewDeleted]);
 
   useEffect(() => {
     if (!isAuthenticated || !autoRefresh) return;
@@ -273,7 +271,7 @@ function MainLayout() {
   }, [isFactorySimulationActive, canAddRecord]); // fetchRecords'u buraya eklemiyoruz ki sonsuz döngü olmasın
 
   const createTestAlarm = async () => {
-    if (!canManageAlarms) {
+    if (!canCreateAlarms) {
       alert('Alarm oluşturma yetkiniz bulunmamaktadır.');
       return;
     }
@@ -290,7 +288,7 @@ function MainLayout() {
       await createAlarm(newAlarm);
       await loadAlarms();
     } catch (err) {
-      alert('Test alarmı oluşturulurken hata oluştu.');
+      alert(getApiErrorMessage(err, 'Test alarmı oluşturulurken hata oluştu.'));
       console.error(err);
     } finally {
       setAlarmLoading(false);
@@ -299,7 +297,7 @@ function MainLayout() {
 
   const createManualAlarm = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
-    if (!canManageAlarms) {
+    if (!canCreateAlarms) {
       alert('Alarm oluşturma yetkiniz bulunmamaktadır.');
       return;
     }
@@ -320,7 +318,7 @@ function MainLayout() {
       setManualDescription('');
       await loadAlarms();
     } catch (err) {
-      alert('Manuel alarm eklenirken hata oluştu.');
+      alert(getApiErrorMessage(err, 'Manuel alarm eklenirken hata oluştu.'));
       console.error(err);
     } finally {
       setAlarmLoading(false);
@@ -386,7 +384,7 @@ function MainLayout() {
     }
 
     try {
-      const res = await createProductionRecord({
+      await createProductionRecord({
         urun20liKod,
         malzeme12liKod,
         istasyonAdi: istasyonAdi || 'Montaj_Hatti_01',
@@ -394,29 +392,15 @@ function MainLayout() {
         uretimTarihi: new Date().toISOString()
       });
 
-      if (res.success) {
-        setUrun20liKod('');
-        setMalzeme12liKod('');
-        setIstasyonAdi('');
-        setKaliteDurumu('OK');
-        await fetchRecords();
-        await fetchDeletedRecords();
-        urunInputRef.current?.focus();
-      } else {
-        const errorList = res.errors && res.errors.length > 0 ? `\n\n• ${res.errors.join('\n• ')}` : '';
-        alert(`Kayıt Eklenemedi: ${res.message}${errorList}`);
-      }
+      setUrun20liKod('');
+      setMalzeme12liKod('');
+      setIstasyonAdi('');
+      setKaliteDurumu('OK');
+      await fetchRecords();
+      if (canViewDeleted) await fetchDeletedRecords();
+      urunInputRef.current?.focus();
     } catch (err) {
-      if (err.response && err.response.data) {
-        const apiErr = err.response.data;
-        if (apiErr.errors && apiErr.errors.length > 0) {
-          alert(`Validasyon Hatası:\n\n• ` + apiErr.errors.join('\n• '));
-        } else {
-          alert(`Hata: ${apiErr.message || 'Kayıt eklenirken bir sorun oluştu.'}`);
-        }
-      } else {
-        alert('Sunucu ile bağlantı kurulamadı!');
-      }
+      alert(getApiErrorMessage(err, 'Kayıt eklenirken bir sorun oluştu.'));
       console.error(err);
     }
   };
@@ -431,12 +415,12 @@ function MainLayout() {
       const res = await deleteProductionRecord(id);
       if (res.success !== false) {
         await fetchRecords();
-        await fetchDeletedRecords();
+        if (canViewDeleted) await fetchDeletedRecords();
       } else {
         alert(`Silme Başarısız: ${res.message}`);
       }
     } catch (err) {
-      alert('Silme işlemi başarısız!');
+      alert(getApiErrorMessage(err, 'Silme işlemi başarısız.'));
       console.error(err);
     }
   };
@@ -463,7 +447,7 @@ function MainLayout() {
       await deleteAlarm(id);
       await loadAlarms(); // Silme başarılı olunca listeyi yenile
     } catch (err) {
-      alert(`Alarm silinirken hata oluştu: ${err.response?.data?.message || err.message}`);
+      alert(getApiErrorMessage(err, 'Alarm silinirken hata oluştu.'));
       console.error(err);
     }
   };
@@ -473,8 +457,8 @@ function MainLayout() {
   const handleHardDelete = async (recordOrId) => {
     const id = typeof recordOrId === 'object' ? (recordOrId.id || recordOrId.Id) : recordOrId;
 
-    if (!canDeleteRecord) {
-      alert('Kalıcı silme işlemi için Tam Yetki gereklidir.');
+    if (!canHardDelete) {
+      alert('Kalıcı silme işlemi için ek yönetici yetkisi gereklidir.');
       return;
     }
 
@@ -488,12 +472,12 @@ function MainLayout() {
     try {
       const res = await hardDeleteProductionRecord(id);
       if (res && res.success !== false) {
-        await fetchDeletedRecords();
+        if (canViewDeleted) await fetchDeletedRecords();
       } else {
         alert(`Kalıcı Silme Başarısız: ${res?.message || 'Sunucu hatası'}`);
       }
     } catch (err) {
-      alert(`Kalıcı silme işlemi başarısız: ${err.response?.data?.message || err.message}`);
+      alert(getApiErrorMessage(err, 'Kalıcı silme işlemi başarısız.'));
       console.error(err);
     }
   };
@@ -515,12 +499,12 @@ function MainLayout() {
       const res = await restoreProductionRecord(id);
       if (res && res.success !== false) {
         await fetchRecords();
-        await fetchDeletedRecords();
+        if (canViewDeleted) await fetchDeletedRecords();
       } else {
         alert(`Geri Yükleme Başarısız: ${res?.message || 'Sunucu hatası'}`);
       }
     } catch (err) {
-      alert(`Geri yükleme işlemi başarısız: ${err.response?.data?.message || err.message}`);
+      alert(getApiErrorMessage(err, 'Geri yükleme işlemi başarısız.'));
       console.error(err);
     }
   };
@@ -538,12 +522,12 @@ function MainLayout() {
       });
       if (res.success !== false) {
         await fetchRecords();
-        await fetchDeletedRecords();
+        if (canViewDeleted) await fetchDeletedRecords();
       } else {
         alert(`Güncelleme Başarısız: ${res.message}`);
       }
     } catch (err) {
-      alert('Güncelleme başarısız!');
+      alert(getApiErrorMessage(err, 'Güncelleme başarısız.'));
       console.error(err);
     }
   };
@@ -609,7 +593,7 @@ const yieldRate = totalCount > 0 ? ((okCount / totalCount) * 100).toFixed(1) : 0
       setWorkOrderForm({ orderNo: '', product: '', station: '', quantity: '' });
       await loadWorkOrders();
     } catch (err) {
-      alert('İş emri oluşturulamadı.');
+      alert(getApiErrorMessage(err, 'İş emri oluşturulamadı.'));
       console.error(err);
     }
   };
@@ -623,7 +607,7 @@ const yieldRate = totalCount > 0 ? ((okCount / totalCount) * 100).toFixed(1) : 0
       await advanceWorkOrder(id);
       await loadWorkOrders();
     } catch (err) {
-      alert('İş emri durumu güncellenemedi.');
+      alert(getApiErrorMessage(err, 'İş emri durumu güncellenemedi.'));
       console.error(err);
     }
   };
@@ -637,7 +621,7 @@ const yieldRate = totalCount > 0 ? ((okCount / totalCount) * 100).toFixed(1) : 0
       await acknowledgeAlarm(id);
       await loadAlarms();
     } catch (err) {
-      alert('Alarm onayı kaydedilirken hata oluştu.');
+      alert(getApiErrorMessage(err, 'Alarm onayı kaydedilirken hata oluştu.'));
       console.error(err);
     }
   };
@@ -779,16 +763,6 @@ const yieldRate = totalCount > 0 ? ((okCount / totalCount) * 100).toFixed(1) : 0
                 <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{currentUser.role} - {currentUser.status}</div>
               </div>
             </div>
-            <select
-              className="input-field"
-              value={activeUserId}
-              onChange={(e) => setActiveUserId(Number(e.target.value))}
-              style={{ minWidth: '180px', background: '#fff' }}
-            >
-              {users.map((user) => (
-                <option key={user.id} value={user.id}>{user.name} - {user.role} ({user.status})</option>
-              ))}
-            </select>
             <button
               type="button"
               onClick={logout}
@@ -1008,7 +982,7 @@ const yieldRate = totalCount > 0 ? ((okCount / totalCount) * 100).toFixed(1) : 0
 
               {canViewReports ? (
                 <>
-                  {canManageAlarms && (
+                  {canCreateAlarms && (
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginBottom: '14px' }}>
                       <button
                         type="button"
@@ -1075,29 +1049,10 @@ const yieldRate = totalCount > 0 ? ((okCount / totalCount) * 100).toFixed(1) : 0
               )}
 
               {canManageUsers && (
-                <UserRolePanel
-                  users={users}
-                  activeUserId={activeUserId}
-                  onUpdateUser={(id, field, value) => {
-                    const updated = users.map((u) => {
-                      if (u.id !== id) return u;
-                      if (field === 'role') {
-                        return { ...u, role: value, permission: rolePermissionDefaults[value] || u.permission };
-                      }
-                      return { ...u, [field]: value };
-                    });
-                    localStorage.setItem('mm_users', JSON.stringify(updated));
-                    window.location.reload();
-                  }}
-                  onToggleUserStatus={(id) => {
-                    const updated = users.map((u) => u.id === id ? { ...u, status: u.status === 'Aktif' ? 'Pasif' : 'Aktif' } : u);
-                    localStorage.setItem('mm_users', JSON.stringify(updated));
-                    window.location.reload();
-                  }}
-                  onSetActiveUser={(id) => setActiveUserId(id)}
-                />
+                <UserRolePanel />
               )}
 
+              {canViewDeleted && (
               <section className="custom-card">
                 <div className="card-header" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -1160,6 +1115,7 @@ const yieldRate = totalCount > 0 ? ((okCount / totalCount) * 100).toFixed(1) : 0
                   )}
                 </div>
               </section>
+              )}
 
               <section className="custom-card" style={{ borderLeft: '5px solid #ef4444' }}>
                 <div className="card-header" style={{ color: '#ef4444' }}>

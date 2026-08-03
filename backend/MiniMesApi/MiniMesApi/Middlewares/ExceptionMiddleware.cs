@@ -1,6 +1,6 @@
 using System.Net;
 using System.Text.Json;
-using MiniMesApi.DTOs;
+using Microsoft.AspNetCore.Mvc;
 
 namespace MiniMesApi.Middlewares
 {
@@ -23,23 +23,29 @@ namespace MiniMesApi.Middlewares
             }
             catch (Exception ex)
             {
-                // Hatayı konsola/log dosyasına detaylıca basıyoruz
-                _logger.LogError(ex, $"[MES AKIŞ HATASI]: {ex.Message}");
-                
-                await HandleExceptionAsync(httpContext, ex);
+                _logger.LogError(
+                    ex,
+                    "[MES AKIŞ HATASI] {Method} {Path} işlenirken hata oluştu. TraceId: {TraceId}",
+                    httpContext.Request.Method,
+                    httpContext.Request.Path,
+                    httpContext.TraceIdentifier);
+
+                await HandleExceptionAsync(httpContext);
             }
         }
 
-        private static Task HandleExceptionAsync(HttpContext context, Exception exception)
+        private static Task HandleExceptionAsync(HttpContext context)
         {
             context.Response.ContentType = "application/json";
             context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
 
-            // Senin mevcut ApiResponse.FailResult metodunu kullanıyoruz
-            var response = ApiResponse<string>.FailResult(
-                message: "Sunucu tarafında beklenmeyen bir hata oluştu.",
-                errors: new List<string> { exception.Message }
-            );
+            var response = new ProblemDetails
+            {
+                Status = StatusCodes.Status500InternalServerError,
+                Title = "Sunucu tarafında beklenmeyen bir hata oluştu.",
+                Detail = "Hata ayrıntıları sunucu günlüklerine kaydedildi."
+            };
+            response.Extensions["traceId"] = context.TraceIdentifier;
 
             var jsonOptions = new JsonSerializerOptions
             {

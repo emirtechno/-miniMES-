@@ -1,10 +1,19 @@
 using System.Text;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi;
 using MiniMesApi.Models;
 using MiniMesApi.Middlewares;
 using FluentValidation;
+using MiniMesApi.Options;
+using MiniMesApi.Security;
+using MiniMesApi.Services;
 using MiniMesApi.Validators;
 
 // ... diğer servisler ...
@@ -25,33 +34,161 @@ builder.Services.AddCors(options =>
 builder.Services.AddDbContext<MesDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-var jwtKey = builder.Configuration["Jwt:Key"]
-    ?? throw new InvalidOperationException("Jwt:Key yapılandırılmalıdır.");
-var jwtIssuer = builder.Configuration["Jwt:Issuer"]
-    ?? throw new InvalidOperationException("Jwt:Issuer yapılandırılmalıdır.");
-var jwtAudience = builder.Configuration["Jwt:Audience"]
-    ?? throw new InvalidOperationException("Jwt:Audience yapılandırılmalıdır.");
+builder.Services.AddOptions<OeeSimulationOptions>()
+    .Bind(builder.Configuration.GetSection(OeeSimulationOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+builder.Services.AddOptions<MachineMetricRetentionOptions>()
+    .Bind(builder.Configuration.GetSection(MachineMetricRetentionOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+builder.Services.AddOptions<JwtOptions>()
+    .Bind(builder.Configuration.GetSection(JwtOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+var jwt = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
+    ?? throw new InvalidOperationException("Jwt yapılandırılmalıdır.");
+if (jwt.Key.Length < 32)
+{
+    throw new InvalidOperationException("Jwt:Key en az 32 karakter olmalıdır.");
+}
+
+builder.Services.AddIdentityCore<ApplicationUser>(options =>
+    {
+        options.Password.RequiredLength = 12;
+        options.Password.RequireDigit = true;
+        options.Password.RequireLowercase = true;
+        options.Password.RequireUppercase = true;
+        options.Password.RequireNonAlphanumeric = true;
+        options.Lockout.AllowedForNewUsers = true;
+        options.Lockout.MaxFailedAccessAttempts = 5;
+        options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
+        options.User.RequireUniqueEmail = false;
+    })
+    .AddRoles<IdentityRole>()
+    .AddSignInManager()
+    .AddEntityFrameworkStores<MesDbContext>()
+    .AddDefaultTokenProviders();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options => options.TokenValidationParameters = new TokenValidationParameters
+    .AddJwtBearer(options =>
     {
-        ValidateIssuer = true,
-        ValidIssuer = jwtIssuer,
-        ValidateAudience = true,
-        ValidAudience = jwtAudience,
-        ValidateLifetime = true,
-        ValidateIssuerSigningKey = true,
-        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
-        ClockSkew = TimeSpan.Zero
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = jwt.Issuer,
+            ValidateAudience = true,
+            ValidAudience = jwt.Audience,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.Key)),
+            ClockSkew = TimeSpan.Zero
+        };
+        options.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = async context =>
+            {
+                var userManager = context.HttpContext.RequestServices
+                    .GetRequiredService<UserManager<ApplicationUser>>();
+                var user = await userManager.GetUserAsync(context.Principal!);
+                var tokenStamp = context.Principal?.FindFirst("security_stamp")?.Value;
+
+                if (user is null || !user.IsActive ||
+                    !string.Equals(user.SecurityStamp, tokenStamp, StringComparison.Ordinal))
+                {
+                    context.Fail("Token artık geçerli değil.");
+                }
+            },
+            OnChallenge = async context =>
+            {
+                context.HandleResponse();
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                await context.Response.WriteAsJsonAsync(new ProblemDetails
+                {
+                    Status = StatusCodes.Status401Unauthorized,
+                    Title = "Kimlik doğrulama gerekli."
+                });
+            },
+            OnForbidden = async context =>
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                await context.Response.WriteAsJsonAsync(new ProblemDetails
+                {
+                    Status = StatusCodes.Status403Forbidden,
+                    Title = "Bu işlem için yetkiniz bulunmuyor."
+                });
+            }
+        };
     });
 
 // --- JSON Naming Policy Ayarı (PascalCase / Birebir İsimlendirme) ---
 builder.Services.AddControllers();
+builder.Services.Configure<ApiBehaviorOptions>(options =>
+{
+    options.InvalidModelStateResponseFactory = context =>
+    {
+        var problemDetails = new ValidationProblemDetails(context.ModelState)
+        {
+            Status = StatusCodes.Status400BadRequest,
+            Title = "İstek doğrulaması başarısız."
+        };
+        return new BadRequestObjectResult(problemDetails);
+    };
+});
+builder.Services.AddProblemDetails();
+builder.Services.AddAuthorizationBuilder()
+    .SetFallbackPolicy(new AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build())
+    .AddPolicy(PolicyNames.ProductionWrite, policy => policy.RequireClaim("permission", AppPermissions.ProductionWrite))
+    .AddPolicy(PolicyNames.ProductionManage, policy => policy.RequireClaim("permission", AppPermissions.ProductionManage))
+    .AddPolicy(PolicyNames.ProductionHardDelete, policy => policy.RequireClaim("permission", AppPermissions.ProductionHardDelete))
+    .AddPolicy(PolicyNames.MetricsRead, policy => policy.RequireClaim("permission", AppPermissions.MetricsRead))
+    .AddPolicy(PolicyNames.AlarmWrite, policy => policy.RequireClaim("permission", AppPermissions.AlarmWrite))
+    .AddPolicy(PolicyNames.AlarmManage, policy => policy.RequireClaim("permission", AppPermissions.AlarmManage))
+    .AddPolicy(PolicyNames.WorkOrderManage, policy => policy.RequireClaim("permission", AppPermissions.WorkOrderManage))
+    .AddPolicy(PolicyNames.DeletedRecordsRead, policy => policy.RequireClaim("permission", AppPermissions.DeletedRecordsRead))
+    .AddPolicy(PolicyNames.UserManage, policy => policy.RequireClaim("permission", AppPermissions.UserManage));
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = async (context, cancellationToken) =>
+    {
+        context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+        await context.HttpContext.Response.WriteAsJsonAsync(new ProblemDetails
+        {
+            Status = StatusCodes.Status429TooManyRequests,
+            Title = "Çok fazla giriş denemesi.",
+            Detail = "Lütfen kısa bir süre sonra yeniden deneyin."
+        }, cancellationToken);
+    };
+    options.AddPolicy("login", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 5,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+});
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 
 builder.Services.AddEndpointsApiExplorer();
 
-// --- OeeSimulation Kısımları
-builder.Services.AddHostedService<MiniMesApi.Services.OeeSimulationService>();
+if (builder.Environment.IsDevelopment() &&
+    builder.Configuration.GetValue<bool>($"{OeeSimulationOptions.SectionName}:Enabled"))
+{
+    builder.Services.AddHostedService<OeeSimulationService>();
+}
+
+if (builder.Configuration.GetValue<bool>($"{MachineMetricRetentionOptions.SectionName}:Enabled"))
+{
+    builder.Services.AddHostedService<MachineMetricRetentionService>();
+}
 
 // FluentValidation Servis Kaydı
 builder.Services.AddValidatorsFromAssemblyContaining<CreateUretimKayitDtoValidator>();
@@ -69,72 +206,65 @@ builder.Services.AddSwaggerGen(options =>
             Name = "Teknoloji Direktörlüğü / MES Ekibi"
         }
     });
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        Description = "Identity login endpointinden alınan JWT erişim belirtecini girin."
+    });
 });
 
 var app = builder.Build();
 
-// --- ÖNEMLİ:Exception Middleware ---  
+// --- ÖNEMLİ:Exception Middleware ---
 app.UseMiddleware<ExceptionMiddleware>();
 
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<MesDbContext>();
-    db.Database.EnsureCreated();
+    var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("DatabaseInitialization");
+    await db.Database.MigrateAsync();
+    await IdentityBootstrapper.InitializeAsync(scope.ServiceProvider, builder.Configuration, logger);
 
-    try
+    if (app.Environment.IsDevelopment())
     {
-        var createAlarmsTableSql = @"
-IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[Alarms]') AND type in (N'U'))
-BEGIN
-    CREATE TABLE [dbo].[Alarms](
-        [Id] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
-        [Title] NVARCHAR(100) NOT NULL,
-        [Station] NVARCHAR(80) NULL,
-        [Severity] NVARCHAR(20) NOT NULL,
-        [Time] DATETIME2 NOT NULL,
-        [Status] NVARCHAR(20) NOT NULL,
-        [Description] NVARCHAR(400) NULL
-    );
-END
-";
-        db.Database.ExecuteSqlRaw(createAlarmsTableSql);
-    }
-    catch { }
-
-    try
-    {
-        if (!db.Alarms.Any())
+        try
         {
-            db.Alarms.AddRange(
-                new Alarm
-                {
-                    Title = "Hız Sensörü Arızası",
-                    Station = "Montaj_Hatti_02",
-                    Severity = "Kritik",
-                    Time = DateTime.Now.AddMinutes(-22),
-                    Status = "Açık",
-                    Description = "Üretim hızı beklenen değerlerin altında."
-                },
-                new Alarm
-                {
-                    Title = "Yüksek Basınç",
-                    Station = "Test_Ve_Paketleme_Istasyonu",
-                    Severity = "Uyarı",
-                    Time = DateTime.Now.AddMinutes(-8),
-                    Status = "Onaylandı",
-                    Description = "Geçici basınç sapması tespit edildi."
-                }
-            );
-            db.SaveChanges();
+            if (!await db.Alarms.AnyAsync())
+            {
+                db.Alarms.AddRange(
+                    new Alarm
+                    {
+                        Title = "Hız Sensörü Arızası",
+                        Station = "Montaj_Hatti_02",
+                        Severity = "Kritik",
+                        Time = DateTime.Now.AddMinutes(-22),
+                        Status = "Açık",
+                        Description = "Üretim hızı beklenen değerlerin altında."
+                    },
+                    new Alarm
+                    {
+                        Title = "Yüksek Basınç",
+                        Station = "Test_Ve_Paketleme_Istasyonu",
+                        Severity = "Uyarı",
+                        Time = DateTime.Now.AddMinutes(-8),
+                        Status = "Onaylandı",
+                        Description = "Geçici basınç sapması tespit edildi."
+                    }
+                );
+                await db.SaveChangesAsync();
+            }
         }
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"Alarm seeding hatası: {ex.Message}");
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Alarm başlangıç verileri eklenemedi.");
+        }
     }
 }
 
 app.UseCors("AllowReactApp");
+app.UseRateLimiter();
 
 // 3. Swagger Middleware
 if (app.Environment.IsDevelopment())
