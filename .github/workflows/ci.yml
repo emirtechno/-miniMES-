@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'cursor/**']
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend/MiniMesApi
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore
+        run: dotnet restore MiniMesApi.slnx
+      - name: Build
+        run: dotnet build MiniMesApi.slnx --configuration Release --no-restore
+      - name: Test
+        run: dotnet test MiniMesApi.slnx --configuration Release --no-build
+      - name: Vulnerable packages
+        run: |
+          dotnet list MiniMesApi/MiniMesApi.csproj package --vulnerable --include-transitive 2>&1 | tee vuln.txt
+          if grep -qiE 'has the following vulnerable packages|Severity' vuln.txt; then
+            echo "Vulnerable packages detected"
+            exit 1
+          fi
+      - name: Migration drift check
+        env:
+          Jwt__Key: '0123456789abcdef0123456789abcdef'
+          ConnectionStrings__DefaultConnection: 'Server=localhost;Database=MiniMESDB;User Id=sa;Password=Your_password123;TrustServerCertificate=True;'
+        run: |
+          dotnet tool install --global dotnet-ef --version 10.0.10 || true
+          export PATH="$PATH:$HOME/.dotnet/tools"
+          cd MiniMesApi
+          if ! dotnet ef migrations has-pending-model-changes; then
+            echo "EF model has pending changes not covered by migrations"
+            exit 1
+          fi
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Build
+        run: npm run build
+      - name: Audit
+        run: |
+          # Fail on new high/critical findings; allow currently unfixed upstream packages.
+          node <<'NODE'
+          const { execSync } = require('node:child_process');
+          let report;
+          try {
+            report = JSON.parse(execSync('npm audit --json', { encoding: 'utf8' }));
+          } catch (error) {
+            report = JSON.parse(error.stdout || '{}');
+          }
+          const allowed = new Set(['xlsx', 'react-router', 'react-router-dom']);
+          const blockers = Object.entries(report.vulnerabilities || {})
+            .filter(([, vuln]) => ['high', 'critical'].includes(vuln.severity))
+            .filter(([name]) => !allowed.has(name));
+          if (blockers.length) {
+            console.error(
+              'Blocking audit findings:',
+              blockers.map(([name, vuln]) => `${name} (${vuln.severity})`).join(', '),
+            );
+            process.exit(1);
+          }
+          console.log('npm audit passed with known exceptions:', [...allowed].join(', '));
+          NODE

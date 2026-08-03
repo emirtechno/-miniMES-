@@ -1,14 +1,51 @@
+import { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 
 const DetailModal = ({ record, isOpen, onClose }) => {
+  const closeRef = useRef(null);
+  const previouslyFocused = useRef(null);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    previouslyFocused.current = document.activeElement;
+    closeRef.current?.focus();
+
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      if (previouslyFocused.current instanceof HTMLElement) {
+        previouslyFocused.current.focus();
+      }
+    };
+  }, [isOpen, onClose]);
+
   if (!isOpen || !record) return null;
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay" onClick={onClose} role="presentation">
+      <div
+        className="modal-card"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="detail-modal-title"
+      >
         <div className="modal-header">
-          <h3>Üretim Detay</h3>
-          <button className="btn-delete" onClick={onClose}>
+          <h3 id="detail-modal-title">Üretim Detay</h3>
+          <button
+            ref={closeRef}
+            type="button"
+            className="btn-delete"
+            onClick={onClose}
+            aria-label="Detay penceresini kapat"
+          >
             <X size={18} />
           </button>
         </div>
