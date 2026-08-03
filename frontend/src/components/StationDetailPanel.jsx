@@ -1,9 +1,8 @@
 import { Activity } from 'lucide-react';
-import RecentRecordsList from './RecentRecordsList';
 import InfoTip from './InfoTip';
 import { getStationDisplayName } from '../constants/stations';
 
-const StationDetailPanel = ({ stationsList, selectedStation, onStationChange, stationMetrics, recentRecords }) => (
+const StationDetailPanel = ({ stationsList, selectedStation, onStationChange, stationMetrics, recentTicks = [] }) => (
   <section className="mes-surface p-5">
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
       <div className="flex items-center gap-2">
@@ -11,8 +10,8 @@ const StationDetailPanel = ({ stationsList, selectedStation, onStationChange, st
         <div>
           <h2 className="mes-section-title m-0">İstasyon Detayı</h2>
           <p className="mes-helper mt-0.5 mb-0">
-            Seçili istasyonun anlık kalite özeti ve son üretim kayıtları
-            <InfoTip text="Veriler canlı üretim API kayıtlarından gelir; ham ID yerine ürün/malzeme kodları ve zaman damgası gösterilir." className="ml-1 align-middle" />
+            MachineMetrics toplamları (Σ Gerçekleşen / Σ Sağlam) ve son telemetri tick’leri
+            <InfoTip text="OK = Σ GoodProductionCount, NOK = Σ (Actual − Good). 1-by-1 barkod sayımı kullanılmaz." className="ml-1 align-middle" />
           </p>
         </div>
       </div>
@@ -28,10 +27,10 @@ const StationDetailPanel = ({ stationsList, selectedStation, onStationChange, st
 
     <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {[
-        { label: 'Toplam İşlenen', value: stationMetrics.total, hint: 'Bu istasyona ait üretim kaydı sayısı' },
-        { label: 'Başarılı (OK)', value: stationMetrics.ok, tone: 'text-emerald-700', hint: 'Kalite OK kayıtları' },
-        { label: 'Hatalı (NOK)', value: stationMetrics.nok, tone: 'text-red-700', hint: 'Kalite NOK kayıtları' },
-        { label: 'Verimlilik', value: `%${stationMetrics.yield}`, tone: 'text-amber-700', hint: 'OK / toplam oranı' },
+        { label: 'Σ Gerçekleşen', value: stationMetrics.total, hint: 'SUM(ActualProductionCount)' },
+        { label: 'Σ Sağlam (OK)', value: stationMetrics.ok, tone: 'text-emerald-700', hint: 'SUM(GoodProductionCount)' },
+        { label: 'Σ Fire (NOK)', value: stationMetrics.nok, tone: 'text-red-700', hint: 'Actual − Good' },
+        { label: 'Verimlilik', value: `%${stationMetrics.yield}`, tone: 'text-amber-700', hint: 'Good / Actual' },
       ].map((item) => (
         <div key={item.label} className="rounded-xl border border-[color:var(--color-line)] bg-slate-50/80 px-4 py-3">
           <div className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-[color:var(--color-muted)]">
@@ -47,13 +46,30 @@ const StationDetailPanel = ({ stationsList, selectedStation, onStationChange, st
 
     <div>
       <div className="mb-2 flex items-center justify-between gap-2">
-        <h3 className="m-0 text-sm font-semibold text-[color:var(--color-ink)]">Son kayıtlar</h3>
-        <span className="text-xs text-[color:var(--color-muted)]">En fazla 6 kayıt</span>
+        <h3 className="m-0 text-sm font-semibold text-[color:var(--color-ink)]">Son telemetri tick’leri</h3>
+        <span className="text-xs text-[color:var(--color-muted)]">En fazla 6</span>
       </div>
-      <RecentRecordsList
-        records={recentRecords}
-        emptyText="Bu istasyon için henüz telemetri yok. Vardiya Başlat ile Live Stream’i açın."
-      />
+      <ul className="m-0 flex list-none flex-col gap-2 p-0">
+        {recentTicks.map((tick) => {
+          const scrap = Math.max(0, (tick.actualProductionCount || 0) - (tick.goodProductionCount || 0));
+          return (
+            <li key={`${tick.id}-${tick.recordedAt}`} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[color:var(--color-line)] px-3 py-2 text-sm">
+              <span className="font-medium">
+                Gerçekleşen {tick.actualProductionCount} · Sağlam {tick.goodProductionCount}
+                {scrap > 0 ? ` · Fire ${scrap}` : ''}
+              </span>
+              <span className="text-xs text-[color:var(--color-muted)]">
+                {tick.recordedAt ? new Date(tick.recordedAt).toLocaleTimeString('tr-TR') : '—'}
+              </span>
+            </li>
+          );
+        })}
+        {recentTicks.length === 0 && (
+          <li className="text-sm text-[color:var(--color-muted)]">
+            Henüz telemetri yok. Vardiya Başlat ile Live Stream’i açın.
+          </li>
+        )}
+      </ul>
     </div>
   </section>
 );

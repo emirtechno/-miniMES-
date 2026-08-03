@@ -57,27 +57,29 @@ public class BatchController : ControllerBase
     }
 
     /// <summary>
-    /// Recalculates ProducedQuantity from station OK production records and derives status.
+    /// Recalculates ProducedQuantity from MachineMetrics GoodProductionCount (telemetry SSOT).
     /// </summary>
     private async Task SyncProducedFromTelemetryAsync(List<Batch> batches, CancellationToken cancellationToken)
     {
         if (batches.Count == 0) return;
 
         var stations = batches.Select(batch => batch.Station).Distinct().ToArray();
-        var counts = await _context.UretimKayitlari
+        var goodByStation = await _context.MachineMetrics
             .AsNoTracking()
-            .Where(record => !record.IsDeleted
-                && record.KaliteDurumu == "OK"
-                && stations.Contains(record.IstasyonAdi))
-            .GroupBy(record => record.IstasyonAdi)
-            .Select(group => new { Station = group.Key, Count = group.Count() })
-            .ToDictionaryAsync(row => row.Station, row => row.Count, cancellationToken);
+            .Where(metric => stations.Contains(metric.StationId))
+            .GroupBy(metric => metric.StationId)
+            .Select(group => new
+            {
+                Station = group.Key,
+                Good = group.Sum(metric => (long)metric.GoodProductionCount)
+            })
+            .ToDictionaryAsync(row => row.Station, row => row.Good, cancellationToken);
 
         var dirty = false;
         foreach (var batch in batches)
         {
-            var telemetryCount = counts.GetValueOrDefault(batch.Station, 0);
-            var produced = Math.Clamp(telemetryCount, 0, Math.Max(batch.TargetQuantity, 0));
+            var telemetryGood = goodByStation.GetValueOrDefault(batch.Station, 0);
+            var produced = (int)Math.Clamp(telemetryGood, 0, Math.Max(batch.TargetQuantity, 0));
             var nextStatus = produced <= 0
                 ? BatchStatuses.Waiting
                 : produced >= batch.TargetQuantity

@@ -86,19 +86,6 @@ export const fetchCurrentUser = async () => {
   return response.data;
 };
 
-export const fetchProductionRecords = (options) => fetchPage('/Uretim', options);
-
-/** Sensor / Live Stream ingestion — not for manual barcode forms. */
-export const createProductionRecord = async (payload, { signal } = {}) => {
-  const response = await apiClient.post('/Uretim', payload, { signal });
-  return response.data;
-};
-
-export const updateProductionRecord = async (id, payload) => {
-  const response = await apiClient.put(`/Uretim/${id}`, payload);
-  return response.data;
-};
-
 export const fetchAlarms = (options) => fetchPage('/Alarm', options);
 
 export const createAlarm = async (payload) => {
@@ -160,6 +147,23 @@ export const fetchMachineMetrics = async ({ stationId, cursor, limit = 50, signa
     signal,
   });
   return unwrapPage(response);
+};
+
+/** Aggregated KPIs from MachineMetrics SSOT (plant + per-station). */
+export const fetchTelemetrySummary = async ({ stationId, signal } = {}) => {
+  const response = await apiClient.get('/MachineMetrics/summary', {
+    params: {
+      stationId: stationId && stationId !== 'Tümü' ? stationId : undefined,
+    },
+    signal,
+  });
+  return response.data || [];
+};
+
+/** Live Stream / PLC ingest — batch Actual/Good/Downtime tick. */
+export const createMachineMetric = async (payload, { signal } = {}) => {
+  const response = await apiClient.post('/MachineMetrics', payload, { signal });
+  return response.data;
 };
 
 export const fetchOeeShifts = async ({ signal } = {}) => {

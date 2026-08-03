@@ -36,8 +36,9 @@ const MachineMetricsPanel = ({
   isFactorySimulationActive = false,
   shiftStationId,
   shiftActive = false,
-  productionRecords = [],
+  stationKpi,
   batches = [],
+  metricsFeed = [],
 }) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const stationFromUrl = searchParams.get('stationId');
@@ -121,21 +122,27 @@ const MachineMetricsPanel = ({
 
   const stationLabel = selectedStation === 'Tümü' ? 'Tüm İstasyonlar' : getStationDisplayName(selectedStation);
 
-  const stationRecords = useMemo(() => {
-    if (selectedStation === 'Tümü') return productionRecords;
-    return productionRecords.filter((r) => r.istasyonAdi === selectedStation);
-  }, [productionRecords, selectedStation]);
-
   const okNok = useMemo(() => {
-    const ok = stationRecords.filter((r) => r.kaliteDurumu === 'OK').length;
-    const nok = stationRecords.filter((r) => r.kaliteDurumu === 'NOK').length;
-    return { ok, nok, total: ok + nok };
-  }, [stationRecords]);
+    const kpi = typeof stationKpi === 'function'
+      ? stationKpi(selectedStation === 'Tümü' ? null : selectedStation)
+      : { good: 0, nok: 0, actual: 0 };
+    return { ok: kpi.good || 0, nok: kpi.nok || 0, total: kpi.actual || 0 };
+  }, [stationKpi, selectedStation]);
 
   const filteredBatches = useMemo(() => {
     if (selectedStation === 'Tümü') return batches;
     return batches.filter((batch) => batch.station === selectedStation);
   }, [batches, selectedStation]);
+
+  // Prefer shared feed when Live Stream is pushing; otherwise poll locally.
+  useEffect(() => {
+    if (!metricsFeed?.length) return;
+    if (selectedStation === 'Tümü') {
+      setMetrics(metricsFeed.slice(0, 80));
+      return;
+    }
+    setMetrics(metricsFeed.filter((item) => item.stationId === selectedStation).slice(0, 80));
+  }, [metricsFeed, selectedStation]);
 
   const latestMetric = metrics[0];
   const telemetry = useMemo(
@@ -170,8 +177,8 @@ const MachineMetricsPanel = ({
               {stationLabel}
             </h2>
             <p className="mes-helper mt-2 mb-0 max-w-2xl">
-              Vardiya Başlat → Live Stream → sıcaklık / RPM / titreşim, OK·NOK, lot ilerleme, OEE ve Andon alarmları.
-              Manuel barkod girişi yoktur; kayıtlar sensör olaylarından gelir.
+              Tek kaynak: MachineMetrics. Live Stream her tick’te Gerçekleşen/Sağlam/Duruş batch yazar;
+              KPI’lar Σ Actual / Σ Good / Σ (Actual−Good) ile hesaplanır. Barkod 1-by-1 sayım yoktur.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -206,9 +213,9 @@ const MachineMetricsPanel = ({
             { label: 'Sıcaklık', value: `${telemetry.temperature}°C`, icon: Thermometer, tone: telemetry.temperature > 70 ? 'text-red-700' : 'text-amber-700' },
             { label: 'RPM', value: telemetry.rpm, icon: Gauge, tone: 'text-sky-700' },
             { label: 'Titreşim', value: `${telemetry.vibration} mm/s`, icon: Waves, tone: telemetry.vibration > 2.5 ? 'text-red-700' : 'text-slate-800' },
-            { label: 'OK', value: okNok.ok, icon: Activity, tone: 'text-emerald-700' },
-            { label: 'NOK', value: okNok.nok, icon: Activity, tone: 'text-red-700' },
-            { label: 'Toplam', value: okNok.total, icon: Cpu, tone: 'text-[color:var(--color-ink)]' },
+            { label: 'Σ OK', value: okNok.ok, icon: Activity, tone: 'text-emerald-700' },
+            { label: 'Σ NOK', value: okNok.nok, icon: Activity, tone: 'text-red-700' },
+            { label: 'Σ Actual', value: okNok.total, icon: Cpu, tone: 'text-[color:var(--color-ink)]' },
           ].map((card) => {
             const Icon = card.icon;
             return (

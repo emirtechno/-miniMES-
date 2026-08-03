@@ -33,7 +33,7 @@ import OperatorGuidePage from './pages/OperatorGuidePage';
 import SystemFlowPage from './pages/SystemFlowPage';
 import PlantOverviewPage from './pages/PlantOverviewPage';
 import OperatorDashboardPage from './pages/OperatorDashboardPage';
-import { useProduction } from './hooks/useProduction';
+import { useTelemetry } from './hooks/useTelemetry';
 import { useAlarms } from './hooks/useAlarms';
 import { useWorkOrders } from './hooks/useWorkOrders';
 import {
@@ -41,6 +41,7 @@ import {
   DEFAULT_STATION,
 } from './constants/stations';
 import { getShiftLabel } from './constants/shifts';
+import { emptyStationKpi } from './utils/telemetryAggregate';
 
 function MainLayout() {
   const { currentUser, logout, isAuthenticated } = useAuth();
@@ -77,7 +78,6 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
   const { persona, setPersona, isOperatorPersona, isExecutivePersona } = usePersona();
   const { shift, elapsedLabel } = useShiftSession();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-
   const [selectedStationDetail, setSelectedStationDetail] = useState(DEFAULT_STATION);
   const [autoRefresh, setAutoRefresh] = useState(true);
 
@@ -85,15 +85,13 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
   const hasPermission = (permission) => isCurrentUserActive && currentUser.permissions.includes(permission);
 
   const canIngestTelemetry = hasPermission('production.write');
-  const canChangeQuality = hasPermission('production.manage');
   const canManageWorkOrders = hasPermission('workorders.manage');
   const canCreateAlarms = hasPermission('alarms.write');
   const canManageAlarms = hasPermission('alarms.manage');
   const canManageUsers = hasPermission('users.manage');
 
-  // Shift drives Live Stream: active + producing (not on break / setup) → telemetry ticks.
-  const isFactorySimulationActive = Boolean(shift.active && !shift.onBreak && !shift.inSetup);
-  const simulationStationId = shift.active ? shift.stationId : null;
+  const liveStreamActive = Boolean(shift.active && !shift.onBreak && !shift.inSetup);
+  const streamStationId = shift.active ? shift.stationId : null;
 
   const alarms = useAlarms({
     isAuthenticated: true,
@@ -108,12 +106,13 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
     await raiseTelemetryAlarms(stationId, anomalies);
   }, [raiseTelemetryAlarms]);
 
-  const production = useProduction({
+  const telemetry = useTelemetry({
     isAuthenticated: true,
     canIngestTelemetry,
     autoRefresh,
-    factorySimulationActive: isFactorySimulationActive,
-    simulationStationId,
+    liveStreamActive,
+    streamStationId,
+    shiftCode: shift.active ? shift.shiftCode : undefined,
     onSimulatedAnomalies: canCreateAlarms ? onSimulatedAnomalies : undefined,
     notify,
   });
@@ -124,33 +123,23 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
     notify,
   });
 
-  const stationsList = useMemo(() => {
-    const fromRecords = production.records.map((r) => r.istasyonAdi).filter(Boolean);
-    return [...new Set([...ACTIVE_STATION_DEFINITIONS.map((s) => s.id), ...fromRecords])];
-  }, [production.records]);
+  const stationsList = useMemo(
+    () => ACTIVE_STATION_DEFINITIONS.map((s) => s.id),
+    [],
+  );
 
-  const stationDetailOptions = stationsList.length > 0 ? stationsList : [DEFAULT_STATION];
-  const stationDetailRecords = production.records
-    .filter((record) => record.istasyonAdi === selectedStationDetail)
-    .slice()
-    .sort((a, b) => new Date(b.uretimTarihi || 0) - new Date(a.uretimTarihi || 0));
+  const detailKpi = telemetry.stationKpi(selectedStationDetail) || emptyStationKpi(selectedStationDetail);
   const stationMetrics = {
-    total: stationDetailRecords.length,
-    ok: stationDetailRecords.filter((record) => record.kaliteDurumu === 'OK').length,
-    nok: stationDetailRecords.filter((record) => record.kaliteDurumu === 'NOK').length,
-    yield: stationDetailRecords.length > 0
-      ? ((stationDetailRecords.filter((record) => record.kaliteDurumu === 'OK').length / stationDetailRecords.length) * 100).toFixed(1)
-      : 0,
+    total: detailKpi.actual,
+    ok: detailKpi.good,
+    nok: detailKpi.nok,
+    yield: detailKpi.yield,
   };
 
-  const stationChartData = stationsList.map((st) => {
-    const stRecords = production.records.filter((r) => r.istasyonAdi === st);
-    return {
-      name: st,
-      OK: stRecords.filter((r) => r.kaliteDurumu === 'OK').length,
-      NOK: stRecords.filter((r) => r.kaliteDurumu === 'NOK').length,
-    };
-  });
+  const recentTicksForStation = useMemo(
+    () => telemetry.recentTicks.filter((tick) => tick.stationId === selectedStationDetail).slice(0, 6),
+    [telemetry.recentTicks, selectedStationDetail],
+  );
 
   const homePath = isOperatorPersona ? '/operator' : '/fabrika';
 
@@ -176,7 +165,7 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
         </div>
         <AppNavLinks items={navItems} />
         <p className="mt-auto px-2 text-xs leading-relaxed text-slate-500">
-          Telemetri · Canlı OEE · Andon
+          MachineMetrics SSOT · OEE · Andon
         </p>
       </aside>
 
@@ -211,7 +200,7 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
                 </h1>
                 <p className="m-0 text-xs text-[color:var(--color-muted)] md:text-sm">
                   {isOperatorPersona ? 'Shop-floor operatör görünümü' : 'Yönetici / Ana Merkez görünümü'}
-                  {isFactorySimulationActive ? ' · Live Stream açık' : ''}
+                  {liveStreamActive ? ' · Live Stream (MachineMetrics)' : ''}
                 </p>
               </div>
             </div>
@@ -231,8 +220,8 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
                 {shift.operatorName || 'Operatör'} · {getShiftLabel(shift.shiftCode)} · {elapsedLabel}
               </span>
             )}
-            {isFactorySimulationActive ? (
-              <span className="mes-pill-warn" title="Vardiya Live Stream motoru aktif">
+            {liveStreamActive ? (
+              <span className="mes-pill-warn" title="Vardiya Live Stream → MachineMetrics">
                 <Activity size={14} />
                 Live Stream
               </span>
@@ -249,7 +238,7 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
               <RefreshCw size={14} />
               {autoRefresh ? 'Oto Yenileme' : 'Yenileme Kapalı'}
             </button>
-            <button type="button" onClick={() => production.fetchRecords()} className="mes-btn-secondary">
+            <button type="button" onClick={() => telemetry.refresh()} className="mes-btn-secondary">
               <RefreshCw size={14} />
               Yenile
             </button>
@@ -273,10 +262,11 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
               path="/fabrika"
               element={(
                 <PlantOverviewPage
-                  stationChartData={stationChartData}
-                  records={production.records}
+                  stationChartData={telemetry.stationChartData}
+                  plantKpi={telemetry.plantKpi}
+                  byStation={telemetry.byStation}
                   workOrders={workOrders.workOrders}
-                  liveStreaming={isFactorySimulationActive}
+                  liveStreaming={liveStreamActive}
                 />
               )}
             />
@@ -287,10 +277,11 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
                 <OperatorDashboardPage
                   currentUser={currentUser}
                   notify={notify}
-                  records={production.records}
+                  stationKpi={telemetry.stationKpi}
+                  recentTicks={telemetry.recentTicks}
                   workOrders={workOrders.workOrders}
                   batches={workOrders.batches}
-                  liveStreaming={isFactorySimulationActive}
+                  liveStreaming={liveStreamActive}
                 />
               )}
             />
@@ -301,11 +292,12 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
               path="/makine-metrikleri"
               element={(
                 <MachineMetricsPanel
-                  isFactorySimulationActive={isFactorySimulationActive}
+                  isFactorySimulationActive={liveStreamActive}
                   shiftStationId={shift.stationId}
                   shiftActive={shift.active}
-                  productionRecords={production.records}
+                  stationKpi={telemetry.stationKpi}
                   batches={workOrders.batches}
+                  metricsFeed={telemetry.metrics}
                 />
               )}
             />
@@ -314,17 +306,17 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
               path="/istasyonlar"
               element={(
                 <StationsPage
-                  stationChartData={stationChartData}
-                  stationDetailOptions={stationDetailOptions}
+                  stationChartData={telemetry.stationChartData}
+                  stationDetailOptions={stationsList}
                   selectedStation={selectedStationDetail}
                   onStationChange={(event) => setSelectedStationDetail(event.target.value)}
                   onSelectStation={(stationId) => setSelectedStationDetail(stationId)}
                   stationMetrics={stationMetrics}
-                  recentRecords={stationDetailRecords.slice(0, 6)}
+                  recentTicks={recentTicksForStation}
                   stations={stationsList}
-                  records={production.records}
-                  liveStreaming={isFactorySimulationActive}
-                  activeShiftStationId={simulationStationId}
+                  byStation={telemetry.byStation}
+                  liveStreaming={liveStreamActive}
+                  activeShiftStationId={streamStationId}
                 />
               )}
             />
@@ -348,16 +340,13 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
                     onResolve: alarms.handleResolveAlarm,
                   }}
                   batches={workOrders.batches}
-                  production={{
-                    records: production.records,
-                    onToggleQuality: production.handleToggleQuality,
-                  }}
+                  scrapTicks={telemetry.scrapTicks}
+                  plantKpi={telemetry.plantKpi}
                   permissions={{
                     canManageWorkOrders,
                     canCreateAlarms,
                     canManageAlarms,
                     canManageUsers,
-                    canChangeQuality,
                   }}
                   alarmForm={alarms.alarmForm}
                   workOrderForm={workOrders.workOrderForm}
