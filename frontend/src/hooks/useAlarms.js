@@ -6,8 +6,36 @@ import {
   fetchAlarms,
   getApiErrorMessage,
 } from '../services/api';
-import { DEFAULT_STATION } from '../constants/stations';
+import { DEFAULT_STATION, ACTIVE_STATION_DEFINITIONS } from '../constants/stations';
 import { useMesHub } from './useMesHub';
+
+const TEST_ALARM_TEMPLATES = [
+  {
+    title: 'Aşırı Isınma Uyarısı - Motor #2',
+    severity: 'Kritik',
+    description: 'Motor #2 yatak sıcaklığı eşik değerini aştı. Hat duruş riski.',
+  },
+  {
+    title: 'Konveyör Sıkışması',
+    severity: 'Yüksek',
+    description: 'Paketleme konveyöründe ürün sıkışması algılandı.',
+  },
+  {
+    title: 'Kalite Sapması - Vision Sensör',
+    severity: 'Uyarı',
+    description: 'Vision kamera NOK oranı son 5 dakikada yükseldi.',
+  },
+  {
+    title: 'Hammadde Besleme Hatası',
+    severity: 'Yüksek',
+    description: 'Montaj hattı hammadde besleme ünitesinde kesinti.',
+  },
+  {
+    title: 'Acil Stop Butonu Basıldı',
+    severity: 'Kritik',
+    description: 'Operatör acil stop butonunu aktive etti. Hat güvenli moda alındı.',
+  },
+];
 
 const upsertAlarm = (current, alarm) => {
   const id = alarm.id ?? alarm.Id;
@@ -81,11 +109,14 @@ export function useAlarms({
     }
     try {
       setAlarmLoading(true);
+      const template = TEST_ALARM_TEMPLATES[Math.floor(Math.random() * TEST_ALARM_TEMPLATES.length)];
+      const stations = ACTIVE_STATION_DEFINITIONS.map((s) => s.id);
+      const station = stations[Math.floor(Math.random() * stations.length)] || DEFAULT_STATION;
       await createAlarm({
-        title: 'Test Alarmı - Sensör Uyarısı',
-        station: DEFAULT_STATION,
-        severity: 'Uyarı',
-        description: 'Test amaçlı oluşturulmuş alarm.',
+        title: template.title,
+        station,
+        severity: template.severity,
+        description: template.description,
       });
       if (!connected) await loadAlarms();
     } catch (err) {
