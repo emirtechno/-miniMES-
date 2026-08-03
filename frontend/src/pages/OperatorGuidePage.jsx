@@ -70,6 +70,33 @@ const OperatorGuidePage = () => (
     </section>
 
     <section className="mes-surface p-5">
+      <h2 className="mes-section-title m-0">Makine Metrikleri vs Üretim Paneli</h2>
+      <p className="mes-helper mt-2">
+        Bu iki ekran farklı veri kaynaklarını gösterir; karıştırmamak operatör hatasını önler.
+      </p>
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <div className="rounded-xl border border-sky-200 bg-sky-50/60 p-4 text-sm">
+          <div className="font-semibold text-sky-950">Makine Metrikleri (IoT / PLC / Simülasyon)</div>
+          <ul className="mt-2 mb-0 space-y-1 pl-4 text-sky-950">
+            <li>Hat telemetrisi: çevrim, duruş saniyesi, good/actual sayaçları</li>
+            <li>OEE bileşenleri buradan (veya OEE simülasyonundan) türetilir</li>
+            <li>Operatör barkod girmez; sensör / PLC / demo servis üretir</li>
+            <li>SignalR ile canlı `oeeUpdated` yayınlanır</li>
+          </ul>
+        </div>
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4 text-sm">
+          <div className="font-semibold text-emerald-950">Üretim Paneli (Operatör iş yönetimi)</div>
+          <ul className="mt-2 mb-0 space-y-1 pl-4 text-emerald-950">
+            <li>Barkod / malzeme / istasyon / kalite kaydı girişi</li>
+            <li>İş emri ve kalite kararları operatör aksiyonudur</li>
+            <li>Liste ve kalite grafiği bu kayıtlardan hesaplanır</li>
+            <li>OEE kartlarından bağımsız bir iş akışıdır</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section className="mes-surface p-5">
       <h2 className="mes-section-title m-0">OEE nasıl hesaplanır?</h2>
       <p className="mes-helper mt-2">
         <strong>OEE = Kullanılabilirlik × Performans × Kalite</strong>. Kullanılabilirlik duruşlardan,

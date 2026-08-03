@@ -102,6 +102,7 @@ const UserRolePanel = () => {
           placeholder="Kullanıcı adı"
           value={form.username}
           onChange={(event) => setForm({ ...form, username: event.target.value })}
+          minLength={3}
           required
         />
         <input
@@ -109,16 +110,17 @@ const UserRolePanel = () => {
           placeholder="Görünen ad"
           value={form.displayName}
           onChange={(event) => setForm({ ...form, displayName: event.target.value })}
+          minLength={3}
           required
         />
         <input
           className="mes-input"
           type="password"
-          placeholder="Güçlü parola (≥12)"
+          placeholder="Parola (≥3 karakter)"
           autoComplete="new-password"
           value={form.password}
           onChange={(event) => setForm({ ...form, password: event.target.value })}
-          minLength={12}
+          minLength={3}
           required
         />
         <select

@@ -15,15 +15,15 @@ public sealed class IdentityUserDto
 public sealed class CreateIdentityUserDto
 {
     [Required]
-    [StringLength(50)]
+    [StringLength(50, MinimumLength = 3)]
     public string Username { get; init; } = string.Empty;
 
     [Required]
-    [StringLength(100)]
+    [StringLength(100, MinimumLength = 3)]
     public string DisplayName { get; init; } = string.Empty;
 
     [Required]
-    [StringLength(128, MinimumLength = 12)]
+    [StringLength(128, MinimumLength = 3)]
     public string Password { get; init; } = string.Empty;
 
     [Required]
@@ -45,6 +45,6 @@ public sealed class UpdateIdentityUserStatusDto
 public sealed class ResetIdentityUserPasswordDto
 {
     [Required]
-    [StringLength(128, MinimumLength = 12)]
+    [StringLength(128, MinimumLength = 3)]
     public string NewPassword { get; init; } = string.Empty;
 }

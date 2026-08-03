@@ -25,6 +25,8 @@ const QualityPage = ({
         onFieldChange={workOrderForm.onFieldChange}
         onSubmit={permissions.canManageWorkOrders ? workOrderForm.onSubmit : workOrderForm.onDenied}
         onAdvance={permissions.canManageWorkOrders ? workOrders.onAdvance : workOrderForm.onDenied}
+        onCreateSample={permissions.canManageWorkOrders ? workOrders.onCreateSample : undefined}
+        creatingSample={workOrders.creatingSample}
         disabled={!permissions.canManageWorkOrders}
       />
 

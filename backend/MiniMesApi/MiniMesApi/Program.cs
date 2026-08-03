@@ -73,7 +73,7 @@ if (jwt.Key.Length < 32)
 
 builder.Services.AddIdentityCore<ApplicationUser>(options =>
     {
-        options.Password.RequiredLength = 12;
+        options.Password.RequiredLength = 3;
         options.Password.RequireDigit = true;
         options.Password.RequireLowercase = true;
         options.Password.RequireUppercase = true;
@@ -287,6 +287,54 @@ if (!isTesting)
                         }
                     );
                     await db.SaveChangesAsync();
+                }
+
+                if (!await db.Batches.AnyAsync())
+                {
+                    db.Batches.AddRange(
+                        new Batch
+                        {
+                            LotNo = "LOT-2026-001",
+                            Product = "Montaj Kiti A",
+                            Station = StationCatalog.AssemblyLine1,
+                            Status = "Tamamlandı",
+                            UpdatedAt = DateTimeOffset.UtcNow.AddHours(-6)
+                        },
+                        new Batch
+                        {
+                            LotNo = "LOT-2026-002",
+                            Product = "Elektronik Kart B",
+                            Station = StationCatalog.ElectronicsBoardAssembly,
+                            Status = "İşlemde",
+                            UpdatedAt = DateTimeOffset.UtcNow.AddHours(-2)
+                        },
+                        new Batch
+                        {
+                            LotNo = "LOT-2026-003",
+                            Product = "Paketleme Ünitesi C",
+                            Station = StationCatalog.PackagingLine1,
+                            Status = "Bekliyor",
+                            UpdatedAt = DateTimeOffset.UtcNow.AddMinutes(-45)
+                        },
+                        new Batch
+                        {
+                            LotNo = "LOT-2026-004",
+                            Product = "Final Kontrol Lotu D",
+                            Station = StationCatalog.FinalInspection,
+                            Status = "Tamamlandı",
+                            UpdatedAt = DateTimeOffset.UtcNow.AddHours(-1)
+                        },
+                        new Batch
+                        {
+                            LotNo = "LOT-2026-005",
+                            Product = "Montaj Kiti A",
+                            Station = StationCatalog.AssemblyLine3,
+                            Status = "İşlemde",
+                            UpdatedAt = DateTimeOffset.UtcNow.AddMinutes(-20)
+                        }
+                    );
+                    await db.SaveChangesAsync();
+                    logger.LogInformation("Parti/lot örnek verileri eklendi.");
                 }
             }
             catch (Exception ex)
