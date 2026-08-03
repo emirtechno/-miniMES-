@@ -32,9 +32,24 @@ apiClient.interceptors.response.use(
   },
 );
 
-const unwrapList = (response) => (
-  response.data?.success ? response.data.data : (response.data || [])
-);
+const unwrapPage = (response) => {
+  const data = response.data || {};
+  if (Array.isArray(data)) {
+    return { items: data, nextCursor: null };
+  }
+  return {
+    items: data.items || [],
+    nextCursor: data.nextCursor || null,
+  };
+};
+
+const fetchPage = async (path, { cursor, limit = 50, signal } = {}) => {
+  const response = await apiClient.get(path, {
+    params: { cursor: cursor || undefined, limit },
+    signal,
+  });
+  return unwrapPage(response);
+};
 
 export const getApiErrorMessage = (error, fallback = 'İşlem tamamlanamadı.') => {
   const data = error?.response?.data;
@@ -60,18 +75,12 @@ export const fetchCurrentUser = async () => {
   return response.data;
 };
 
-export const fetchProductionRecords = async () => {
-  const response = await apiClient.get('/Uretim');
-  return unwrapList(response);
-};
+export const fetchProductionRecords = (options) => fetchPage('/Uretim', options);
 
-export const fetchDeletedProductionRecords = async () => {
-  const response = await apiClient.get('/Uretim/deleted');
-  return unwrapList(response);
-};
+export const fetchDeletedProductionRecords = (options) => fetchPage('/Uretim/deleted', options);
 
-export const createProductionRecord = async (payload) => {
-  const response = await apiClient.post('/Uretim', payload);
+export const createProductionRecord = async (payload, { signal } = {}) => {
+  const response = await apiClient.post('/Uretim', payload, { signal });
   return response.data;
 };
 
@@ -95,10 +104,7 @@ export const hardDeleteProductionRecord = async (id) => {
   return response.data;
 };
 
-export const fetchAlarms = async () => {
-  const response = await apiClient.get('/Alarm');
-  return unwrapList(response);
-};
+export const fetchAlarms = (options) => fetchPage('/Alarm', options);
 
 export const createAlarm = async (payload) => {
   const response = await apiClient.post('/Alarm', payload);
@@ -115,39 +121,35 @@ export const deleteAlarm = async (id) => {
   return response.data;
 };
 
-export const fetchWorkOrders = async () => {
-  const response = await apiClient.get('/WorkOrder');
-  return unwrapList(response);
-};
+export const fetchWorkOrders = (options) => fetchPage('/WorkOrder', options);
 
 export const createWorkOrder = async (payload) => {
   const response = await apiClient.post('/WorkOrder', payload);
   return response.data;
 };
 
-export const advanceWorkOrder = async (id) => {
-  const response = await apiClient.put(`/WorkOrder/${id}/advance`);
+export const advanceWorkOrder = async (id, rowVersion) => {
+  const response = await apiClient.put(`/WorkOrder/${id}/advance`, { rowVersion });
   return response.data;
 };
 
-export const fetchBatches = async () => {
-  const response = await apiClient.get('/Batch');
-  return unwrapList(response);
-};
+export const fetchBatches = (options) => fetchPage('/Batch', options);
 
-export const fetchMachineMetrics = async () => {
-  const response = await apiClient.get('/MachineMetrics');
-  return unwrapList(response);
-};
+export const fetchMachineMetrics = (options) => fetchPage('/MachineMetrics', options);
 
-export const fetchLatestOee = async (stationId) => {
-  const response = await apiClient.get(`/Oee/latest/${encodeURIComponent(stationId)}`);
+export const fetchLatestOee = async (stationId, { signal } = {}) => {
+  const response = await apiClient.get(`/Oee/latest/${encodeURIComponent(stationId)}`, { signal });
   return response.data;
+};
+
+export const fetchOeeStations = async ({ signal } = {}) => {
+  const response = await apiClient.get('/Oee/stations', { signal });
+  return response.data || [];
 };
 
 export const fetchUsers = async () => {
   const response = await apiClient.get('/Users');
-  return response.data || [];
+  return unwrapPage(response);
 };
 
 export const createUser = async (payload) => {

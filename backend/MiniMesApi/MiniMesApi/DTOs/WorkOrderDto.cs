@@ -28,4 +28,11 @@ public sealed class WorkOrderDto
     public string Station { get; init; } = string.Empty;
     public int Quantity { get; init; }
     public string Status { get; init; } = string.Empty;
+    public string RowVersion { get; init; } = string.Empty;
+}
+
+public sealed class AdvanceWorkOrderDto
+{
+    [Required]
+    public string RowVersion { get; init; } = string.Empty;
 }

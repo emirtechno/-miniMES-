@@ -239,7 +239,7 @@ using (var scope = app.Services.CreateScope())
                         Title = "Hız Sensörü Arızası",
                         Station = "Montaj_Hatti_02",
                         Severity = "Kritik",
-                        Time = DateTime.Now.AddMinutes(-22),
+                        Time = DateTime.UtcNow.AddMinutes(-22),
                         Status = "Açık",
                         Description = "Üretim hızı beklenen değerlerin altında."
                     },
@@ -248,7 +248,7 @@ using (var scope = app.Services.CreateScope())
                         Title = "Yüksek Basınç",
                         Station = "Test_Ve_Paketleme_Istasyonu",
                         Severity = "Uyarı",
-                        Time = DateTime.Now.AddMinutes(-8),
+                        Time = DateTime.UtcNow.AddMinutes(-8),
                         Status = "Onaylandı",
                         Description = "Geçici basınç sapması tespit edildi."
                     }
