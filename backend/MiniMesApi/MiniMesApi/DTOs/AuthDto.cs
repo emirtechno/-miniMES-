@@ -9,7 +9,7 @@ public sealed class LoginRequestDto
     public string Username { get; init; } = string.Empty;
 
     [Required]
-    [StringLength(128, MinimumLength = 8)]
+    [StringLength(128)]
     public string Password { get; init; } = string.Empty;
 }
 
