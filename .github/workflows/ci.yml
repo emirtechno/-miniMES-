@@ -43,6 +43,82 @@ jobs:
             exit 1
           fi
 
+  migration-smoke:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend/MiniMesApi
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: Y
+          MSSQL_SA_PASSWORD: 'Your_strong_Password123'
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd="bash -c 'exec 3<>/dev/tcp/127.0.0.1/1433'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 30
+          --health-start-period 30s
+    env:
+      Jwt__Key: '0123456789abcdef0123456789abcdef'
+      SA_PASSWORD: 'Your_strong_Password123'
+      SMOKE_DB: MiniMesMigrationSmoke
+      ConnectionStrings__DefaultConnection: 'Server=127.0.0.1,1433;Database=MiniMesMigrationSmoke;User Id=sa;Password=Your_strong_Password123;Encrypt=True;TrustServerCertificate=True;Connect Timeout=30;'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Wait for SQL Server
+        run: |
+          set -e
+          for i in $(seq 1 60); do
+            if docker run --rm --network host mcr.microsoft.com/mssql/server:2022-latest \
+              bash -c "echo >&3" 2>/dev/null; then
+              true
+            fi
+            if (echo > /dev/tcp/127.0.0.1/1433) >/dev/null 2>&1; then
+              echo "SQL Server port is open (attempt $i)"
+              sleep 5
+              exit 0
+            fi
+            echo "Waiting for SQL Server... ($i)"
+            sleep 3
+          done
+          echo "SQL Server did not become ready"
+          exit 1
+      - name: Install EF tool
+        run: |
+          dotnet tool install --global dotnet-ef --version 10.0.10 || true
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+      - name: Apply migrations to empty database
+        run: |
+          set -e
+          cd MiniMesApi
+          echo "Applying migrations (first pass)..."
+          dotnet ef database update --connection "$ConnectionStrings__DefaultConnection"
+          echo "Re-applying migrations (idempotency check)..."
+          dotnet ef database update --connection "$ConnectionStrings__DefaultConnection"
+      - name: Run empty-DB migration smoke test
+        env:
+          MigrationSmoke__ConnectionString: ${{ env.ConnectionStrings__DefaultConnection }}
+        run: |
+          set -e
+          dotnet test MiniMesApi.Tests/MiniMesApi.Tests.csproj \
+            --configuration Release \
+            --filter FullyQualifiedName~EmptyDatabaseMigrationTests \
+            --logger "console;verbosity=detailed"
+      - name: Verify schema columns
+        run: |
+          set -e
+          docker run --rm --network host \
+            mcr.microsoft.com/mssql-tools18:latest \
+            /opt/mssql-tools18/bin/sqlcmd -S 127.0.0.1 -U sa -P "$SA_PASSWORD" -C -d "$SMOKE_DB" \
+            -Q "SET NOCOUNT ON; DECLARE @c int = (SELECT COUNT(*) FROM __EFMigrationsHistory); IF (@c < 1) THROW 50000, 'No migrations applied', 1; PRINT CONCAT('Migrations=', @c); IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='MachineMetrics') THROW 50001, 'MachineMetrics missing', 1; IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='UretimKayitlari' AND COLUMN_NAME='UretimTarihi' AND DATA_TYPE='datetimeoffset') THROW 50002, 'UretimTarihi not datetimeoffset', 1;"
+
   frontend:
     runs-on: ubuntu-latest
     defaults:
@@ -72,7 +148,7 @@ jobs:
           } catch (error) {
             report = JSON.parse(error.stdout || '{}');
           }
-          const allowed = new Set(['xlsx', 'react-router', 'react-router-dom']);
+          const allowed = new Set(['react-router', 'react-router-dom']);
           const blockers = Object.entries(report.vulnerabilities || {})
             .filter(([, vuln]) => ['high', 'critical'].includes(vuln.severity))
             .filter(([name]) => !allowed.has(name));
@@ -83,5 +159,5 @@ jobs:
             );
             process.exit(1);
           }
-          console.log('npm audit passed with known exceptions:', [...allowed].join(', '));
+          console.log('npm audit passed with known exceptions:', [...allowed].join(', ') || 'none');
           NODE

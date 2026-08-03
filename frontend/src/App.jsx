@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import MachineMetricsPanel from './components/MachineMetricsPanel';
-import * as XLSX from 'xlsx';
 import { 
   Factory, 
   Activity,
@@ -32,6 +31,7 @@ import {
   fetchBatches,
   getApiErrorMessage
 } from './services/api';
+import { downloadWorkbook } from './utils/excelExport';
 
 import DetailModal from './components/DetailModal';
 import DashboardPage from './pages/DashboardPage';
@@ -321,28 +321,40 @@ function MainLayout() {
     setKaliteDurumu(randomQuality);
   };
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     const exportData = filteredRecords.length > 0 ? filteredRecords : records;
     if (!exportData || exportData.length === 0) {
       notify("Dışa aktarılacak veri bulunamadı!", 'error');
       return;
     }
-    const formattedData = exportData.map((r) => ({
-      "Kayıt ID": r.id,
-      "20'li Ürün Kodu": r.urun20liKod,
-      "12'li Malzeme Kodu": r.malzeme12liKod,
-      "İstasyon Adı": r.istasyonAdi,
-      "Kalite Durumu": r.kaliteDurumu,
-      "Üretim Tarihi": r.uretimTarihi ? new Date(r.uretimTarihi).toLocaleString('tr-TR') : '-'
-    }));
-    const worksheet = XLSX.utils.json_to_sheet(formattedData);
-    worksheet['!cols'] = [
-      { wch: 10 }, { wch: 25 }, { wch: 18 }, { wch: 25 }, { wch: 15 }, { wch: 22 }
-    ];
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Üretim Raporu");
-    const tarih = new Date().toLocaleDateString('tr-TR').replace(/\./g, '_');
-    XLSX.writeFile(workbook, `Vestel_MES_Uretim_Raporu_${tarih}.xlsx`);
+
+    try {
+      const tarih = new Date().toLocaleDateString('tr-TR').replace(/\./g, '_');
+      await downloadWorkbook({
+        sheetName: 'Üretim Raporu',
+        fileName: `Vestel_MES_Uretim_Raporu_${tarih}.xlsx`,
+        columns: [
+          { header: 'Kayıt ID', key: 'id', width: 10 },
+          { header: "20'li Ürün Kodu", key: 'urun', width: 25 },
+          { header: "12'li Malzeme Kodu", key: 'malzeme', width: 18 },
+          { header: 'İstasyon Adı', key: 'istasyon', width: 25 },
+          { header: 'Kalite Durumu', key: 'kalite', width: 15 },
+          { header: 'Üretim Tarihi (UTC)', key: 'tarih', width: 28 },
+        ],
+        rows: exportData.map((r) => ({
+          id: r.id,
+          urun: r.urun20liKod,
+          malzeme: r.malzeme12liKod,
+          istasyon: r.istasyonAdi,
+          kalite: r.kaliteDurumu,
+          tarih: r.uretimTarihi
+            ? new Date(r.uretimTarihi).toLocaleString('tr-TR', { timeZone: 'UTC' }) + ' UTC'
+            : '-',
+        })),
+      });
+    } catch (err) {
+      notify(getApiErrorMessage(err, 'Excel dışa aktarma başarısız oldu.'), 'error');
+    }
   };
 
   const handleAddRecord = async (e) => {

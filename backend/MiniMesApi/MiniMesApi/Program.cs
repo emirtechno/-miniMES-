@@ -258,7 +258,7 @@ if (!isTesting)
                             Title = "Hız Sensörü Arızası",
                             Station = "Montaj_Hatti_02",
                             Severity = "Kritik",
-                            Time = DateTime.UtcNow.AddMinutes(-22),
+                            Time = DateTimeOffset.UtcNow.AddMinutes(-22),
                             Status = "Açık",
                             Description = "Üretim hızı beklenen değerlerin altında."
                         },
@@ -267,7 +267,7 @@ if (!isTesting)
                             Title = "Yüksek Basınç",
                             Station = "Test_Ve_Paketleme_Istasyonu",
                             Severity = "Uyarı",
-                            Time = DateTime.UtcNow.AddMinutes(-8),
+                            Time = DateTimeOffset.UtcNow.AddMinutes(-8),
                             Status = "Onaylandı",
                             Description = "Geçici basınç sapması tespit edildi."
                         }

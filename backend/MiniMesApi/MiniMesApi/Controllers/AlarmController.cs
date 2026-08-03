@@ -89,7 +89,7 @@ namespace MiniMesApi.Controllers
                 Station = request.Station,
                 Severity = request.Severity,
                 Description = request.Description,
-                Time = DateTime.UtcNow,
+                Time = DateTimeOffset.UtcNow,
                 Status = "Açık"
             };
 

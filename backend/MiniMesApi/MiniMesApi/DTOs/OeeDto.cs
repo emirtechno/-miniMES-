@@ -13,5 +13,5 @@ public sealed class OeeMetricDto
     public int TotalProduction { get; init; }
     public int GoodProduction { get; init; }
     public int ScrapProduction { get; init; }
-    public DateTime LastUpdated { get; init; }
+    public DateTimeOffset LastUpdated { get; init; }
 }
