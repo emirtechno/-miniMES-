@@ -18,7 +18,7 @@ class GlobalErrorBoundary extends Component {
           <section className="custom-card">
             <h1>Sayfa görüntülenemedi</h1>
             <p>Beklenmeyen bir arayüz hatası oluştu. Oturumu koruyarak sayfayı yeniden deneyebilirsiniz.</p>
-            <button type="button" className="btn-primary" onClick={() => window.location.reload()}>
+            <button type="button" className="mes-btn-primary" onClick={() => window.location.reload()}>
               Sayfayı Yenile
             </button>
           </section>

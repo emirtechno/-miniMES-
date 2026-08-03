@@ -1,5 +1,6 @@
 import { ClipboardList, PlusCircle, ArrowRight, WandSparkles } from 'lucide-react';
 import { ACTIVE_STATION_DEFINITIONS, getStationDisplayName } from '../constants/stations';
+import CardHeader from './CardHeader';
 
 const WorkOrderBoard = ({
   workOrders,
@@ -10,55 +11,36 @@ const WorkOrderBoard = ({
   onCreateSample,
   creatingSample = false,
 }) => (
-  <section className="custom-card">
-    <div className="card-header" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-        <ClipboardList size={20} />
-        <span>İş Emri Takibi</span>
-      </div>
-      {onCreateSample && (
-        <button
-          type="button"
-          className="btn-primary"
-          onClick={onCreateSample}
-          disabled={creatingSample}
-          title="Tek tıkla örnek iş emri oluşturur"
-        >
+  <section className="mes-surface p-5">
+    <CardHeader
+      icon={ClipboardList}
+      title="İş Emri Takibi"
+      subtitle="Manuel giriş veya tek tıkla test iş emri"
+      actions={onCreateSample ? (
+        <button type="button" className="mes-btn-primary" onClick={onCreateSample} disabled={creatingSample}>
           <WandSparkles size={16} />
           {creatingSample ? 'Oluşturuluyor...' : 'Otomatik Test İş Emri Oluştur'}
         </button>
-      )}
-    </div>
+      ) : null}
+    />
 
-    <form onSubmit={onSubmit} className="form-grid" style={{ marginBottom: '20px' }}>
-      <div className="input-group">
-        <label>İş Emri No</label>
-        <input className="input-field" value={formValues.orderNo} onChange={(e) => onFieldChange('orderNo', e.target.value)} minLength={3} required />
-      </div>
-      <div className="input-group">
-        <label>Ürün</label>
-        <input className="input-field" value={formValues.product} onChange={(e) => onFieldChange('product', e.target.value)} minLength={3} required />
-      </div>
-      <div className="input-group">
-        <label>İstasyon</label>
-        <select className="input-field" value={formValues.station} onChange={(e) => onFieldChange('station', e.target.value)} required>
-          <option value="">İstasyon seçin</option>
-          {ACTIVE_STATION_DEFINITIONS.map((station) => (
-            <option key={station.id} value={station.id}>{station.displayName}</option>
-          ))}
-        </select>
-      </div>
-      <div className="input-group">
-        <label>Miktar</label>
-        <input className="input-field" value={formValues.quantity} onChange={(e) => onFieldChange('quantity', e.target.value)} required />
-      </div>
-      <button type="submit" className="btn-primary">
-        <PlusCircle size={18} />
+    <form onSubmit={onSubmit} className="mb-5 grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+      <input className="mes-input" placeholder="İş Emri No" value={formValues.orderNo} onChange={(e) => onFieldChange('orderNo', e.target.value)} minLength={3} required />
+      <input className="mes-input" placeholder="Ürün" value={formValues.product} onChange={(e) => onFieldChange('product', e.target.value)} minLength={3} required />
+      <select className="mes-input" value={formValues.station} onChange={(e) => onFieldChange('station', e.target.value)} required>
+        <option value="">İstasyon seçin</option>
+        {ACTIVE_STATION_DEFINITIONS.map((station) => (
+          <option key={station.id} value={station.id}>{station.displayName}</option>
+        ))}
+      </select>
+      <input className="mes-input" placeholder="Miktar" value={formValues.quantity} onChange={(e) => onFieldChange('quantity', e.target.value)} required />
+      <button type="submit" className="mes-btn-primary">
+        <PlusCircle size={16} />
         Ekle
       </button>
     </form>
 
-    <div className="table-wrapper">
+    <div className="overflow-x-auto">
       <table className="modern-table">
         <thead>
           <tr>
@@ -83,8 +65,9 @@ const WorkOrderBoard = ({
                 </span>
               </td>
               <td>
-                <button className="btn-delete" onClick={() => onAdvance(order)} title="Durumu ilerlet">
-                  <ArrowRight size={18} />
+                <button type="button" className="mes-btn-secondary" onClick={() => onAdvance(order)} title="Durumu ilerlet">
+                  <ArrowRight size={16} />
+                  İlerlet
                 </button>
               </td>
             </tr>

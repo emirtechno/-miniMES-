@@ -5,6 +5,9 @@ import {
   fetchBatches,
   fetchWorkOrders,
   getApiErrorMessage,
+  advanceBatch,
+  reopenBatch,
+  updateBatchProgress,
 } from '../services/api';
 import { ACTIVE_STATION_DEFINITIONS, DEFAULT_STATION } from '../constants/stations';
 
@@ -29,6 +32,7 @@ export function useWorkOrders({
     quantity: '',
   });
   const [creatingSample, setCreatingSample] = useState(false);
+  const [batchBusyId, setBatchBusyId] = useState(null);
 
   const loadWorkOrders = useCallback(async (signal) => {
     try {
@@ -118,13 +122,68 @@ export function useWorkOrders({
     }
   }, [canManageWorkOrders, loadWorkOrders, notify]);
 
+  const handleAdvanceBatch = useCallback(async (batch) => {
+    if (!canManageWorkOrders) {
+      notify('Parti durumu değiştirme yetkiniz yok.', 'error');
+      return;
+    }
+    try {
+      setBatchBusyId(batch.id);
+      const updated = await advanceBatch(batch.id);
+      setBatches((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      notify('Parti durumu güncellendi.', 'success');
+    } catch (err) {
+      notify(getApiErrorMessage(err, 'Parti ilerletilemedi.'), 'error');
+    } finally {
+      setBatchBusyId(null);
+    }
+  }, [canManageWorkOrders, notify]);
+
+  const handleReopenBatch = useCallback(async (batch) => {
+    if (!canManageWorkOrders) {
+      notify('Parti geri alma yetkiniz yok.', 'error');
+      return;
+    }
+    try {
+      setBatchBusyId(batch.id);
+      const updated = await reopenBatch(batch.id);
+      setBatches((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      notify('Parti İşlemde durumuna alındı (Geri Al).', 'success');
+    } catch (err) {
+      notify(getApiErrorMessage(err, 'Parti geri alınamadı.'), 'error');
+    } finally {
+      setBatchBusyId(null);
+    }
+  }, [canManageWorkOrders, notify]);
+
+  const handleUpdateBatchProgress = useCallback(async (batch, producedQuantity) => {
+    if (!canManageWorkOrders) {
+      notify('Parti miktarı güncelleme yetkiniz yok.', 'error');
+      return;
+    }
+    try {
+      setBatchBusyId(batch.id);
+      const updated = await updateBatchProgress(batch.id, { producedQuantity });
+      setBatches((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+    } catch (err) {
+      notify(getApiErrorMessage(err, 'Parti ilerlemesi güncellenemedi.'), 'error');
+    } finally {
+      setBatchBusyId(null);
+    }
+  }, [canManageWorkOrders, notify]);
+
   return {
     workOrders,
     batches,
     loadWorkOrders,
+    loadBatches,
     handleAdvanceWorkOrder,
     handleCreateSampleWorkOrder,
+    handleAdvanceBatch,
+    handleReopenBatch,
+    handleUpdateBatchProgress,
     creatingSample,
+    batchBusyId,
     workOrderForm: {
       values: workOrderForm,
       onFieldChange: (field, value) => setWorkOrderForm((current) => ({ ...current, [field]: value })),

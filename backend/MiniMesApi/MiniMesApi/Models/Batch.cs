@@ -20,7 +20,11 @@ namespace MiniMesApi.Models
 
         [Required]
         [StringLength(30)]
-        public string Status { get; set; } = "İşlemde";
+        public string Status { get; set; } = BatchStatuses.InProgress;
+
+        public int TargetQuantity { get; set; } = 100;
+
+        public int ProducedQuantity { get; set; }
 
         public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
     }

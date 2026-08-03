@@ -14,6 +14,8 @@ import {
   Network,
   Menu,
   X,
+  Building2,
+  HardHat,
 } from 'lucide-react';
 
 import './App.css';
@@ -31,6 +33,8 @@ import StationsPage from './pages/StationsPage';
 import AndonPage from './pages/AndonPage';
 import OperatorGuidePage from './pages/OperatorGuidePage';
 import SystemFlowPage from './pages/SystemFlowPage';
+import PlantOverviewPage from './pages/PlantOverviewPage';
+import OperatorDashboardPage from './pages/OperatorDashboardPage';
 import { useProduction } from './hooks/useProduction';
 import { useAlarms } from './hooks/useAlarms';
 import { useWorkOrders } from './hooks/useWorkOrders';
@@ -175,8 +179,14 @@ function MainLayout() {
     }
   };
 
+  const isPlantManager = currentUser?.roles?.includes('Admin');
+  const isOperatorRole = currentUser?.roles?.includes('Operator') && !isPlantManager;
+  const homePath = isPlantManager ? '/fabrika' : isOperatorRole ? '/operator' : '/dashboard';
+
   const navItems = [
-    { to: '/dashboard', label: 'Üretim Paneli', icon: LayoutDashboard, match: (path) => path === '/dashboard' || path === '/' },
+    ...(isPlantManager ? [{ to: '/fabrika', label: 'Fabrika Genel Bakış', icon: Building2, match: (path) => path === '/fabrika' }] : []),
+    ...((isOperatorRole || isPlantManager) ? [{ to: '/operator', label: 'Operatör Paneli', icon: HardHat, match: (path) => path === '/operator' }] : []),
+    { to: '/dashboard', label: 'Üretim Paneli', icon: LayoutDashboard, match: (path) => path === '/dashboard' },
     { to: '/istasyonlar', label: 'İstasyonlar', icon: Cpu, match: (path) => path === '/istasyonlar' },
     { to: '/kalite', label: 'Kalite Raporları', icon: Activity, match: (path) => path === '/kalite' },
     { to: '/makine-metrikleri', label: 'Makine Metrikleri', icon: GaugeNavIcon, match: (path) => path === '/makine-metrikleri' },
@@ -281,6 +291,50 @@ function MainLayout() {
         <div className="mes-content">
           <Routes>
             <Route
+              path="/fabrika"
+              element={isPlantManager ? (
+                <PlantOverviewPage
+                  stationChartData={stationChartData}
+                  records={production.records}
+                  workOrders={workOrders.workOrders}
+                />
+              ) : (
+                <Navigate to={homePath} replace />
+              )}
+            />
+
+            <Route
+              path="/operator"
+              element={(isOperatorRole || isPlantManager) ? (
+                <OperatorDashboardPage
+                  currentUser={currentUser}
+                  notify={notify}
+                  canCreateAlarms={canCreateAlarms}
+                  canSubmit={canAddRecord}
+                  form={{
+                    urun20liKod: production.form.urun20liKod,
+                    malzeme12liKod: production.form.malzeme12liKod,
+                    istasyonAdi: production.form.istasyonAdi,
+                    kaliteDurumu: production.form.kaliteDurumu,
+                    onChangeUrun: (event) => production.form.setUrun20liKod(event.target.value),
+                    onChangeMalzeme: (event) => production.form.setMalzeme12liKod(event.target.value),
+                    onChangeStation: (event) => production.form.setIstasyonAdi(event.target.value),
+                    onChangeQuality: (event) => production.form.setKaliteDurumu(event.target.value),
+                    onSubmit: production.form.onSubmit,
+                    onGenerateRandom: production.form.onGenerateRandom,
+                    urunInputRef: production.form.urunInputRef,
+                    malzemeInputRef: production.form.malzemeInputRef,
+                    canSubmit: canAddRecord,
+                  }}
+                  records={production.records}
+                  workOrders={workOrders.workOrders}
+                />
+              ) : (
+                <Navigate to={homePath} replace />
+              )}
+            />
+
+            <Route
               path="/dashboard"
               element={(
                 <DashboardPage
@@ -369,6 +423,12 @@ function MainLayout() {
                     onDelete: alarms.handleDeleteAlarm,
                   }}
                   batches={workOrders.batches}
+                  batchActions={{
+                    onAdvance: workOrders.handleAdvanceBatch,
+                    onReopen: workOrders.handleReopenBatch,
+                    onProgress: workOrders.handleUpdateBatchProgress,
+                    busyId: workOrders.batchBusyId,
+                  }}
                   deleted={{
                     items: production.deletedRecords,
                     loading: production.deletedLoading,
@@ -399,8 +459,8 @@ function MainLayout() {
 
             <Route path="/kilavuz" element={<OperatorGuidePage />} />
             <Route path="/sistem" element={<SystemFlowPage />} />
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/" element={<Navigate to={homePath} replace />} />
+            <Route path="*" element={<Navigate to={homePath} replace />} />
           </Routes>
         </div>
       </main>

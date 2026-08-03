@@ -87,6 +87,7 @@ export const AuthProvider = ({ children }) => {
     sessionStorage.setItem('mm_auth_user', JSON.stringify(user));
     setCurrentUser(user);
     setExpiresAt(data.expiresAtUtc);
+    return user;
   };
 
   return (
