@@ -22,11 +22,17 @@ namespace MiniMesApi.Controllers
 
         // 1. Tüm Aktif Üretim Kayıtlarını DTO olarak Getir (GET: api/Uretim)
         [HttpGet]
-        public async Task<IActionResult> GetUretimler()
+        public async Task<IActionResult> GetUretimler(
+            [FromQuery] int limit = 100,
+            CancellationToken cancellationToken = default)
         {
+            limit = Math.Clamp(limit, 1, 500);
+
             var uretimler = await _context.UretimKayitlari
                 .Where(x => !x.IsDeleted)
                 .AsNoTracking()
+                .OrderByDescending(x => x.UretimTarihi)
+                .Take(limit)
                 .Select(x => new UretimKayitResponseDto
                 {
                     ID = x.ID,
@@ -36,7 +42,7 @@ namespace MiniMesApi.Controllers
                     KaliteDurumu = x.KaliteDurumu,
                     UretimTarihi = x.UretimTarihi
                 })
-                .ToListAsync();
+                .ToListAsync(cancellationToken);
 
             return Ok(ApiResponse<List<UretimKayitResponseDto>>.SuccessResult(uretimler, "Aktif üretim kayıtları getirildi."));
         }
@@ -69,8 +75,13 @@ namespace MiniMesApi.Controllers
 
         // 3. İstasyon veya Kalite Durumuna Göre Filtrele (GET: api/Uretim/filtre)
         [HttpGet("filtre")]
-        public async Task<IActionResult> Filtrele([FromQuery] string? istasyon, [FromQuery] string? kaliteDurumu)
+        public async Task<IActionResult> Filtrele(
+            [FromQuery] string? istasyon,
+            [FromQuery] string? kaliteDurumu,
+            [FromQuery] int limit = 100,
+            CancellationToken cancellationToken = default)
         {
+            limit = Math.Clamp(limit, 1, 500);
             var query = _context.UretimKayitlari.Where(x => !x.IsDeleted).AsQueryable();
 
             if (!string.IsNullOrEmpty(istasyon))
@@ -85,6 +96,8 @@ namespace MiniMesApi.Controllers
 
             var sonuc = await query
                 .AsNoTracking()
+                .OrderByDescending(x => x.UretimTarihi)
+                .Take(limit)
                 .Select(x => new UretimKayitResponseDto
                 {
                     ID = x.ID,
@@ -94,7 +107,7 @@ namespace MiniMesApi.Controllers
                     KaliteDurumu = x.KaliteDurumu,
                     UretimTarihi = x.UretimTarihi
                 })
-                .ToListAsync();
+                .ToListAsync(cancellationToken);
 
             return Ok(ApiResponse<List<UretimKayitResponseDto>>.SuccessResult(sonuc, "Filtrelenmiş kayıtlar getirildi."));
         }
@@ -118,7 +131,7 @@ namespace MiniMesApi.Controllers
 
             if (mukerrerVarMi)
             {
-                return BadRequest(ApiResponse<string>.FailResult($"'{yeniDto.Urun20liKod}' barkodlu ürün zaten veritabanında kayıtlı!"));
+                return Conflict(ApiResponse<string>.FailResult($"'{yeniDto.Urun20liKod}' barkodlu ürün zaten veritabanında kayıtlı!"));
             }
 
             var yeniKayit = new UretimKayit
@@ -132,7 +145,14 @@ namespace MiniMesApi.Controllers
             };
 
             _context.UretimKayitlari.Add(yeniKayit);
-            await _context.SaveChangesAsync();
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateException)
+            {
+                return Conflict(ApiResponse<string>.FailResult($"'{yeniDto.Urun20liKod}' barkodlu ürün zaten veritabanında kayıtlı!"));
+            }
 
             var responseDto = new UretimKayitResponseDto
             {
@@ -227,11 +247,17 @@ public async Task<IActionResult> HardDelete(int id)
 
         // 7. Silinen Kayıtları Listele (GET: api/Uretim/deleted)
         [HttpGet("deleted")]
-        public async Task<IActionResult> GetDeletedUretimler()
+        public async Task<IActionResult> GetDeletedUretimler(
+            [FromQuery] int limit = 100,
+            CancellationToken cancellationToken = default)
         {
+            limit = Math.Clamp(limit, 1, 500);
+
             var silinenler = await _context.UretimKayitlari
                 .Where(x => x.IsDeleted)
                 .AsNoTracking()
+                .OrderByDescending(x => x.UretimTarihi)
+                .Take(limit)
                 .Select(x => new UretimKayitResponseDto
                 {
                     ID = x.ID,
@@ -241,7 +267,7 @@ public async Task<IActionResult> HardDelete(int id)
                     KaliteDurumu = x.KaliteDurumu,
                     UretimTarihi = x.UretimTarihi
                 })
-                .ToListAsync();
+                .ToListAsync(cancellationToken);
 
             return Ok(ApiResponse<List<UretimKayitResponseDto>>.SuccessResult(silinenler, "Silinmiş kayıtlar listelendi."));
         }

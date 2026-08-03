@@ -18,9 +18,17 @@ namespace MiniMesApi.Controllers
         }
 
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<WorkOrder>>> GetWorkOrders()
+        public async Task<ActionResult<IEnumerable<WorkOrder>>> GetWorkOrders(
+            [FromQuery] int limit = 100,
+            CancellationToken cancellationToken = default)
         {
-            return await _context.WorkOrders.AsNoTracking().OrderByDescending(w => w.Id).ToListAsync();
+            limit = Math.Clamp(limit, 1, 500);
+
+            return await _context.WorkOrders
+                .AsNoTracking()
+                .OrderByDescending(w => w.Id)
+                .Take(limit)
+                .ToListAsync(cancellationToken);
         }
 
         [HttpGet("{id:int}")]
@@ -50,7 +58,15 @@ namespace MiniMesApi.Controllers
 
             workOrder.Status = "Bekliyor";
             _context.WorkOrders.Add(workOrder);
-            await _context.SaveChangesAsync();
+
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateException)
+            {
+                return Conflict(new { message = "Bu iş emri numarası zaten kullanılıyor." });
+            }
 
             return CreatedAtAction(nameof(GetWorkOrder), new { id = workOrder.Id }, workOrder);
         }

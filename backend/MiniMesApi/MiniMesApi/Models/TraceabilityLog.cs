@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using MiniMesApi.Models;
 
 public class TraceabilityLog
@@ -16,6 +17,10 @@ public class TraceabilityLog
     public DateTime EntryTime { get; set; } = DateTime.Now;
     public DateTime? ExitTime { get; set; }
     
-    public string Status { get; set; } = "PASS"; // PASS, FAIL, REWORK
-    public string? CycleNotes { get; set; } // Varsa test/hata notu
+    [Required]
+    [StringLength(20)]
+    public string Status { get; set; } = "PASS";
+
+    [StringLength(1000)]
+    public string? CycleNotes { get; set; }
 }

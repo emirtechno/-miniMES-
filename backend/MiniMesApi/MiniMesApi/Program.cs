@@ -5,6 +5,8 @@ using Microsoft.IdentityModel.Tokens;
 using MiniMesApi.Models;
 using MiniMesApi.Middlewares;
 using FluentValidation;
+using MiniMesApi.Options;
+using MiniMesApi.Services;
 using MiniMesApi.Validators;
 
 // ... diğer servisler ...
@@ -24,6 +26,15 @@ builder.Services.AddCors(options =>
 // 1. Veritabanı Bağlantısı
 builder.Services.AddDbContext<MesDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+builder.Services.AddOptions<OeeSimulationOptions>()
+    .Bind(builder.Configuration.GetSection(OeeSimulationOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+builder.Services.AddOptions<MachineMetricRetentionOptions>()
+    .Bind(builder.Configuration.GetSection(MachineMetricRetentionOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
 
 var jwtKey = builder.Configuration["Jwt:Key"]
     ?? throw new InvalidOperationException("Jwt:Key yapılandırılmalıdır.");
@@ -50,8 +61,16 @@ builder.Services.AddControllers();
 
 builder.Services.AddEndpointsApiExplorer();
 
-// --- OeeSimulation Kısımları
-builder.Services.AddHostedService<MiniMesApi.Services.OeeSimulationService>();
+if (builder.Environment.IsDevelopment() &&
+    builder.Configuration.GetValue<bool>($"{OeeSimulationOptions.SectionName}:Enabled"))
+{
+    builder.Services.AddHostedService<OeeSimulationService>();
+}
+
+if (builder.Configuration.GetValue<bool>($"{MachineMetricRetentionOptions.SectionName}:Enabled"))
+{
+    builder.Services.AddHostedService<MachineMetricRetentionService>();
+}
 
 // FluentValidation Servis Kaydı
 builder.Services.AddValidatorsFromAssemblyContaining<CreateUretimKayitDtoValidator>();
@@ -73,64 +92,48 @@ builder.Services.AddSwaggerGen(options =>
 
 var app = builder.Build();
 
-// --- ÖNEMLİ:Exception Middleware ---  
+// --- ÖNEMLİ:Exception Middleware ---
 app.UseMiddleware<ExceptionMiddleware>();
 
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<MesDbContext>();
-    db.Database.EnsureCreated();
+    var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("DatabaseInitialization");
+    await db.Database.MigrateAsync();
 
-    try
+    if (app.Environment.IsDevelopment())
     {
-        var createAlarmsTableSql = @"
-IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[Alarms]') AND type in (N'U'))
-BEGIN
-    CREATE TABLE [dbo].[Alarms](
-        [Id] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
-        [Title] NVARCHAR(100) NOT NULL,
-        [Station] NVARCHAR(80) NULL,
-        [Severity] NVARCHAR(20) NOT NULL,
-        [Time] DATETIME2 NOT NULL,
-        [Status] NVARCHAR(20) NOT NULL,
-        [Description] NVARCHAR(400) NULL
-    );
-END
-";
-        db.Database.ExecuteSqlRaw(createAlarmsTableSql);
-    }
-    catch { }
-
-    try
-    {
-        if (!db.Alarms.Any())
+        try
         {
-            db.Alarms.AddRange(
-                new Alarm
-                {
-                    Title = "Hız Sensörü Arızası",
-                    Station = "Montaj_Hatti_02",
-                    Severity = "Kritik",
-                    Time = DateTime.Now.AddMinutes(-22),
-                    Status = "Açık",
-                    Description = "Üretim hızı beklenen değerlerin altında."
-                },
-                new Alarm
-                {
-                    Title = "Yüksek Basınç",
-                    Station = "Test_Ve_Paketleme_Istasyonu",
-                    Severity = "Uyarı",
-                    Time = DateTime.Now.AddMinutes(-8),
-                    Status = "Onaylandı",
-                    Description = "Geçici basınç sapması tespit edildi."
-                }
-            );
-            db.SaveChanges();
+            if (!await db.Alarms.AnyAsync())
+            {
+                db.Alarms.AddRange(
+                    new Alarm
+                    {
+                        Title = "Hız Sensörü Arızası",
+                        Station = "Montaj_Hatti_02",
+                        Severity = "Kritik",
+                        Time = DateTime.Now.AddMinutes(-22),
+                        Status = "Açık",
+                        Description = "Üretim hızı beklenen değerlerin altında."
+                    },
+                    new Alarm
+                    {
+                        Title = "Yüksek Basınç",
+                        Station = "Test_Ve_Paketleme_Istasyonu",
+                        Severity = "Uyarı",
+                        Time = DateTime.Now.AddMinutes(-8),
+                        Status = "Onaylandı",
+                        Description = "Geçici basınç sapması tespit edildi."
+                    }
+                );
+                await db.SaveChangesAsync();
+            }
         }
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"Alarm seeding hatası: {ex.Message}");
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Alarm başlangıç verileri eklenemedi.");
+        }
     }
 }
 
