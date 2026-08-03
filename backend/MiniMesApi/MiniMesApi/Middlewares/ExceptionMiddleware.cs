@@ -21,6 +21,10 @@ namespace MiniMesApi.Middlewares
             {
                 await _next(httpContext);
             }
+            catch (OperationCanceledException) when (httpContext.RequestAborted.IsCancellationRequested)
+            {
+                // Client disconnected — do not log as 500 or write a response body.
+            }
             catch (Exception ex)
             {
                 _logger.LogError(
@@ -34,8 +38,13 @@ namespace MiniMesApi.Middlewares
             }
         }
 
-        private static Task HandleExceptionAsync(HttpContext context)
+        private static async Task HandleExceptionAsync(HttpContext context)
         {
+            if (context.Response.HasStarted)
+            {
+                return;
+            }
+
             context.Response.ContentType = "application/json";
             context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
 
@@ -53,7 +62,7 @@ namespace MiniMesApi.Middlewares
             };
 
             var jsonResponse = JsonSerializer.Serialize(response, jsonOptions);
-            return context.Response.WriteAsync(jsonResponse);
+            await context.Response.WriteAsync(jsonResponse, context.RequestAborted);
         }
     }
 }

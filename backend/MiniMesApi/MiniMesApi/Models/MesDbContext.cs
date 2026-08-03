@@ -98,6 +98,9 @@ namespace MiniMesApi.Models
                         "CK_Batches_ProducedQuantity",
                         "[ProducedQuantity] >= 0");
                     table.HasCheckConstraint(
+                        "CK_Batches_ProducedNotOverTarget",
+                        "[ProducedQuantity] <= [TargetQuantity]");
+                    table.HasCheckConstraint(
                         "CK_Batches_Status",
                         "[Status] IN (N'Bekliyor', N'İşlemde', N'Tamamlandı')");
                 });

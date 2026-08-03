@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react';
 import { PieChart as PieIcon } from 'lucide-react';
 import {
   Cell,
@@ -31,10 +32,13 @@ const renderPercentLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percen
  * Modern quality doughnut with % labels, gradient fills, and detailed hover tooltips.
  */
 const QualityDistributionChart = ({ data = [], totalCount = 0 }) => {
-  const chartData = data.map((entry, index) => ({
-    ...entry,
-    fill: `url(#${GRADIENTS[index % GRADIENTS.length].id})`,
-  }));
+  const chartData = useMemo(
+    () => data.map((entry, index) => ({
+      ...entry,
+      fill: `url(#${GRADIENTS[index % GRADIENTS.length].id})`,
+    })),
+    [data],
+  );
 
   return (
     <section className="mes-surface flex flex-col p-5">
@@ -104,4 +108,4 @@ const QualityDistributionChart = ({ data = [], totalCount = 0 }) => {
   );
 };
 
-export default QualityDistributionChart;
+export default memo(QualityDistributionChart);

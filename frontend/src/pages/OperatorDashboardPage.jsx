@@ -5,6 +5,7 @@ import ShopFloorActionBar from '../components/ShopFloorActionBar';
 import ProductionForm from '../components/ProductionForm';
 import CardHeader from '../components/CardHeader';
 import { useShiftSession } from '../context/ShiftSessionContext';
+import { useShiftElapsed } from '../hooks/useShiftElapsed';
 import { ACTIVE_STATION_DEFINITIONS, DEFAULT_STATION, getStationDisplayName } from '../constants/stations';
 import { getShiftLabel } from '../constants/shifts';
 
@@ -21,7 +22,6 @@ const OperatorDashboardPage = ({
 }) => {
   const {
     shift,
-    elapsedLabel,
     setStationId,
     reportDowntime,
     resumeProduction,
@@ -30,6 +30,7 @@ const OperatorDashboardPage = ({
     loginSecondaryOperator,
     endShift,
   } = useShiftSession();
+  const elapsedLabel = useShiftElapsed(shift.startedAt, shift.active);
 
   const [stationId, setLocalStationId] = useState(form?.istasyonAdi || shift.stationId || DEFAULT_STATION);
 

@@ -14,6 +14,7 @@ public sealed class CreateAlarmDto
 
     [Required]
     [StringLength(20)]
+    [AllowedValues("Kritik", "Yüksek", "Uyarı", "Düşük", "Bilgi")]
     public string Severity { get; init; } = string.Empty;
 
     [StringLength(400)]

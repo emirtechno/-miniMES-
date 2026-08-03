@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { Coffee, PlayCircle, StopCircle, Wrench } from 'lucide-react';
 import CardHeader from './CardHeader';
 import ShiftStartModal from './ShiftStartModal';
+import MesModal from './MesModal';
 import { useShiftSession } from '../context/ShiftSessionContext';
+import { useSetupElapsed, useShiftElapsed } from '../hooks/useShiftElapsed';
 import { ACTIVE_STATION_DEFINITIONS, getStationDisplayName } from '../constants/stations';
 import { getShiftLabel } from '../constants/shifts';
 
@@ -12,13 +14,13 @@ import { getShiftLabel } from '../constants/shifts';
 const OperatorShiftWidget = ({ user, stationId, onStationChange }) => {
   const {
     shift,
-    elapsedLabel,
-    setupElapsedLabel,
     startShift,
     endShift,
     setStationId,
     resumeProduction,
   } = useShiftSession();
+  const elapsedLabel = useShiftElapsed(shift.startedAt, shift.active);
+  const setupElapsedLabel = useSetupElapsed(shift.setupStartedAt, shift.inSetup);
   const [showStartModal, setShowStartModal] = useState(false);
   const [showEndConfirm, setShowEndConfirm] = useState(false);
 
@@ -126,28 +128,27 @@ const OperatorShiftWidget = ({ user, stationId, onStationChange }) => {
         }}
       />
 
-      {showEndConfirm && (
-        <div className="modal-overlay" role="presentation">
-          <div className="modal-card confirm-dialog" role="dialog" aria-modal="true">
-            <h3>Vardiyayı Bitir?</h3>
-            <p className="mes-helper">Aktif oturum kapanacak. Fire: {shift.scrapCount || 0}</p>
-            <div className="confirm-actions">
-              <button type="button" className="mes-btn-secondary" onClick={() => setShowEndConfirm(false)}>Vazgeç</button>
-              <button
-                type="button"
-                className="mes-btn-danger"
-                onClick={() => {
-                  setShowEndConfirm(false);
-                  endShift();
-                }}
-              >
-                <Coffee size={16} />
-                Bitir
-              </button>
-            </div>
-          </div>
+      <MesModal
+        open={showEndConfirm}
+        onClose={() => setShowEndConfirm(false)}
+        title="Vardiyayı Bitir?"
+      >
+        <p className="mes-helper mb-0">Aktif oturum kapanacak. Fire: {shift.scrapCount || 0}</p>
+        <div className="confirm-actions">
+          <button type="button" className="mes-btn-secondary" onClick={() => setShowEndConfirm(false)}>Vazgeç</button>
+          <button
+            type="button"
+            className="mes-btn-danger"
+            onClick={() => {
+              setShowEndConfirm(false);
+              endShift();
+            }}
+          >
+            <Coffee size={16} />
+            Bitir
+          </button>
         </div>
-      )}
+      </MesModal>
     </section>
   );
 };

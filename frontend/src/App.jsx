@@ -23,6 +23,7 @@ import { useAuth } from './context/AuthContext';
 import { useNotify } from './context/NotificationContext';
 import { PersonaProvider, usePersona } from './context/PersonaContext';
 import { ShiftSessionProvider, useShiftSession } from './context/ShiftSessionContext';
+import { useShiftElapsed } from './hooks/useShiftElapsed';
 import { downloadWorkbook } from './utils/excelExport';
 import { getApiErrorMessage } from './services/api';
 
@@ -81,7 +82,8 @@ function MainLayout() {
 function MainLayoutShell({ currentUser, logout, notify, confirm }) {
   const location = useLocation();
   const { persona, setPersona, isOperatorPersona, isExecutivePersona } = usePersona();
-  const { shift, elapsedLabel } = useShiftSession();
+  const { shift } = useShiftSession();
+  const elapsedLabel = useShiftElapsed(shift.startedAt, shift.active);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -165,18 +167,18 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
   const okCount = liveOk;
   const nokCount = liveNok;
   const yieldRate = totalCount > 0 ? ((okCount / totalCount) * 100).toFixed(1) : 0;
-  const qualityChartData = [
+  const qualityChartData = useMemo(() => [
     { name: 'OK (Başarılı)', value: okCount, color: '#0f9f6e' },
     { name: 'NOK (Hatalı)', value: nokCount, color: '#d92d20' },
-  ];
-  const stationChartData = stationsList.map((st) => {
+  ], [okCount, nokCount]);
+  const stationChartData = useMemo(() => stationsList.map((st) => {
     const stRecords = production.records.filter((r) => r.istasyonAdi === st);
     return {
       name: st,
       OK: stRecords.filter((r) => r.kaliteDurumu === 'OK').length,
       NOK: stRecords.filter((r) => r.kaliteDurumu === 'NOK').length,
     };
-  });
+  }), [stationsList, production.records]);
 
   const handleExportExcel = async () => {
     const exportData = filteredRecords.length > 0 ? filteredRecords : production.records;

@@ -46,7 +46,7 @@ function AlarmPanel({ alarms, onAcknowledge, onDelete }) {
                   {alarm.time ? new Date(alarm.time).toLocaleString('tr-TR') : ''}
                 </span>
 
-                {isOpen && onAcknowledge ? (
+                {isOpen && onAcknowledge && alarmId != null ? (
                   <button
                     type="button"
                     onClick={() => onAcknowledge(alarmId)}
@@ -55,6 +55,8 @@ function AlarmPanel({ alarms, onAcknowledge, onDelete }) {
                     <CheckCircle size={16} />
                     Onayla
                   </button>
+                ) : isOpen ? (
+                  <span className="text-xs font-semibold text-amber-700">Kimlik yok</span>
                 ) : (
                   <span className="text-xs font-semibold text-emerald-600">Onaylandı</span>
                 )}

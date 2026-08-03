@@ -47,38 +47,40 @@ const TraceabilityPanel = ({
             {batches.map((batch) => {
               const progress = Number(batch.progressPercent ?? 0);
               const busy = busyId === batch.id;
+              const target = Math.max(0, Number(batch.targetQuantity) || 0);
+              const produced = Math.max(0, Number(batch.producedQuantity) || 0);
               const canEditQty = canManage && batch.status !== 'Tamamlandı' && onProgress;
               return (
                 <tr key={batch.id}>
                   <td className="border-b border-[color:var(--color-line)] px-2 py-3"><b>{batch.lotNo}</b></td>
                   <td className="border-b border-[color:var(--color-line)] px-2 py-3">{batch.product}</td>
                   <td className="border-b border-[color:var(--color-line)] px-2 py-3">{getStationDisplayName(batch.station)}</td>
-                  <td className="border-b border-[color:var(--color-line)] px-2 py-3">{batch.targetQuantity}</td>
+                  <td className="border-b border-[color:var(--color-line)] px-2 py-3">{target}</td>
                   <td className="border-b border-[color:var(--color-line)] px-2 py-3">
                     {canEditQty ? (
                       <div className="flex items-center gap-1">
                         <button
                           type="button"
                           className="mes-btn-ghost !h-8 !min-h-8 !px-2"
-                          disabled={busy || batch.producedQuantity <= 0}
-                          onClick={() => onProgress(batch, Math.max(0, (batch.producedQuantity || 0) - 1))}
+                          disabled={busy || produced <= 0}
+                          onClick={() => onProgress(batch, Math.max(0, produced - 1))}
                           title="Üretilen azalt"
                         >
                           <Minus size={14} />
                         </button>
-                        <span className="min-w-[2ch] text-center font-semibold">{batch.producedQuantity}</span>
+                        <span className="min-w-[2ch] text-center font-semibold">{produced}</span>
                         <button
                           type="button"
                           className="mes-btn-ghost !h-8 !min-h-8 !px-2"
-                          disabled={busy || batch.producedQuantity >= batch.targetQuantity}
-                          onClick={() => onProgress(batch, Math.min(batch.targetQuantity, (batch.producedQuantity || 0) + 1))}
+                          disabled={busy || (target > 0 && produced >= target)}
+                          onClick={() => onProgress(batch, target > 0 ? Math.min(target, produced + 1) : produced + 1)}
                           title="Üretilen artır"
                         >
                           <Plus size={14} />
                         </button>
                       </div>
                     ) : (
-                      batch.producedQuantity
+                      produced
                     )}
                   </td>
                   <td className="border-b border-[color:var(--color-line)] px-2 py-3 min-w-[140px]">

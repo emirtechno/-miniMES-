@@ -14,10 +14,10 @@ class GlobalErrorBoundary extends Component {
   render() {
     if (this.state.hasError) {
       return (
-        <main style={{ maxWidth: '640px', margin: '80px auto', padding: '24px' }}>
-          <section className="custom-card">
-            <h1>Sayfa görüntülenemedi</h1>
-            <p>Beklenmeyen bir arayüz hatası oluştu. Oturumu koruyarak sayfayı yeniden deneyebilirsiniz.</p>
+        <main className="mx-auto max-w-xl p-6">
+          <section className="mes-surface p-5">
+            <h1 className="mes-section-title">Sayfa görüntülenemedi</h1>
+            <p className="mes-helper">Beklenmeyen bir arayüz hatası oluştu. Oturumu koruyarak sayfayı yeniden deneyebilirsiniz.</p>
             <button type="button" className="mes-btn-primary" onClick={() => window.location.reload()}>
               Sayfayı Yenile
             </button>

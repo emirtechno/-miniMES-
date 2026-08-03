@@ -43,7 +43,7 @@ const DetailModal = ({ record, isOpen, onClose }) => {
           <button
             ref={closeRef}
             type="button"
-            className="btn-delete"
+            className="mes-btn-ghost"
             onClick={onClose}
             aria-label="Detay penceresini kapat"
           >

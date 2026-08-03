@@ -37,37 +37,11 @@ export const ShiftSessionProvider = ({ children, user, notify, canCreateAlarms }
     return createDefaultShift();
   });
 
-  const [nowTick, setNowTick] = useState(0);
-
   useEffect(() => {
     const { summary: _summary, ...persistable } = shift;
     void _summary;
     sessionStorage.setItem(storageKey(user?.id), JSON.stringify(persistable));
   }, [shift, user?.id]);
-
-  useEffect(() => {
-    setNowTick(Date.now());
-    const timer = window.setInterval(() => setNowTick(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, []);
-
-  const elapsedLabel = useMemo(() => {
-    if (!shift.active || !shift.startedAt) return '—';
-    const mins = Math.max(0, Math.floor((nowTick - new Date(shift.startedAt).getTime()) / 60000));
-    const h = Math.floor(mins / 60);
-    const m = mins % 60;
-    const s = Math.max(0, Math.floor(((nowTick - new Date(shift.startedAt).getTime()) % 60000) / 1000));
-    if (h > 0) return `${h}sa ${m}dk`;
-    if (mins > 0) return `${m}dk ${s}sn`;
-    return `${s}sn`;
-  }, [shift.active, shift.startedAt, nowTick]);
-
-  const setupElapsedLabel = useMemo(() => {
-    if (!shift.inSetup || !shift.setupStartedAt) return null;
-    const mins = Math.max(0, Math.floor((nowTick - new Date(shift.setupStartedAt).getTime()) / 60000));
-    const s = Math.max(0, Math.floor(((nowTick - new Date(shift.setupStartedAt).getTime()) % 60000) / 1000));
-    return mins > 0 ? `${mins}dk ${s}sn` : `${s}sn`;
-  }, [shift.inSetup, shift.setupStartedAt, nowTick]);
 
   const startShift = useCallback((payload) => {
     setShift((current) => ({
@@ -202,11 +176,16 @@ export const ShiftSessionProvider = ({ children, user, notify, canCreateAlarms }
   }, [notify]);
 
   const loginSecondaryOperator = useCallback((pin, nameHint) => {
+    const safePin = String(pin || '');
+    if (safePin.length < 4) {
+      notify?.('PIN en az 4 haneli olmalıdır.', 'error');
+      return;
+    }
     setShift((current) => ({
       ...current,
       secondaryOperator: {
-        pinMasked: `****${String(pin).slice(-2)}`,
-        name: nameHint || `Operatör-${String(pin).slice(-4)}`,
+        pinMasked: `****${safePin.slice(-2)}`,
+        name: nameHint || `Operatör-${safePin.slice(-4)}`,
         loggedAt: new Date().toISOString(),
       },
     }));
@@ -215,8 +194,6 @@ export const ShiftSessionProvider = ({ children, user, notify, canCreateAlarms }
 
   const value = useMemo(() => ({
     shift,
-    elapsedLabel,
-    setupElapsedLabel,
     startShift,
     endShift,
     setStationId,
@@ -227,8 +204,6 @@ export const ShiftSessionProvider = ({ children, user, notify, canCreateAlarms }
     loginSecondaryOperator,
   }), [
     shift,
-    elapsedLabel,
-    setupElapsedLabel,
     startShift,
     endShift,
     setStationId,
