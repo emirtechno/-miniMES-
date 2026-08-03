@@ -9,6 +9,7 @@ namespace MiniMesApi.Models
         public int Id { get; set; }
 
         [Required]
+        [StringLength(80)]
         public string StationId { get; set; } = string.Empty;
 
         // Planlanan Toplam Çalışma Süresi (Saniye)

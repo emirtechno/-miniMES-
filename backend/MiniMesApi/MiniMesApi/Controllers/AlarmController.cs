@@ -5,6 +5,8 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
+using MiniMesApi.DTOs;
+using MiniMesApi.Security;
 using MiniMesApi.Models;
 
 namespace MiniMesApi.Controllers
@@ -24,37 +26,49 @@ namespace MiniMesApi.Controllers
         }
 
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Alarm>>> GetAlarms()
+        public async Task<ActionResult<IEnumerable<AlarmDto>>> GetAlarms(
+            [FromQuery] int limit = 100,
+            CancellationToken cancellationToken = default)
         {
+            limit = Math.Clamp(limit, 1, 500);
+
             return await _context.Alarms
                 .AsNoTracking()
                 .OrderByDescending(a => a.Time)
-                .ToListAsync();
+                .Take(limit)
+                .Select(alarm => new AlarmDto
+                {
+                    Id = alarm.Id,
+                    Title = alarm.Title,
+                    Station = alarm.Station,
+                    Severity = alarm.Severity,
+                    Time = alarm.Time,
+                    Status = alarm.Status,
+                    Description = alarm.Description
+                })
+                .ToListAsync(cancellationToken);
         }
 
         [HttpPost]
-        [Authorize(Roles = "Admin,Operator")]
-        public async Task<ActionResult<Alarm>> CreateAlarm([FromBody] Alarm alarm)
+        [Authorize(Policy = PolicyNames.AlarmWrite)]
+        public async Task<ActionResult<AlarmDto>> CreateAlarm([FromBody] CreateAlarmDto request)
         {
-            if (alarm == null)
+            var alarm = new Alarm
             {
-                return BadRequest(new { error = "Request body is null or invalid JSON." });
-            }
-
-            if (!ModelState.IsValid)
-            {
-                return BadRequest(ModelState);
-            }
+                Title = request.Title,
+                Station = request.Station,
+                Severity = request.Severity,
+                Description = request.Description,
+                Time = DateTime.UtcNow,
+                Status = "Açık"
+            };
 
             try
             {
-                alarm.Time = alarm.Time == default ? DateTime.Now : alarm.Time;
-                alarm.Status = string.IsNullOrWhiteSpace(alarm.Status) ? "Açık" : alarm.Status;
-
                 _context.Alarms.Add(alarm);
                 await _context.SaveChangesAsync();
 
-                return CreatedAtAction(nameof(GetAlarms), new { }, alarm);
+                return CreatedAtAction(nameof(GetAlarms), ToDto(alarm));
             }
             catch (Exception ex)
             {
@@ -64,7 +78,7 @@ namespace MiniMesApi.Controllers
         }
 
         [HttpPut("acknowledge/{id}")]
-        [Authorize(Roles = "Admin")]
+        [Authorize(Policy = PolicyNames.AlarmManage)]
         public async Task<IActionResult> AcknowledgeAlarm(int id)
         {
             try
@@ -72,12 +86,12 @@ namespace MiniMesApi.Controllers
                 var alarm = await _context.Alarms.FindAsync(id);
                 if (alarm == null)
                 {
-                    return NotFound(new { error = "Alarm bulunamadı." });
+                    return Problem(statusCode: StatusCodes.Status404NotFound, title: "Alarm bulunamadı.");
                 }
 
                 alarm.Status = "Onaylandı";
                 await _context.SaveChangesAsync();
-                return Ok(alarm);
+                return Ok(ToDto(alarm));
             }
             catch (Exception ex)
             {
@@ -90,7 +104,7 @@ namespace MiniMesApi.Controllers
         // 🚨 ALARM SİLME (DELETE) ENDPOINT'İ (EKLENDİ)
         // ==========================================
         [HttpDelete("{id}")]
-        [Authorize(Roles = "Admin")]
+        [Authorize(Policy = PolicyNames.AlarmManage)]
         public async Task<IActionResult> DeleteAlarm(int id)
         {
             try
@@ -98,7 +112,7 @@ namespace MiniMesApi.Controllers
                 var alarm = await _context.Alarms.FindAsync(id);
                 if (alarm == null)
                 {
-                    return NotFound(new { error = "Silinecek alarm bulunamadı." });
+                    return Problem(statusCode: StatusCodes.Status404NotFound, title: "Silinecek alarm bulunamadı.");
                 }
 
                 _context.Alarms.Remove(alarm);
@@ -111,6 +125,20 @@ namespace MiniMesApi.Controllers
                 _logger.LogError(ex, "{AlarmId} numaralı alarm silinirken beklenmeyen hata oluştu.", id);
                 return Problem(statusCode: StatusCodes.Status500InternalServerError, title: "Alarm silinemedi.");
             }
+        }
+
+        private static AlarmDto ToDto(Alarm alarm)
+        {
+            return new AlarmDto
+            {
+                Id = alarm.Id,
+                Title = alarm.Title,
+                Station = alarm.Station,
+                Severity = alarm.Severity,
+                Time = alarm.Time,
+                Status = alarm.Status,
+                Description = alarm.Description
+            };
         }
     }
 }

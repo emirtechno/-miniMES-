@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
+using MiniMesApi.DTOs;
 using MiniMesApi.Models;
+using MiniMesApi.Security;
 
 namespace MiniMesApi.Controllers
 {
@@ -18,45 +20,73 @@ namespace MiniMesApi.Controllers
         }
 
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<WorkOrder>>> GetWorkOrders()
+        public async Task<ActionResult<IEnumerable<WorkOrderDto>>> GetWorkOrders(
+            [FromQuery] int limit = 100,
+            CancellationToken cancellationToken = default)
         {
-            return await _context.WorkOrders.AsNoTracking().OrderByDescending(w => w.Id).ToListAsync();
+            limit = Math.Clamp(limit, 1, 500);
+
+            return await _context.WorkOrders
+                .AsNoTracking()
+                .OrderByDescending(w => w.Id)
+                .Take(limit)
+                .Select(order => new WorkOrderDto
+                {
+                    Id = order.Id,
+                    OrderNo = order.OrderNo,
+                    Product = order.Product,
+                    Station = order.Station,
+                    Quantity = order.Quantity,
+                    Status = order.Status
+                })
+                .ToListAsync(cancellationToken);
         }
 
         [HttpGet("{id:int}")]
-        public async Task<ActionResult<WorkOrder>> GetWorkOrder(int id)
+        public async Task<ActionResult<WorkOrderDto>> GetWorkOrder(int id)
         {
             var workOrder = await _context.WorkOrders.AsNoTracking().FirstOrDefaultAsync(order => order.Id == id);
-            return workOrder is null ? NotFound() : Ok(workOrder);
+            return workOrder is null ? NotFound() : Ok(ToDto(workOrder));
         }
 
         [HttpPost]
-        [Authorize(Roles = "Admin")]
-        public async Task<ActionResult<WorkOrder>> CreateWorkOrder([FromBody] WorkOrder workOrder)
+        [Authorize(Policy = PolicyNames.WorkOrderManage)]
+        public async Task<ActionResult<WorkOrderDto>> CreateWorkOrder([FromBody] CreateWorkOrderDto request)
         {
-            if (string.IsNullOrWhiteSpace(workOrder.OrderNo) ||
-                string.IsNullOrWhiteSpace(workOrder.Product) ||
-                string.IsNullOrWhiteSpace(workOrder.Station) ||
-                workOrder.Quantity <= 0)
-            {
-                return BadRequest(new { message = "İş emri numarası, ürün, istasyon ve pozitif miktar zorunludur." });
-            }
-
-            var exists = await _context.WorkOrders.AnyAsync(order => order.OrderNo == workOrder.OrderNo);
+            var exists = await _context.WorkOrders.AnyAsync(order => order.OrderNo == request.OrderNo);
             if (exists)
             {
-                return Conflict(new { message = "Bu iş emri numarası zaten kullanılıyor." });
+                return Problem(
+                    statusCode: StatusCodes.Status409Conflict,
+                    title: "İş emri numarası zaten kullanılıyor.");
             }
 
-            workOrder.Status = "Bekliyor";
+            var workOrder = new WorkOrder
+            {
+                OrderNo = request.OrderNo,
+                Product = request.Product,
+                Station = request.Station,
+                Quantity = request.Quantity,
+                Status = "Bekliyor"
+            };
             _context.WorkOrders.Add(workOrder);
-            await _context.SaveChangesAsync();
 
-            return CreatedAtAction(nameof(GetWorkOrder), new { id = workOrder.Id }, workOrder);
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateException)
+            {
+                return Problem(
+                    statusCode: StatusCodes.Status409Conflict,
+                    title: "İş emri numarası zaten kullanılıyor.");
+            }
+
+            return CreatedAtAction(nameof(GetWorkOrder), new { id = workOrder.Id }, ToDto(workOrder));
         }
 
         [HttpPut("{id}/advance")]
-        [Authorize(Roles = "Admin")]
+        [Authorize(Policy = PolicyNames.WorkOrderManage)]
         public async Task<IActionResult> AdvanceWorkOrder(int id)
         {
             var order = await _context.WorkOrders.FindAsync(id);
@@ -64,11 +94,26 @@ namespace MiniMesApi.Controllers
 
             if (order.Status == "Bekliyor") order.Status = "Devam Ediyor";
             else if (order.Status == "Devam Ediyor") order.Status = "Tamamlandı";
-            else if (order.Status == "Tamamlandı") return Conflict(new { message = "Tamamlanmış iş emri ilerletilemez." });
-            else return Conflict(new { message = "İş emri durumu geçersiz." });
+            else if (order.Status == "Tamamlandı")
+                return Problem(statusCode: StatusCodes.Status409Conflict, title: "Tamamlanmış iş emri ilerletilemez.");
+            else
+                return Problem(statusCode: StatusCodes.Status409Conflict, title: "İş emri durumu geçersiz.");
 
             await _context.SaveChangesAsync();
-            return Ok(order);
+            return Ok(ToDto(order));
+        }
+
+        private static WorkOrderDto ToDto(WorkOrder order)
+        {
+            return new WorkOrderDto
+            {
+                Id = order.Id,
+                OrderNo = order.OrderNo,
+                Product = order.Product,
+                Station = order.Station,
+                Quantity = order.Quantity,
+                Status = order.Status
+            };
         }
     }
 }
