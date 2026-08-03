@@ -3,7 +3,7 @@ import AlarmPanel from '../components/AlarmPanel';
 import TraceabilityPanel from '../components/TraceabilityPanel';
 import UserRolePanel from '../components/UserRolePanel';
 import WorkOrderBoard from '../components/WorkOrderBoard';
-import { STATIONS } from '../constants/stations';
+import { ACTIVE_STATION_DEFINITIONS, getStationDisplayName } from '../constants/stations';
 
 const QualityPage = ({
   workOrders,
@@ -18,7 +18,7 @@ const QualityPage = ({
   const failedRecords = production.records.filter((record) => record.kaliteDurumu === 'NOK');
 
   return (
-    <>
+    <div className="flex flex-col gap-5">
       <WorkOrderBoard
         workOrders={workOrders.items}
         formValues={workOrderForm.values}
@@ -36,7 +36,9 @@ const QualityPage = ({
           <form onSubmit={alarmForm.onSubmit} style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
             <input placeholder="Başlık" value={alarmForm.title} onChange={alarmForm.onTitleChange} className="input-field" />
             <select value={alarmForm.station} onChange={alarmForm.onStationChange} className="input-field">
-              {STATIONS.map((station) => <option key={station}>{station}</option>)}
+              {ACTIVE_STATION_DEFINITIONS.map((station) => (
+                <option key={station.id} value={station.id}>{station.displayName}</option>
+              ))}
             </select>
             <select value={alarmForm.severity} onChange={alarmForm.onSeverityChange} className="input-field">
               <option>Uyarı</option><option>Düşük</option><option>Yüksek</option><option>Kritik</option>
@@ -74,7 +76,7 @@ const QualityPage = ({
                   ) : deleted.items.map((record) => (
                     <tr key={record.id}>
                       <td>#{record.id}</td><td>{record.urun20liKod}</td><td>{record.malzeme12liKod}</td>
-                      <td>{record.istasyonAdi}</td>
+                      <td>{getStationDisplayName(record.istasyonAdi)}</td>
                       <td>{new Date(record.uretimTarihi).toLocaleString('tr-TR')}</td>
                       <td>{record.deletedByUsername || '—'}</td>
                       <td>{record.deletedAtUtc ? new Date(record.deletedAtUtc).toLocaleString('tr-TR') : '—'}</td>
@@ -119,7 +121,7 @@ const QualityPage = ({
                 <tr><td colSpan="6" style={{ textAlign: 'center', color: '#10b981' }}>Hatalı kayıt bulunmuyor.</td></tr>
               ) : failedRecords.map((record) => (
                 <tr key={record.id}>
-                  <td>#{record.id}</td><td>{record.urun20liKod}</td><td>{record.malzeme12liKod}</td><td>{record.istasyonAdi}</td>
+                  <td>#{record.id}</td><td>{record.urun20liKod}</td><td>{record.malzeme12liKod}</td><td>{getStationDisplayName(record.istasyonAdi)}</td>
                   <td>
                     <button
                       type="button"
@@ -143,7 +145,7 @@ const QualityPage = ({
           </table>
         </div>
       </section>
-    </>
+    </div>
   );
 };
 

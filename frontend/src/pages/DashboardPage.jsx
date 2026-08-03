@@ -20,34 +20,37 @@ const DashboardPage = ({
   table,
   pagination,
 }) => (
-  <>
-    <section className="kpi-grid">
-      <KpiCard title="Toplam Üretim" value={metrics.totalCount} icon={Activity} accent={{ bg: '#e0f2fe', color: '#0284c7' }} />
-      <KpiCard title="Başarılı (OK)" value={metrics.okCount} icon={CheckCircle2} accent={{ bg: '#d1fae5', color: '#10b981' }} valueColor="#10b981" />
-      <KpiCard title="Hatalı (NOK)" value={metrics.nokCount} icon={XCircle} accent={{ bg: '#fee2e2', color: '#ef4444' }} valueColor="#ef4444" />
-      <KpiCard title="Verimlilik Oranı" value={`%${metrics.yieldRate}`} icon={Percent} accent={{ bg: '#fef3c7', color: '#f59e0b' }} valueColor="#f59e0b" />
+  <div className="flex flex-col gap-5">
+    <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <KpiCard title="Toplam Üretim" value={metrics.totalCount} icon={Activity} accent={{ bg: '#e0f2fe', color: '#1769aa' }} />
+      <KpiCard title="Başarılı (OK)" value={metrics.okCount} icon={CheckCircle2} accent={{ bg: '#d1fae5', color: '#0f9f6e' }} valueColor="#0f9f6e" />
+      <KpiCard title="Hatalı (NOK)" value={metrics.nokCount} icon={XCircle} accent={{ bg: '#fee2e2', color: '#d92d20' }} valueColor="#d92d20" />
+      <KpiCard title="Verimlilik Oranı" value={`%${metrics.yieldRate}`} icon={Percent} accent={{ bg: '#fef3c7', color: '#c47f17' }} valueColor="#c47f17" />
     </section>
 
     <OeePanel stationId={isCanonicalStation(table.selectedStation) ? table.selectedStation : DEFAULT_STATION} />
 
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '20px', marginBottom: '24px' }}>
-      <div className="custom-card" style={{ marginBottom: 0, borderLeft: !permission.isActive ? '5px solid #ef4444' : '5px solid #0284c7' }}>
-        <div className="card-header"><span>Aktif Kullanıcı Yetkisi</span></div>
-        <p style={{ margin: 0, color: !permission.isActive ? '#ef4444' : '#475569', fontWeight: !permission.isActive ? 600 : 400 }}>
+    <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+      <div
+        className="mes-surface p-5"
+        style={{ borderLeft: !permission.isActive ? '4px solid #d92d20' : '4px solid #1769aa' }}
+      >
+        <div className="text-sm font-semibold text-[color:var(--color-ink)]">Aktif Kullanıcı Yetkisi</div>
+        <p className={`mb-0 mt-2 text-sm ${!permission.isActive ? 'font-semibold text-[color:var(--color-nok)]' : 'text-[color:var(--color-muted)]'}`}>
           {permission.text}
         </p>
       </div>
 
       <ProductionForm {...form} />
 
-      <section className="custom-card" style={{ marginBottom: 0, display: 'flex', flexDirection: 'column' }}>
-        <div className="card-header">
-          <PieIcon className="text-primary" size={20} />
-          <span>Kalite Dağılım Grafiği</span>
+      <section className="mes-surface flex flex-col p-5">
+        <div className="mb-3 flex items-center gap-2">
+          <PieIcon className="text-[color:var(--color-vestel)]" size={20} />
+          <span className="mes-section-title">Kalite Dağılım Grafiği</span>
         </div>
-        <div style={{ flex: 1, minHeight: '260px', width: '100%' }}>
+        <div className="min-h-[260px] w-full flex-1">
           {metrics.totalCount === 0 ? (
-            <p style={{ textAlign: 'center', paddingTop: '80px', color: '#94a3b8' }}>Grafik için henüz veri yok.</p>
+            <p className="pt-20 text-center text-[color:var(--color-muted)]">Grafik için henüz veri yok.</p>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -67,13 +70,13 @@ const DashboardPage = ({
 
     <ProductionTable {...table} />
     {pagination.hasMore && (
-      <div style={{ display: 'flex', justifyContent: 'center', marginTop: '12px' }}>
-        <button type="button" className="btn-secondary" onClick={pagination.loadMore} disabled={pagination.loading}>
+      <div className="flex justify-center">
+        <button type="button" className="mes-btn-secondary" onClick={pagination.loadMore} disabled={pagination.loading}>
           {pagination.loading ? 'Yükleniyor...' : 'Daha Fazla Kayıt Yükle'}
         </button>
       </div>
     )}
-  </>
+  </div>
 );
 
 export default DashboardPage;

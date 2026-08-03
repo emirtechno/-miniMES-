@@ -1,4 +1,5 @@
 import { CheckCircle2, Trash2, XCircle, Search, Filter, FileSpreadsheet, Eye } from 'lucide-react';
+import { getStationDisplayName } from '../constants/stations';
 
 const ProductionTable = ({
   loading,
@@ -19,56 +20,41 @@ const ProductionTable = ({
   canDeleteRecord = false,
 }) => {
   return (
-    <section className="custom-card">
-      <div className="card-header" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginBottom: '10px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <Filter size={20} />
-          <span>Üretim Listesi ({filteredRecords.length})</span>
+    <section className="mes-surface p-5">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Filter size={20} className="text-[color:var(--color-vestel)]" />
+          <span className="mes-section-title">Üretim Listesi ({filteredRecords.length})</span>
         </div>
 
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ position: 'relative' }}>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative">
             <input
-              className="input-field"
-              style={{ paddingLeft: '35px', width: '180px', fontSize: '0.82rem' }}
+              className="mes-input pl-9"
+              style={{ width: '180px' }}
               type="text"
               placeholder="Koda göre ara..."
               value={searchTerm}
               onChange={onSearchChange}
             />
-            <Search size={16} style={{ position: 'absolute', left: '12px', top: '13px', color: '#94a3b8' }} />
+            <Search size={16} className="pointer-events-none absolute left-3 top-2.5 text-slate-400" />
           </div>
 
-          <select className="input-field" style={{ fontSize: '0.82rem' }} value={selectedStation} onChange={onStationChange}>
-            {stationsFilterOptions.map((st, i) => (
-              <option key={i} value={st}>{st}</option>
+          <select className="mes-input" style={{ width: 'auto' }} value={selectedStation} onChange={onStationChange}>
+            {stationsFilterOptions.map((st) => (
+              <option key={st} value={st}>{st === 'Tümü' ? 'Tüm İstasyonlar' : getStationDisplayName(st)}</option>
             ))}
           </select>
 
-          <select className="input-field" style={{ fontSize: '0.82rem' }} value={selectedQuality} onChange={onQualityChange}>
+          <select className="mes-input" style={{ width: 'auto' }} value={selectedQuality} onChange={onQualityChange}>
             <option value="Tümü">Tüm Kaliteler</option>
             <option value="OK">OK</option>
             <option value="NOK">NOK</option>
           </select>
 
-          <button
-            onClick={onExportExcel}
-            style={{
-              backgroundColor: '#16a34a',
-              color: 'white',
-              border: 'none',
-              padding: '8px 14px',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              fontWeight: '600',
-              fontSize: '14px'
-            }}
-          >
-            <FileSpreadsheet size={18} />
-            <span>Excel'e Aktar</span>
+          <button type="button" onClick={onExportExcel} className="mes-btn-primary bg-emerald-700 hover:bg-emerald-800">
+            <FileSpreadsheet size={16} />
+            Excel&apos;e Aktar
           </button>
         </div>
       </div>
@@ -101,7 +87,7 @@ const ProductionTable = ({
                     <td><b>#{r.id}</b></td>
                     <td><code style={{ background: '#f1f5f9', padding: '4px 8px', borderRadius: '4px' }}>{r.urun20liKod}</code></td>
                     <td><code style={{ background: '#f1f5f9', padding: '4px 8px', borderRadius: '4px' }}>{r.malzeme12liKod}</code></td>
-                    <td>{r.istasyonAdi}</td>
+                    <td>{getStationDisplayName(r.istasyonAdi)}</td>
                     <td>
                       <span
                         onClick={() => {
