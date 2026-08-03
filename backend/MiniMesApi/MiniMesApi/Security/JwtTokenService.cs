@@ -54,7 +54,7 @@ public sealed class JwtTokenService(
         return new LoginResponseDto
         {
             AccessToken = new JwtSecurityTokenHandler().WriteToken(token),
-            ExpiresAtUtc = expiresAt.UtcDateTime,
+            ExpiresAtUtc = expiresAt,
             UserId = user.Id,
             Username = user.UserName ?? string.Empty,
             DisplayName = user.DisplayName,

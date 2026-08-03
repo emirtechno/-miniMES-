@@ -16,7 +16,7 @@ public sealed class OeeCalculatorTests
             IdealCycleTimeSeconds = 1,
             ActualProductionCount = 70,
             GoodProductionCount = 63,
-            RecordedAt = DateTime.UtcNow
+            RecordedAt = DateTimeOffset.UtcNow
         };
 
         var result = OeeCalculator.Calculate(metric);

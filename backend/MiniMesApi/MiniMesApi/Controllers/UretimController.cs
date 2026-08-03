@@ -176,7 +176,7 @@ namespace MiniMesApi.Controllers
                 Malzeme12liKod = yeniDto.Malzeme12liKod,
                 IstasyonAdi = yeniDto.IstasyonAdi,
                 KaliteDurumu = yeniDto.KaliteDurumu,
-                UretimTarihi = DateTime.Now,
+                UretimTarihi = DateTimeOffset.UtcNow,
                 IsDeleted = false
             };
 

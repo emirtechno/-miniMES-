@@ -30,7 +30,7 @@ const TraceabilityPanel = ({ batches }) => {
                     {batch.status}
                   </span>
                 </td>
-                <td>{batch.updatedAt}</td>
+                <td>{batch.updatedAt ? new Date(batch.updatedAt).toLocaleString('tr-TR') : '-'}</td>
               </tr>
             ))}
           </tbody>

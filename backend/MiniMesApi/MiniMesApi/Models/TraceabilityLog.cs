@@ -14,8 +14,8 @@ public class TraceabilityLog
     public int UserId { get; set; }
     public User? User { get; set; }
 
-    public DateTime EntryTime { get; set; } = DateTime.Now;
-    public DateTime? ExitTime { get; set; }
+    public DateTimeOffset EntryTime { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? ExitTime { get; set; }
     
     [Required]
     [StringLength(20)]
