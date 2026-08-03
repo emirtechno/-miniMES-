@@ -1,3 +1,4 @@
 <Solution>
   <Project Path="MiniMesApi/MiniMesApi.csproj" />
+  <Project Path="MiniMesApi.Tests/MiniMesApi.Tests.csproj" />
 </Solution>

@@ -56,9 +56,27 @@ değişkeniyle sıfırlanmaz. İlk yönetici oluşturulduktan sonra bootstrap pa
 değişkenini dağıtım ortamından kaldırın. Parolalar Identity tarafından hash'lenir;
 başarısız girişler hesap kilitleme ve endpoint hız sınırlamasına tabidir.
 
-## Telemetri Güvenlik Ayarları
+## Production Dağıtım Notları
 
-OEE simülasyonu yalnızca Development ortamında ve `OeeSimulation:Enabled=true`
-olduğunda çalışır. Varsayılan olarak kapalıdır. Makine metrikleri varsayılan olarak
-30 gün saklanır; süre, temizleme aralığı ve parti boyutu `MachineMetricRetention`
-ayarlarıyla değiştirilebilir.
+Üretim ortamında aşağıdaki ayarları ortam değişkenleri veya gizli depo ile sağlayın:
+
+```bash
+export ASPNETCORE_ENVIRONMENT=Production
+export ConnectionStrings__DefaultConnection='Server=sql-host;Database=MiniMESDB;User Id=...;Password=...;Encrypt=True;TrustServerCertificate=False'
+export Jwt__Key='en-az-32-karakterlik-rastgele-bir-imzalama-anahtari'
+export Cors__AllowedOrigins__0='https://mes.example.com'
+export AllowedHosts='mes-api.example.com'
+export IdentityBootstrap__AdminUsername='admin'
+export IdentityBootstrap__AdminPassword='guclu-ve-benzersiz-bir-parola'
+```
+
+Örnek üretim şablonu: `appsettings.Production.json.example`.
+
+Sağlık uçları (anonim):
+- `GET /health/live` — süreç ayakta mı
+- `GET /health/ready` — veritabanı hazır mı
+
+SQL Server bağlantısı yeniden deneme politikası (`EnableRetryOnFailure`) açıktır.
+`TrustServerCertificate=True` yalnızca güvenilir yerel geliştirme için kullanılmalıdır;
+üretimde TLS doğrulaması açık (`Encrypt=True`, `TrustServerCertificate=False`) tutulmalıdır.
+

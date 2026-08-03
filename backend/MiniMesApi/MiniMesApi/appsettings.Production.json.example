@@ -1,0 +1,39 @@
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "Server=sql.example.local;Database=MiniMESDB;User Id=mes_app;Password=REPLACE_ME;Encrypt=True;TrustServerCertificate=False;"
+  },
+  "Jwt": {
+    "Issuer": "MiniMesApi",
+    "Audience": "MiniMesUi",
+    "Key": "REPLACE_WITH_ENV_Jwt__Key_AT_LEAST_32_CHARS",
+    "AccessTokenMinutes": 30
+  },
+  "Cors": {
+    "AllowedOrigins": [
+      "https://mes.example.com"
+    ]
+  },
+  "IdentityBootstrap": {
+    "AdminUsername": "admin",
+    "AdminPassword": "REPLACE_WITH_ENV_AND_REMOVE_AFTER_FIRST_BOOT",
+    "AdminDisplayName": "MES Yöneticisi"
+  },
+  "OeeSimulation": {
+    "Enabled": false,
+    "IntervalSeconds": 15
+  },
+  "MachineMetricRetention": {
+    "Enabled": true,
+    "RetentionDays": 30,
+    "CleanupIntervalHours": 24,
+    "BatchSize": 5000
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning",
+      "Microsoft.EntityFrameworkCore": "Warning"
+    }
+  },
+  "AllowedHosts": "mes-api.example.com"
+}

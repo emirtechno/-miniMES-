@@ -639,3 +639,73 @@ body {
   font-size: 0.9rem;
   color: var(--text-dark);
 }
+
+
+.toast-stack {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 1200;
+  max-width: min(420px, calc(100vw - 32px));
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.16);
+  color: var(--text-dark);
+}
+
+.toast-error {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.toast-info {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.toast-success {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.toast-close {
+  border: none;
+  background: transparent;
+  font-size: 1.1rem;
+  cursor: pointer;
+  color: var(--text-muted);
+  line-height: 1;
+}
+
+.confirm-dialog {
+  display: grid;
+  gap: 14px;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.btn-secondary {
+  background: #fff;
+  color: var(--text-dark);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-weight: 600;
+}

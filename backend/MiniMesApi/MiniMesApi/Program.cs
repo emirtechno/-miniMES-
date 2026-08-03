@@ -2,10 +2,12 @@ using System.Text;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
 using MiniMesApi.Models;
@@ -16,11 +18,16 @@ using MiniMesApi.Security;
 using MiniMesApi.Services;
 using MiniMesApi.Validators;
 
-// ... diğer servisler ...
-
 var builder = WebApplication.CreateBuilder(args);
+var isTesting = builder.Environment.IsEnvironment("Testing");
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
     ?? throw new InvalidOperationException("Cors:AllowedOrigins yapılandırılmalıdır.");
+
+if (builder.Environment.IsProduction() &&
+    (builder.Configuration["AllowedHosts"] is null or "*" or ""))
+{
+    throw new InvalidOperationException("Production ortamında AllowedHosts açıkça yapılandırılmalıdır.");
+}
 
 builder.Services.AddCors(options =>
 {
@@ -32,8 +39,18 @@ builder.Services.AddCors(options =>
 
 // 1. Veritabanı Bağlantısı
 builder.Services.AddDbContext<MesDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseSqlServer(
+        builder.Configuration.GetConnectionString("DefaultConnection"),
+        sql => sql.EnableRetryOnFailure(
+            maxRetryCount: 5,
+            maxRetryDelay: TimeSpan.FromSeconds(10),
+            errorNumbersToAdd: null)));
 
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<MesDbContext>(
+        name: "database",
+        failureStatus: HealthStatus.Unhealthy,
+        tags: ["ready"]);
 builder.Services.AddOptions<OeeSimulationOptions>()
     .Bind(builder.Configuration.GetSection(OeeSimulationOptions.SectionName))
     .ValidateDataAnnotations()
@@ -220,45 +237,48 @@ var app = builder.Build();
 // --- ÖNEMLİ:Exception Middleware ---
 app.UseMiddleware<ExceptionMiddleware>();
 
-using (var scope = app.Services.CreateScope())
+if (!isTesting)
 {
-    var db = scope.ServiceProvider.GetRequiredService<MesDbContext>();
-    var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("DatabaseInitialization");
-    await db.Database.MigrateAsync();
-    await IdentityBootstrapper.InitializeAsync(scope.ServiceProvider, builder.Configuration, logger);
-
-    if (app.Environment.IsDevelopment())
+    using (var scope = app.Services.CreateScope())
     {
-        try
+        var db = scope.ServiceProvider.GetRequiredService<MesDbContext>();
+        var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("DatabaseInitialization");
+        await db.Database.MigrateAsync();
+        await IdentityBootstrapper.InitializeAsync(scope.ServiceProvider, builder.Configuration, logger);
+
+        if (app.Environment.IsDevelopment())
         {
-            if (!await db.Alarms.AnyAsync())
+            try
             {
-                db.Alarms.AddRange(
-                    new Alarm
-                    {
-                        Title = "Hız Sensörü Arızası",
-                        Station = "Montaj_Hatti_02",
-                        Severity = "Kritik",
-                        Time = DateTime.UtcNow.AddMinutes(-22),
-                        Status = "Açık",
-                        Description = "Üretim hızı beklenen değerlerin altında."
-                    },
-                    new Alarm
-                    {
-                        Title = "Yüksek Basınç",
-                        Station = "Test_Ve_Paketleme_Istasyonu",
-                        Severity = "Uyarı",
-                        Time = DateTime.UtcNow.AddMinutes(-8),
-                        Status = "Onaylandı",
-                        Description = "Geçici basınç sapması tespit edildi."
-                    }
-                );
-                await db.SaveChangesAsync();
+                if (!await db.Alarms.AnyAsync())
+                {
+                    db.Alarms.AddRange(
+                        new Alarm
+                        {
+                            Title = "Hız Sensörü Arızası",
+                            Station = "Montaj_Hatti_02",
+                            Severity = "Kritik",
+                            Time = DateTime.UtcNow.AddMinutes(-22),
+                            Status = "Açık",
+                            Description = "Üretim hızı beklenen değerlerin altında."
+                        },
+                        new Alarm
+                        {
+                            Title = "Yüksek Basınç",
+                            Station = "Test_Ve_Paketleme_Istasyonu",
+                            Severity = "Uyarı",
+                            Time = DateTime.UtcNow.AddMinutes(-8),
+                            Status = "Onaylandı",
+                            Description = "Geçici basınç sapması tespit edildi."
+                        }
+                    );
+                    await db.SaveChangesAsync();
+                }
             }
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Alarm başlangıç verileri eklenemedi.");
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Alarm başlangıç verileri eklenemedi.");
+            }
         }
     }
 }
@@ -280,5 +300,15 @@ if (app.Environment.IsDevelopment())
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHealthChecks("/health/live", new HealthCheckOptions
+{
+    Predicate = _ => false
+}).AllowAnonymous();
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready")
+}).AllowAnonymous();
 
 app.Run();
+
+public partial class Program;
