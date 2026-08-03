@@ -13,6 +13,8 @@ public sealed class OeeCalculatorTests
             StationId = "Montaj_Hatti_01",
             PlannedProductionSeconds = 100,
             DowntimeSeconds = 20,
+            DowntimeReasonCode = DowntimeReasonCatalog.Breakdown,
+            ShiftCode = ShiftCatalog.ShiftA,
             IdealCycleTimeSeconds = 1,
             ActualProductionCount = 70,
             GoodProductionCount = 63,
@@ -26,6 +28,9 @@ public sealed class OeeCalculatorTests
         Assert.Equal(90, result.Quality);
         Assert.Equal(63, result.Oee);
         Assert.Equal(7, result.ScrapProduction);
+        Assert.Equal(DowntimeReasonCatalog.Breakdown, result.DowntimeReasonCode);
+        Assert.False(result.IsPlannedDowntime);
+        Assert.Equal(ShiftCatalog.ShiftA, result.ShiftCode);
     }
 
     [Fact]

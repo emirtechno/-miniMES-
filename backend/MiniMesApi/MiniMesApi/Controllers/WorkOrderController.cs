@@ -90,7 +90,7 @@ namespace MiniMesApi.Controllers
                 Product = request.Product,
                 Station = request.Station,
                 Quantity = request.Quantity,
-                Status = "Bekliyor"
+                Status = WorkOrderStatuses.Waiting
             };
             _context.WorkOrders.Add(workOrder);
 
@@ -129,12 +129,12 @@ namespace MiniMesApi.Controllers
             if (order == null) return NotFound();
             _context.Entry(order).Property(item => item.RowVersion).OriginalValue = rowVersion;
 
-            if (order.Status == "Bekliyor") order.Status = "Devam Ediyor";
-            else if (order.Status == "Devam Ediyor") order.Status = "Tamamlandı";
-            else if (order.Status == "Tamamlandı")
-                return Problem(statusCode: StatusCodes.Status409Conflict, title: "Tamamlanmış iş emri ilerletilemez.");
-            else
-                return Problem(statusCode: StatusCodes.Status409Conflict, title: "İş emri durumu geçersiz.");
+            if (!WorkOrderStatuses.TryAdvance(order.Status, out var nextStatus, out var advanceError))
+            {
+                return Problem(statusCode: StatusCodes.Status409Conflict, title: advanceError);
+            }
+
+            order.Status = nextStatus;
 
             try
             {

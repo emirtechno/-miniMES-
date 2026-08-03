@@ -7,7 +7,7 @@ namespace MiniMesApi.Models
     public class UretimKayit
     {
         [Key]
-        public int ID { get; set; } // Birincil anahtarımız bu (Hepsi büyük ID)
+        public int ID { get; set; }
 
         [Required]
         [StringLength(20)]
@@ -27,5 +27,13 @@ namespace MiniMesApi.Models
         public string KaliteDurumu { get; set; } = "OK";
 
         public bool IsDeleted { get; set; } = false;
+
+        public DateTimeOffset? DeletedAtUtc { get; set; }
+
+        [StringLength(80)]
+        public string? DeletedByUserId { get; set; }
+
+        [StringLength(100)]
+        public string? DeletedByUsername { get; set; }
     }
 }

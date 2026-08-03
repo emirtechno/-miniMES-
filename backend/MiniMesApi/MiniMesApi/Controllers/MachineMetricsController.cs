@@ -53,20 +53,24 @@ namespace MiniMesApi.Controllers
                 .OrderByDescending(m => m.RecordedAt)
                 .ThenByDescending(m => m.Id)
                 .Take(limit + 1)
-                .Select(metric => new MachineMetricDto
-                {
-                    Id = metric.Id,
-                    StationId = metric.StationId,
-                    PlannedProductionSeconds = metric.PlannedProductionSeconds,
-                    DowntimeSeconds = metric.DowntimeSeconds,
-                    IdealCycleTimeSeconds = metric.IdealCycleTimeSeconds,
-                    ActualProductionCount = metric.ActualProductionCount,
-                    GoodProductionCount = metric.GoodProductionCount,
-                    RecordedAt = metric.RecordedAt
-                })
                 .ToListAsync(cancellationToken);
 
-            var items = metrics.Take(limit).ToArray();
+            var items = metrics.Take(limit).Select(metric => new MachineMetricDto
+            {
+                Id = metric.Id,
+                StationId = metric.StationId,
+                PlannedProductionSeconds = metric.PlannedProductionSeconds,
+                DowntimeSeconds = metric.DowntimeSeconds,
+                DowntimeReasonCode = metric.DowntimeReasonCode,
+                DowntimeReason = DowntimeReasonCatalog.DisplayName(metric.DowntimeReasonCode),
+                ShiftCode = metric.ShiftCode,
+                ShiftName = ShiftCatalog.DisplayName(metric.ShiftCode),
+                IdealCycleTimeSeconds = metric.IdealCycleTimeSeconds,
+                ActualProductionCount = metric.ActualProductionCount,
+                GoodProductionCount = metric.GoodProductionCount,
+                RecordedAt = metric.RecordedAt
+            }).ToArray();
+
             return Ok(new CursorPage<MachineMetricDto>
             {
                 Items = items,

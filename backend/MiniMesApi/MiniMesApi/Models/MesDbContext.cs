@@ -21,6 +21,7 @@ namespace MiniMesApi.Models
         public DbSet<User> TraceabilityUsers { get; set; }
         public DbSet<TraceabilityLog> TraceabilityLogs { get; set; }
         public DbSet<MachineMetric> MachineMetrics { get; set; }
+        public DbSet<AuditLog> AuditLogs { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -32,6 +33,8 @@ namespace MiniMesApi.Models
                     .IsDescending(false, true, true);
                 entity.HasIndex(metric => new { metric.RecordedAt, metric.Id })
                     .IsDescending(true, true);
+                entity.HasIndex(metric => new { metric.ShiftCode, metric.RecordedAt });
+                entity.HasIndex(metric => metric.DowntimeReasonCode);
                 entity.ToTable(table =>
                 {
                     table.HasCheckConstraint(
@@ -40,6 +43,15 @@ namespace MiniMesApi.Models
                     table.HasCheckConstraint(
                         "CK_MachineMetrics_Counts",
                         "[ActualProductionCount] >= 0 AND [GoodProductionCount] >= 0 AND [GoodProductionCount] <= [ActualProductionCount]");
+                    table.HasCheckConstraint(
+                        "CK_MachineMetrics_ShiftCode",
+                        "[ShiftCode] IN (N'SHIFT_A', N'SHIFT_B', N'SHIFT_C')");
+                    table.HasCheckConstraint(
+                        "CK_MachineMetrics_DowntimeReason",
+                        "[DowntimeReasonCode] IN (N'NONE', N'PLANNED_MAINTENANCE', N'BREAKDOWN', N'MATERIAL_SHORTAGE', N'CHANGEOVER', N'NO_OPERATOR', N'QUALITY_HOLD', N'OTHER')");
+                    table.HasCheckConstraint(
+                        "CK_MachineMetrics_DowntimeReasonConsistency",
+                        "([DowntimeSeconds] = 0 AND [DowntimeReasonCode] = N'NONE') OR ([DowntimeSeconds] > 0 AND [DowntimeReasonCode] <> N'NONE')");
                 });
             });
 
@@ -54,6 +66,7 @@ namespace MiniMesApi.Models
                 entity.HasIndex(record => record.Urun20liKod)
                     .IsUnique()
                     .HasFilter("[IsDeleted] = 0");
+                entity.HasIndex(record => new { record.IsDeleted, record.DeletedAtUtc });
                 entity.ToTable(table => table.HasCheckConstraint(
                     "CK_UretimKayitlari_KaliteDurumu",
                     "[KaliteDurumu] IN (N'OK', N'NOK', N'REWORK')"));
@@ -63,9 +76,23 @@ namespace MiniMesApi.Models
             {
                 entity.HasIndex(order => order.OrderNo).IsUnique();
                 entity.Property(order => order.RowVersion).IsRowVersion();
-                entity.ToTable(table => table.HasCheckConstraint(
-                    "CK_WorkOrders_Quantity",
-                    "[Quantity] > 0"));
+                entity.ToTable(table =>
+                {
+                    table.HasCheckConstraint(
+                        "CK_WorkOrders_Quantity",
+                        "[Quantity] > 0");
+                    table.HasCheckConstraint(
+                        "CK_WorkOrders_Status",
+                        "[Status] IN (N'Bekliyor', N'Devam Ediyor', N'Tamamlandı')");
+                });
+            });
+
+            modelBuilder.Entity<AuditLog>(entity =>
+            {
+                entity.HasIndex(log => new { log.EntityType, log.EntityId, log.OccurredAtUtc })
+                    .IsDescending(false, false, true);
+                entity.HasIndex(log => log.OccurredAtUtc)
+                    .IsDescending();
             });
 
             modelBuilder.Entity<Product>()
