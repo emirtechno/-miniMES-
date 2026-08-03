@@ -7,6 +7,7 @@ import {
   getApiErrorMessage,
 } from '../services/api';
 import { ACTIVE_STATION_DEFINITIONS, DEFAULT_STATION } from '../constants/stations';
+import { useNonOverlappingPolling } from './useNonOverlappingPolling';
 
 const SAMPLE_PRODUCTS = [
   'Montaj Kiti A',
@@ -57,6 +58,15 @@ export function useWorkOrders({
     loadBatches(controller.signal);
     return () => controller.abort();
   }, [isAuthenticated, loadBatches, loadWorkOrders]);
+
+  useNonOverlappingPolling(
+    (signal) => loadBatches(signal),
+    {
+      enabled: isAuthenticated,
+      intervalMs: 8000,
+      runImmediately: false,
+    },
+  );
 
   const handleWorkOrderSubmit = useCallback(async (event) => {
     event.preventDefault();

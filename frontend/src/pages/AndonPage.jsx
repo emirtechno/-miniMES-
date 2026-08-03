@@ -122,7 +122,7 @@ const AndonPage = () => {
             {hubConnected ? 'CANLI' : 'YENİDEN BAĞLANIYOR'}
           </span>
           <strong>{clock.toLocaleTimeString('tr-TR')}</strong>
-          <Link to="/dashboard" className="andon-exit">Panele Dön</Link>
+          <Link to="/fabrika" className="andon-exit">Panele Dön</Link>
         </div>
       </header>
 

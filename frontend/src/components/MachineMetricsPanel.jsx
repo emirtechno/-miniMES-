@@ -1,5 +1,14 @@
-import { useCallback, useMemo, useState } from 'react';
-import { Cpu } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import {
+  Activity,
+  Cpu,
+  PauseCircle,
+  PlayCircle,
+  Thermometer,
+  Gauge,
+  Waves,
+} from 'lucide-react';
 import {
   Area,
   AreaChart,
@@ -15,12 +24,77 @@ import { useNonOverlappingPolling } from '../hooks/useNonOverlappingPolling';
 import { useMesHub } from '../hooks/useMesHub';
 import { DEFAULT_STATION, ACTIVE_STATION_DEFINITIONS, getStationDisplayName } from '../constants/stations';
 import CardHeader from './CardHeader';
+import TraceabilityPanel from './TraceabilityPanel';
 
-const MachineMetricsPanel = () => {
+const resolveInitialStation = (param) => {
+  if (!param) return DEFAULT_STATION;
+  if (param === 'Tümü') return 'Tümü';
+  const match = ACTIVE_STATION_DEFINITIONS.find((s) => s.id === param);
+  return match ? match.id : DEFAULT_STATION;
+};
+
+/** Derive shop-floor style gauges from metric counters (no separate PLC schema). */
+const deriveLiveTelemetry = (latestMetric, pulse = 0, streaming = false) => {
+  const downtime = Number(latestMetric?.downtimeSeconds) || 0;
+  const actual = Number(latestMetric?.actualProductionCount) || 0;
+  const good = Number(latestMetric?.goodProductionCount) || 0;
+  const scrapRatio = actual > 0 ? Math.max(0, (actual - good) / actual) : 0;
+  const cycle = Number(latestMetric?.idealCycleTimeSeconds) || 2;
+  const streamBoost = streaming ? 1 : 0;
+  const wobble = streaming ? Math.sin(pulse / 900) : 0;
+
+  const temperature = Math.round(
+    42 + downtime * 0.35 + scrapRatio * 28 + streamBoost * 6 + wobble * 2.5,
+  );
+  const rpm = Math.round(
+    Math.max(0, (60 / Math.max(cycle, 0.5)) * 18 * (streaming ? 1.08 : 0.92)
+      - downtime * 1.2
+      + wobble * 40),
+  );
+  const vibration = Number(
+    (0.4 + scrapRatio * 3.2 + downtime / 80 + (streaming ? 0.35 : 0) + Math.abs(wobble) * 0.2)
+      .toFixed(2),
+  );
+
+  return { temperature, rpm, vibration };
+};
+
+const MachineMetricsPanel = ({
+  isFactorySimulationActive = false,
+  onToggleSimulation,
+  canControlSimulation = false,
+  productionRecords = [],
+  batches = [],
+}) => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const stationFromUrl = searchParams.get('stationId');
+  const [selectedStation, setSelectedStation] = useState(() => resolveInitialStation(stationFromUrl));
   const [metrics, setMetrics] = useState([]);
-  const [selectedStation, setSelectedStation] = useState(DEFAULT_STATION);
   const [oeeData, setOeeData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [pulse, setPulse] = useState(0);
+
+  useEffect(() => {
+    const next = resolveInitialStation(stationFromUrl);
+    setSelectedStation((current) => (current === next ? current : next));
+  }, [stationFromUrl]);
+
+  useEffect(() => {
+    if (!isFactorySimulationActive) return undefined;
+    const id = window.setInterval(() => setPulse(Date.now()), 900);
+    return () => window.clearInterval(id);
+  }, [isFactorySimulationActive]);
+
+  const selectStation = useCallback((stationId) => {
+    setSelectedStation(stationId);
+    const next = new URLSearchParams(searchParams);
+    if (!stationId || stationId === 'Tümü') {
+      next.delete('stationId');
+    } else {
+      next.set('stationId', stationId);
+    }
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const handleOeeUpdated = useCallback((payload) => {
     const latest = (payload || []).find((item) => item.stationId === selectedStation);
@@ -53,8 +127,8 @@ const MachineMetricsPanel = () => {
     }
   }, {
     enabled: true,
-    intervalMs: 20000,
-    resetKey: selectedStation,
+    intervalMs: isFactorySimulationActive ? 8000 : 20000,
+    resetKey: `${selectedStation}:${isFactorySimulationActive}`,
   });
 
   const stationsList = useMemo(
@@ -74,11 +148,33 @@ const MachineMetricsPanel = () => {
 
   const stationLabel = selectedStation === 'Tümü' ? 'Tüm İstasyonlar' : getStationDisplayName(selectedStation);
 
+  const stationRecords = useMemo(() => {
+    if (selectedStation === 'Tümü') return productionRecords;
+    return productionRecords.filter((r) => r.istasyonAdi === selectedStation);
+  }, [productionRecords, selectedStation]);
+
+  const okNok = useMemo(() => {
+    const ok = stationRecords.filter((r) => r.kaliteDurumu === 'OK').length;
+    const nok = stationRecords.filter((r) => r.kaliteDurumu === 'NOK').length;
+    return { ok, nok, total: ok + nok };
+  }, [stationRecords]);
+
+  const filteredBatches = useMemo(() => {
+    if (selectedStation === 'Tümü') return batches;
+    return batches.filter((batch) => batch.station === selectedStation);
+  }, [batches, selectedStation]);
+
+  const latestMetric = metrics[0];
+  const telemetry = useMemo(
+    () => deriveLiveTelemetry(latestMetric, pulse, isFactorySimulationActive),
+    [latestMetric, pulse, isFactorySimulationActive],
+  );
+
   const renderStationSelect = () => (
     <select
       className="mes-input h-10 w-auto min-w-[200px]"
       value={selectedStation}
-      onChange={(event) => setSelectedStation(event.target.value)}
+      onChange={(event) => selectStation(event.target.value)}
       aria-label="Trend istasyon seçimi"
     >
       {stationsList.map((station) => (
@@ -91,6 +187,74 @@ const MachineMetricsPanel = () => {
 
   return (
     <div className="flex flex-col gap-5">
+      <section className="mes-surface p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <p className="m-0 text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--color-muted)]">
+              Canlı simülasyon motoru
+            </p>
+            <h2 className="font-display m-0 mt-1 text-2xl font-semibold text-[color:var(--color-ink)]">
+              {stationLabel}
+            </h2>
+            <p className="mes-helper mt-2 mb-0 max-w-2xl">
+              Simülasyon; telemetri (sıcaklık / RPM / titreşim), istasyon OK·NOK sayaçları, lot ilerleme çubukları,
+              vardiya OEE ve duruş/alarm sinyallerini aynı canlı akıştan besler.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {renderStationSelect()}
+            {canControlSimulation && (
+              <button
+                type="button"
+                onClick={() => onToggleSimulation?.()}
+                className={isFactorySimulationActive ? 'mes-btn-danger' : 'mes-btn-primary'}
+                aria-pressed={isFactorySimulationActive}
+              >
+                {isFactorySimulationActive ? <PauseCircle size={16} /> : <PlayCircle size={16} />}
+                {isFactorySimulationActive ? 'Pause Live Stream' : 'Simülasyonu Çalıştır'}
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div
+          className={`mt-4 rounded-xl border px-4 py-3 text-sm ${
+            isFactorySimulationActive
+              ? 'border-emerald-200 bg-emerald-50/80 text-emerald-950'
+              : 'border-[color:var(--color-line)] bg-slate-50 text-[color:var(--color-muted)]'
+          }`}
+        >
+          <span className="inline-flex items-center gap-2 font-semibold">
+            <Activity size={16} className={isFactorySimulationActive ? 'animate-pulse' : ''} />
+            {isFactorySimulationActive
+              ? 'Live Stream açık — üretim kayıtları ve metrik yenilemesi aktif.'
+              : 'Live Stream kapalı — mevcut telemetri ve kayıtlar salt okunur gösterilir.'}
+          </span>
+        </div>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+          {[
+            { label: 'Sıcaklık', value: `${telemetry.temperature}°C`, icon: Thermometer, tone: telemetry.temperature > 70 ? 'text-red-700' : 'text-amber-700' },
+            { label: 'RPM', value: telemetry.rpm, icon: Gauge, tone: 'text-sky-700' },
+            { label: 'Titreşim', value: `${telemetry.vibration} mm/s`, icon: Waves, tone: telemetry.vibration > 2.5 ? 'text-red-700' : 'text-slate-800' },
+            { label: 'OK', value: okNok.ok, icon: Activity, tone: 'text-emerald-700' },
+            { label: 'NOK', value: okNok.nok, icon: Activity, tone: 'text-red-700' },
+            { label: 'Toplam', value: okNok.total, icon: Cpu, tone: 'text-[color:var(--color-ink)]' },
+          ].map((card) => {
+            const Icon = card.icon;
+            return (
+              <div key={card.label} className="rounded-xl border border-[color:var(--color-line)] bg-white px-4 py-3">
+                <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-[color:var(--color-muted)]">
+                  <Icon size={13} />
+                  {card.label}
+                </div>
+                <div className={`font-display mt-1 text-2xl font-semibold ${card.tone}`}>{card.value}</div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
       {oeeData && selectedStation !== 'Tümü' && (
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
           {[
@@ -107,6 +271,8 @@ const MachineMetricsPanel = () => {
           ))}
         </section>
       )}
+
+      <TraceabilityPanel batches={filteredBatches} />
 
       <section className="mes-surface p-5">
         <CardHeader
