@@ -6,6 +6,14 @@ import {
   fetchWorkOrders,
   getApiErrorMessage,
 } from '../services/api';
+import { ACTIVE_STATION_DEFINITIONS, DEFAULT_STATION } from '../constants/stations';
+
+const SAMPLE_PRODUCTS = [
+  'Montaj Kiti A',
+  'Elektronik Kart B',
+  'Paketleme Ünitesi C',
+  'Final Kontrol Lotu D',
+];
 
 export function useWorkOrders({
   isAuthenticated,
@@ -20,6 +28,7 @@ export function useWorkOrders({
     station: '',
     quantity: '',
   });
+  const [creatingSample, setCreatingSample] = useState(false);
 
   const loadWorkOrders = useCallback(async (signal) => {
     try {
@@ -70,6 +79,31 @@ export function useWorkOrders({
     }
   }, [canManageWorkOrders, loadWorkOrders, notify, workOrderForm]);
 
+  const handleCreateSampleWorkOrder = useCallback(async () => {
+    if (!canManageWorkOrders) {
+      notify('İş emri oluşturma yetkiniz yok (Saha Müdürü yetkisi gereklidir).', 'error');
+      return;
+    }
+    try {
+      setCreatingSample(true);
+      const stamp = Date.now().toString().slice(-6);
+      const stations = ACTIVE_STATION_DEFINITIONS.map((s) => s.id);
+      await createWorkOrder({
+        orderNo: `WO-TEST-${stamp}`,
+        product: SAMPLE_PRODUCTS[Math.floor(Math.random() * SAMPLE_PRODUCTS.length)],
+        station: stations[Math.floor(Math.random() * stations.length)] || DEFAULT_STATION,
+        quantity: 10 + Math.floor(Math.random() * 90),
+      });
+      notify('Otomatik test iş emri oluşturuldu.', 'success');
+      await loadWorkOrders();
+    } catch (err) {
+      notify(getApiErrorMessage(err, 'Test iş emri oluşturulamadı.'), 'error');
+      console.error(err);
+    } finally {
+      setCreatingSample(false);
+    }
+  }, [canManageWorkOrders, loadWorkOrders, notify]);
+
   const handleAdvanceWorkOrder = useCallback(async (order) => {
     if (!canManageWorkOrders) {
       notify('İş emri durumunu değiştirme yetkiniz yok.', 'error');
@@ -89,6 +123,8 @@ export function useWorkOrders({
     batches,
     loadWorkOrders,
     handleAdvanceWorkOrder,
+    handleCreateSampleWorkOrder,
+    creatingSample,
     workOrderForm: {
       values: workOrderForm,
       onFieldChange: (field, value) => setWorkOrderForm((current) => ({ ...current, [field]: value })),
