@@ -3,31 +3,11 @@ import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import MachineMetricsPanel from './components/MachineMetricsPanel';
 import * as XLSX from 'xlsx';
 import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  Tooltip, 
-  ResponsiveContainer, 
-  Cell, 
-  PieChart, 
-  Pie, 
-  Legend 
-} from 'recharts';
-import { 
   Factory, 
   Activity,
-  CheckCircle2, 
-  XCircle, 
-  Percent, 
   LayoutDashboard,
   Cpu,
-  AlertTriangle,
-  PieChart as PieIcon,
-  BarChart3,
   RefreshCw,
-  Trash2,
-  Lock,
   LogOut
 } from 'lucide-react';
 
@@ -52,15 +32,6 @@ import {
   getApiErrorMessage
 } from './services/api';
 
-import KpiCard from './components/KpiCard';
-import OeePanel from './components/OeePanel';
-import ProductionForm from './components/ProductionForm';
-import ProductionTable from './components/ProductionTable';
-import StationDetailPanel from './components/StationDetailPanel';
-import WorkOrderBoard from './components/WorkOrderBoard';
-import AlarmPanel from './components/AlarmPanel';
-import TraceabilityPanel from './components/TraceabilityPanel';
-import UserRolePanel from './components/UserRolePanel';
 import DetailModal from './components/DetailModal';
 import DashboardPage from './pages/DashboardPage';
 import LoginPage from './pages/LoginPage';
@@ -126,7 +97,6 @@ function MainLayout() {
   const canChangeQuality = hasPermission('production.manage');
   const canDeleteRecord = hasPermission('production.manage');
   const canHardDelete = hasPermission('production.hard-delete');
-  const canViewReports = isCurrentUserActive;
   const canManageWorkOrders = hasPermission('workorders.manage');
   const canCreateAlarms = hasPermission('alarms.write');
   const canManageAlarms = hasPermission('alarms.manage');

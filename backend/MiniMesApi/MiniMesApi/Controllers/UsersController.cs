@@ -18,7 +18,7 @@ public sealed class UsersController(UserManager<ApplicationUser> userManager) : 
     public async Task<ActionResult<CursorPage<IdentityUserDto>>> GetUsers(
         [FromQuery] int limit = 50,
         [FromQuery] string? cursor = null,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken = default)
     {
         limit = Math.Clamp(limit, 1, 200);
         if (!CursorCodec.TryDecodeString(cursor, out var cursorId))
