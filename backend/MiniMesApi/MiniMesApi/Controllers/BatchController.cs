@@ -125,7 +125,17 @@ public class BatchController : ControllerBase
 
         if (request.ProducedQuantity is int produced)
         {
-            batch.ProducedQuantity = Math.Clamp(produced, 0, Math.Max(batch.TargetQuantity, 0));
+            batch.ProducedQuantity = produced;
+        }
+
+        if (batch.ProducedQuantity > batch.TargetQuantity)
+        {
+            batch.ProducedQuantity = batch.TargetQuantity;
+        }
+
+        if (batch.ProducedQuantity < 0)
+        {
+            batch.ProducedQuantity = 0;
         }
 
         if (batch.Status == BatchStatuses.Waiting && batch.ProducedQuantity > 0)

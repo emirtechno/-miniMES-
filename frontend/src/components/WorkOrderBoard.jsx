@@ -10,6 +10,7 @@ const WorkOrderBoard = ({
   onAdvance,
   onCreateSample,
   creatingSample = false,
+  disabled = false,
 }) => (
   <section className="mes-surface p-5">
     <CardHeader
@@ -17,7 +18,7 @@ const WorkOrderBoard = ({
       title="İş Emri Takibi"
       subtitle="Manuel giriş veya tek tıkla test iş emri"
       actions={onCreateSample ? (
-        <button type="button" className="mes-btn-primary" onClick={onCreateSample} disabled={creatingSample}>
+        <button type="button" className="mes-btn-primary" onClick={onCreateSample} disabled={creatingSample || disabled}>
           <WandSparkles size={16} />
           {creatingSample ? 'Oluşturuluyor...' : 'Otomatik Test İş Emri Oluştur'}
         </button>
@@ -25,16 +26,16 @@ const WorkOrderBoard = ({
     />
 
     <form onSubmit={onSubmit} className="mb-5 grid gap-2 md:grid-cols-2 xl:grid-cols-5">
-      <input className="mes-input" placeholder="İş Emri No" value={formValues.orderNo} onChange={(e) => onFieldChange('orderNo', e.target.value)} minLength={3} required />
-      <input className="mes-input" placeholder="Ürün" value={formValues.product} onChange={(e) => onFieldChange('product', e.target.value)} minLength={3} required />
-      <select className="mes-input" value={formValues.station} onChange={(e) => onFieldChange('station', e.target.value)} required>
+      <input className="mes-input" placeholder="İş Emri No" value={formValues.orderNo} onChange={(e) => onFieldChange('orderNo', e.target.value)} minLength={3} required disabled={disabled} />
+      <input className="mes-input" placeholder="Ürün" value={formValues.product} onChange={(e) => onFieldChange('product', e.target.value)} minLength={3} required disabled={disabled} />
+      <select className="mes-input" value={formValues.station} onChange={(e) => onFieldChange('station', e.target.value)} required disabled={disabled}>
         <option value="">İstasyon seçin</option>
         {ACTIVE_STATION_DEFINITIONS.map((station) => (
           <option key={station.id} value={station.id}>{station.displayName}</option>
         ))}
       </select>
-      <input className="mes-input" placeholder="Miktar" value={formValues.quantity} onChange={(e) => onFieldChange('quantity', e.target.value)} required />
-      <button type="submit" className="mes-btn-primary">
+      <input className="mes-input" type="number" min={1} step={1} placeholder="Miktar" value={formValues.quantity} onChange={(e) => onFieldChange('quantity', e.target.value)} required disabled={disabled} />
+      <button type="submit" className="mes-btn-primary" disabled={disabled}>
         <PlusCircle size={16} />
         Ekle
       </button>

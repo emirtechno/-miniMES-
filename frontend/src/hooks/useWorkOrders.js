@@ -68,12 +68,17 @@ export function useWorkOrders({
       notify('İş emri oluşturma yetkiniz yok (Saha Müdürü yetkisi gereklidir).', 'error');
       return;
     }
+    const quantity = Number(workOrderForm.quantity);
+    if (!Number.isFinite(quantity) || quantity < 1) {
+      notify('Miktar 1 veya daha büyük bir sayı olmalıdır.', 'error');
+      return;
+    }
     try {
       await createWorkOrder({
         orderNo: workOrderForm.orderNo,
         product: workOrderForm.product,
         station: workOrderForm.station,
-        quantity: Number(workOrderForm.quantity),
+        quantity,
       });
       setWorkOrderForm({ orderNo: '', product: '', station: '', quantity: '' });
       await loadWorkOrders();

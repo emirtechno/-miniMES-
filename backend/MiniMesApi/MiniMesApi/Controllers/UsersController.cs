@@ -38,12 +38,37 @@ public sealed class UsersController(UserManager<ApplicationUser> userManager) : 
             .Take(limit + 1)
             .ToListAsync(cancellationToken);
         var pageUsers = users.Take(limit).ToArray();
-        var responses = new List<IdentityUserDto>(pageUsers.Length);
-
-        foreach (var user in pageUsers)
+        var roleLookup = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        foreach (var roleName in AppRoles.All)
         {
-            responses.Add(await ToDtoAsync(user));
+            var inRole = await userManager.GetUsersInRoleAsync(roleName);
+            foreach (var member in inRole)
+            {
+                if (!roleLookup.TryGetValue(member.Id, out var list))
+                {
+                    list = [];
+                    roleLookup[member.Id] = list;
+                }
+
+                list.Add(roleName);
+            }
         }
+
+        var responses = pageUsers.Select(user =>
+        {
+            var roles = roleLookup.TryGetValue(user.Id, out var found)
+                ? found.ToArray()
+                : [];
+            return new IdentityUserDto
+            {
+                Id = user.Id,
+                Username = user.UserName ?? string.Empty,
+                DisplayName = user.DisplayName,
+                IsActive = user.IsActive,
+                Roles = roles,
+                Permissions = AppPermissions.ForRoles(roles)
+            };
+        }).ToList();
 
         return Ok(new CursorPage<IdentityUserDto>
         {

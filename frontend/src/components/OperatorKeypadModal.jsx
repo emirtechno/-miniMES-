@@ -33,9 +33,13 @@ const OperatorKeypadModal = ({ open, onClose, onSubmit }) => {
 
   const handleSubmit = (event) => {
     event.preventDefault();
-    if (pin.length < 4) return;
-    onSubmit(pin, nameHint.trim() || undefined);
-    onClose();
+    if (pin.length < 4 || !onSubmit) return;
+    try {
+      onSubmit(pin, nameHint.trim() || undefined);
+      onClose();
+    } catch {
+      // keep modal open on failure
+    }
   };
 
   return (

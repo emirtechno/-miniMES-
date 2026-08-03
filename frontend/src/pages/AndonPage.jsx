@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Navigate, Link } from 'react-router-dom';
 import { Activity, AlertTriangle, Factory, Radio } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { fetchAlarms, fetchLatestOee, fetchMachineMetrics } from '../services/api';
+import { fetchAlarms, fetchLatestOee } from '../services/api';
 import { useMesHub } from '../hooks/useMesHub';
 import { ACTIVE_STATION_DEFINITIONS, getStationDisplayName } from '../constants/stations';
 import './AndonPage.css';
@@ -36,7 +36,6 @@ const AndonPage = () => {
       try {
         const [alarmPage] = await Promise.all([
           fetchAlarms({ signal: controller.signal, limit: 20 }),
-          fetchMachineMetrics({ signal: controller.signal, limit: 50 }),
         ]);
         setAlarms(alarmPage.items.filter((alarm) => (alarm.status || '').toLowerCase() !== 'onaylandı').slice(0, 8));
 

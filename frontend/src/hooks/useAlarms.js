@@ -57,7 +57,6 @@ export function useAlarms({
   const [manualStation, setManualStation] = useState(DEFAULT_STATION);
   const [manualSeverity, setManualSeverity] = useState('Uyarı');
   const [manualDescription, setManualDescription] = useState('');
-  const [liveAlarmToast, setLiveAlarmToast] = useState(null);
 
   const loadAlarms = useCallback(async (signal) => {
     try {
@@ -84,7 +83,6 @@ export function useAlarms({
   const { connected } = useMesHub({
     onAlarmCreated: (alarm) => {
       setAlarms((current) => upsertAlarm(current, alarm));
-      setLiveAlarmToast(alarm);
       notify(`Yeni alarm: ${alarm.title || alarm.Title}`, 'error');
     },
     onAlarmUpdated: (alarm) => {
@@ -95,12 +93,6 @@ export function useAlarms({
       setAlarms((current) => current.filter((item) => (item.id ?? item.Id) !== id));
     },
   });
-
-  useEffect(() => {
-    if (!liveAlarmToast) return undefined;
-    const timer = window.setTimeout(() => setLiveAlarmToast(null), 4000);
-    return () => window.clearTimeout(timer);
-  }, [liveAlarmToast]);
 
   const createTestAlarm = useCallback(async () => {
     if (!canCreateAlarms) {
@@ -195,7 +187,6 @@ export function useAlarms({
     alarmLoading,
     alarmError,
     liveConnected: connected,
-    liveAlarmToast,
     loadAlarms,
     createTestAlarm,
     createManualAlarm,
