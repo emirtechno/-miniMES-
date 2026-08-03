@@ -7,7 +7,7 @@ public sealed class CursorCodecTests
     [Fact]
     public void Timestamp_cursor_round_trips()
     {
-        var timestamp = new DateTime(2026, 8, 3, 12, 0, 0, DateTimeKind.Utc);
+        var timestamp = new DateTimeOffset(2026, 8, 3, 12, 0, 0, TimeSpan.Zero);
         var cursor = CursorCodec.EncodeTimestamp(timestamp, 42);
 
         Assert.True(CursorCodec.TryDecodeTimestamp(cursor, out var decoded, out var id));

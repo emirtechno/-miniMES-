@@ -16,7 +16,7 @@ public sealed class LoginRequestDto
 public sealed class LoginResponseDto
 {
     public string AccessToken { get; init; } = string.Empty;
-    public DateTime ExpiresAtUtc { get; init; }
+    public DateTimeOffset ExpiresAtUtc { get; init; }
     public string UserId { get; init; } = string.Empty;
     public string Username { get; init; } = string.Empty;
     public string DisplayName { get; init; } = string.Empty;

@@ -46,7 +46,7 @@ public sealed class MachineMetricRetentionService : BackgroundService
 
     private async Task DeleteExpiredMetricsAsync(CancellationToken cancellationToken)
     {
-        var cutoff = DateTime.UtcNow.AddDays(-_options.RetentionDays);
+        var cutoff = DateTimeOffset.UtcNow.AddDays(-_options.RetentionDays);
         await using var scope = _scopeFactory.CreateAsyncScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<MesDbContext>();
 

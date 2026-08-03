@@ -17,7 +17,7 @@ public class Product
     [StringLength(400)]
     public string Description { get; set; } = string.Empty;
 
-    public DateTime CreatedAt { get; set; } = DateTime.Now;
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     // İlişkiler
     public ICollection<Batch>? Batches { get; set; }

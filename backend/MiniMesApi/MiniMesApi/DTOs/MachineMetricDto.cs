@@ -9,5 +9,5 @@ public sealed class MachineMetricDto
     public double IdealCycleTimeSeconds { get; init; }
     public int ActualProductionCount { get; init; }
     public int GoodProductionCount { get; init; }
-    public DateTime RecordedAt { get; init; }
+    public DateTimeOffset RecordedAt { get; init; }
 }

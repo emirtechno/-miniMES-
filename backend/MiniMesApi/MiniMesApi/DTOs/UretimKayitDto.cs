@@ -37,6 +37,6 @@ namespace MiniMesApi.DTOs
         public string KaliteDurumu { get; set; } = string.Empty;
 
         [JsonPropertyName("uretimTarihi")]
-        public DateTime UretimTarihi { get; set; }
+        public DateTimeOffset UretimTarihi { get; set; }
     }
 }

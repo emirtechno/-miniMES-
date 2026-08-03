@@ -22,8 +22,6 @@ namespace MiniMesApi.Models
         [StringLength(30)]
         public string Status { get; set; } = "İşlemde";
 
-        [Required]
-        [StringLength(32)]
-        public string UpdatedAt { get; set; } = DateTime.Now.ToString("HH:mm");
+        public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
     }
 }

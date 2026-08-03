@@ -23,10 +23,10 @@ public static class CursorCodec
              int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out id));
     }
 
-    public static string EncodeTimestamp(DateTime timestamp, int id) =>
-        Encode($"{timestamp.ToUniversalTime().Ticks}:{id}");
+    public static string EncodeTimestamp(DateTimeOffset timestamp, int id) =>
+        Encode($"{timestamp.ToUniversalTime().UtcTicks}:{id}");
 
-    public static bool TryDecodeTimestamp(string? cursor, out DateTime timestamp, out int id)
+    public static bool TryDecodeTimestamp(string? cursor, out DateTimeOffset timestamp, out int id)
     {
         timestamp = default;
         id = default;
@@ -43,15 +43,15 @@ public static class CursorCodec
         var parts = value.Split(':', 2);
         return parts.Length == 2 &&
             long.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out var ticks) &&
-            ticks >= DateTime.MinValue.Ticks &&
-            ticks <= DateTime.MaxValue.Ticks &&
+            ticks >= DateTimeOffset.MinValue.UtcTicks &&
+            ticks <= DateTimeOffset.MaxValue.UtcTicks &&
             int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out id) &&
             SetTimestamp(ticks, out timestamp);
     }
 
-    private static bool SetTimestamp(long ticks, out DateTime timestamp)
+    private static bool SetTimestamp(long utcTicks, out DateTimeOffset timestamp)
     {
-        timestamp = new DateTime(ticks, DateTimeKind.Utc);
+        timestamp = new DateTimeOffset(utcTicks, TimeSpan.Zero);
         return true;
     }
 
