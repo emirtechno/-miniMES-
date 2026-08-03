@@ -10,7 +10,9 @@ import {
   updateProductionRecord,
 } from '../services/api';
 import { useNonOverlappingPolling } from './useNonOverlappingPolling';
-import { DEFAULT_STATION, STATIONS } from '../constants/stations';
+import { ACTIVE_STATION_DEFINITIONS, DEFAULT_STATION } from '../constants/stations';
+
+const ACTIVE_STATIONS = ACTIVE_STATION_DEFINITIONS.map((station) => station.id);
 
 export function useProduction({
   isAuthenticated,
@@ -120,7 +122,7 @@ export function useProduction({
     await createProductionRecord({
       urun20liKod: timestamp + random7,
       malzeme12liKod: Math.floor(100000000000 + Math.random() * 900000000000).toString(),
-      istasyonAdi: STATIONS[Math.floor(Math.random() * STATIONS.length)],
+      istasyonAdi: ACTIVE_STATIONS[Math.floor(Math.random() * ACTIVE_STATIONS.length)],
       kaliteDurumu: Math.random() > 0.15 ? 'OK' : 'NOK',
       uretimTarihi: new Date().toISOString(),
     }, { signal });
@@ -140,7 +142,7 @@ export function useProduction({
     const random7 = Math.floor(1000000 + Math.random() * 9000000).toString();
     setUrun20liKod(timestamp + random7);
     setMalzeme12liKod(Math.floor(100000000000 + Math.random() * 900000000000).toString());
-    setIstasyonAdi(STATIONS[Math.floor(Math.random() * STATIONS.length)]);
+    setIstasyonAdi(ACTIVE_STATIONS[Math.floor(Math.random() * ACTIVE_STATIONS.length)]);
     setKaliteDurumu(Math.random() > 0.15 ? 'OK' : 'NOK');
   }, [canAddRecord, notify]);
 

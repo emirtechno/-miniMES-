@@ -1,44 +1,21 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-
 :root {
-  --primary: #e30613; /* Vestel Kırmızı */
-  --primary-hover: #b8040f;
-  --bg-main: #f1f5f9;
+  --primary: #c8102e;
+  --primary-hover: #9a0c23;
+  --bg-main: #eef2f6;
   --card-bg: #ffffff;
-  --text-dark: #0f172a;
-  --text-muted: #64748b;
-  --border-color: #e2e8f0;
-  --success: #10b981;
-  --danger: #ef4444;
-  --warning: #f59e0b;
+  --text-dark: #0b1220;
+  --text-muted: #5b6b7c;
+  --border-color: #d7dee8;
+  --success: #0f9f6e;
+  --danger: #d92d20;
+  --warning: #c47f17;
 }
 
-body {
-  margin: 0;
-  padding: 0;
-  min-height: 100vh;
-  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
-  font-family: 'Inter', sans-serif;
-  color: var(--text-dark);
-}
-
-#root {
-  min-height: 100vh;
-  width: 100vw;
-}
-
-/* Sayfa Düzeni (Layout) */
+/* Legacy layout helpers kept for panels not yet fully migrated */
 .app-container {
   display: flex;
   height: 100vh;
-  max-height: 100vh;
   width: 100%;
-  max-width: 1600px;
-  margin: 0 auto;
-  background: #f8fafc;
-  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.15);
-  border-left: 1px solid #e2e8f0;
-  border-right: 1px solid #e2e8f0;
   min-width: 0;
   overflow: hidden;
 }
