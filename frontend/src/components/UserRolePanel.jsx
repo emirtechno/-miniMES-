@@ -1,84 +1,162 @@
-import { Users, RefreshCw } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { UserPlus, Users } from 'lucide-react';
+import {
+  createUser,
+  fetchUsers,
+  getApiErrorMessage,
+  updateUserRoles,
+  updateUserStatus,
+} from '../services/api';
 
-const roles = ['Operatör', 'Kalite', 'Saha Müdürü', 'Bakım'];
-const permissions = ['Üretim Girişi', 'Kalite Onayı', 'Rapor Görüntüleme', 'Tam Yetki'];
+const roles = ['Admin', 'Operator', 'Auditor'];
 
-const UserRolePanel = ({ users, activeUserId, onUpdateUser, onToggleUserStatus, onSetActiveUser }) => {
+const UserRolePanel = () => {
+  const [users, setUsers] = useState([]);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({
+    username: '',
+    displayName: '',
+    password: '',
+    role: 'Operator',
+  });
+
+  const loadUsers = async () => {
+    try {
+      setUsers(await fetchUsers());
+      setError('');
+    } catch (requestError) {
+      setError(getApiErrorMessage(requestError, 'Kullanıcılar yüklenemedi.'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadUsers();
+  }, []);
+
+  const handleCreate = async (event) => {
+    event.preventDefault();
+    try {
+      await createUser(form);
+      setForm({ username: '', displayName: '', password: '', role: 'Operator' });
+      await loadUsers();
+    } catch (requestError) {
+      setError(getApiErrorMessage(requestError, 'Kullanıcı oluşturulamadı.'));
+    }
+  };
+
+  const handleRoleChange = async (user, selectedRoles) => {
+    try {
+      const updated = await updateUserRoles(user.id, selectedRoles);
+      setUsers((current) => current.map((item) => item.id === user.id ? updated : item));
+      setError('');
+    } catch (requestError) {
+      setError(getApiErrorMessage(requestError, 'Rol güncellenemedi.'));
+    }
+  };
+
+  const handleStatusChange = async (user) => {
+    try {
+      const updated = await updateUserStatus(user.id, !user.isActive);
+      setUsers((current) => current.map((item) => item.id === user.id ? updated : item));
+      setError('');
+    } catch (requestError) {
+      setError(getApiErrorMessage(requestError, 'Hesap durumu güncellenemedi.'));
+    }
+  };
+
   return (
     <section className="custom-card">
-      <div className="card-header" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <Users size={20} />
-          <span>Kullanıcı ve Rol Yönetimi</span>
-        </div>
-        <span style={{ color: '#64748b', fontSize: '0.9rem' }}>Rol / yetki değişiklikleri anlık kaydedilir.</span>
+      <div className="card-header">
+        <Users size={20} />
+        <span>Identity Kullanıcı ve Rol Yönetimi</span>
       </div>
 
-      <div className="table-wrapper">
-        <table className="modern-table">
-          <thead>
-            <tr>
-              <th>Kullanıcı</th>
-              <th>Rol</th>
-              <th>Durum</th>
-              <th>Yetki</th>
-              <th>Aksiyon</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((user) => (
-              <tr key={user.id}>
-                <td><b>{user.name}</b></td>
-                <td>
-                  <select
-                    className="input-field"
-                    value={user.role}
-                    onChange={(e) => onUpdateUser(user.id, 'role', e.target.value)}
-                    style={{ minWidth: '140px' }}
-                  >
-                    {roles.map((role) => (
-                      <option key={role} value={role}>{role}</option>
-                    ))}
-                  </select>
-                </td>
-                <td>
-                  <span
-                    className={`badge ${user.status === 'Aktif' ? 'badge-ok' : 'badge-neutral'}`}
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => onToggleUserStatus(user.id)}
-                    title="Durumu değiştir"
-                  >
-                    {user.status}
-                  </span>
-                </td>
-                <td>
-                  <select
-                    className="input-field"
-                    value={user.permission}
-                    onChange={(e) => onUpdateUser(user.id, 'permission', e.target.value)}
-                    style={{ minWidth: '180px' }}
-                  >
-                    {permissions.map((permission) => (
-                      <option key={permission} value={permission}>{permission}</option>
-                    ))}
-                  </select>
-                </td>
-                <td>
-                  <button
-                    type="button"
-                    className={user.id === activeUserId ? 'btn-primary' : 'btn-secondary'}
-                    onClick={() => onSetActiveUser(user.id)}
-                    style={{ padding: '8px 10px', fontSize: '0.8rem' }}
-                  >
-                    <RefreshCw size={14} />
-                    {user.id === activeUserId ? 'Etkin Kullanıcı' : 'Aktifleştir'}
-                  </button>
-                </td>
+      <form onSubmit={handleCreate} style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '16px' }}>
+        <input
+          className="input-field"
+          placeholder="Kullanıcı adı"
+          value={form.username}
+          onChange={(event) => setForm({ ...form, username: event.target.value })}
+          required
+        />
+        <input
+          className="input-field"
+          placeholder="Görünen ad"
+          value={form.displayName}
+          onChange={(event) => setForm({ ...form, displayName: event.target.value })}
+          required
+        />
+        <input
+          className="input-field"
+          type="password"
+          placeholder="Güçlü parola"
+          autoComplete="new-password"
+          value={form.password}
+          onChange={(event) => setForm({ ...form, password: event.target.value })}
+          minLength={12}
+          required
+        />
+        <select
+          className="input-field"
+          value={form.role}
+          onChange={(event) => setForm({ ...form, role: event.target.value })}
+        >
+          {roles.map((role) => <option key={role}>{role}</option>)}
+        </select>
+        <button type="submit" className="btn-primary">
+          <UserPlus size={16} />
+          Kullanıcı Ekle
+        </button>
+      </form>
+
+      {error && <p className="error">{error}</p>}
+      {loading ? <p>Kullanıcılar yükleniyor...</p> : (
+        <div className="table-wrapper">
+          <table className="modern-table">
+            <thead>
+              <tr>
+                <th>Kullanıcı</th>
+                <th>Rol</th>
+                <th>Durum</th>
+                <th>Yetkiler</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {users.map((user) => (
+                <tr key={user.id}>
+                  <td><b>{user.displayName}</b><br /><small>{user.username}</small></td>
+                  <td>
+                    <select
+                      className="input-field"
+                      multiple
+                      value={user.roles}
+                      onChange={(event) => handleRoleChange(
+                        user,
+                        Array.from(event.target.selectedOptions, (option) => option.value),
+                      )}
+                    >
+                      {roles.map((role) => <option key={role}>{role}</option>)}
+                    </select>
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      className={user.isActive ? 'badge badge-ok' : 'badge badge-neutral'}
+                      onClick={() => handleStatusChange(user)}
+                    >
+                      {user.isActive ? 'Aktif' : 'Pasif'}
+                    </button>
+                  </td>
+                  <td><small>{user.permissions.join(', ') || 'Salt okunur'}</small></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
   );
 };

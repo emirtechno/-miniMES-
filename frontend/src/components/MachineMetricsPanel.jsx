@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Cpu } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { fetchMachineMetrics } from '../services/api';
+import { fetchLatestOee, fetchMachineMetrics } from '../services/api';
 
 const MachineMetricsPanel = () => {
   const [metrics, setMetrics] = useState([]);
@@ -16,11 +16,9 @@ const MachineMetricsPanel = () => {
         setMetrics(Array.isArray(data) ? data : []);
         
         if (selectedStation && selectedStation !== 'Tümü') {
-          const oeeRes = await fetch(`http://localhost:5000/api/Oee/latest/${selectedStation}`);
-          if (oeeRes.ok) {
-            const oeeJson = await oeeRes.json();
-            setOeeData(oeeJson);
-          }
+          setOeeData(await fetchLatestOee(selectedStation));
+        } else {
+          setOeeData(null);
         }
         
         setLoading(false);

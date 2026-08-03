@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using FluentValidation;
 using MiniMesApi.Models;
 using MiniMesApi.DTOs;
+using MiniMesApi.Security;
 
 namespace MiniMesApi.Controllers
 {
@@ -44,7 +45,7 @@ namespace MiniMesApi.Controllers
                 })
                 .ToListAsync(cancellationToken);
 
-            return Ok(ApiResponse<List<UretimKayitResponseDto>>.SuccessResult(uretimler, "Aktif üretim kayıtları getirildi."));
+            return Ok(uretimler);
         }
 
         // 2. ID'ye Göre Tek Kayıt Getir (GET: api/Uretim/5)
@@ -67,10 +68,10 @@ namespace MiniMesApi.Controllers
 
             if (kayit == null)
             {
-                return NotFound(ApiResponse<string>.FailResult($"{id} ID'li ürün kaydı bulunamadı."));
+                return Problem(statusCode: StatusCodes.Status404NotFound, title: $"{id} ID'li ürün kaydı bulunamadı.");
             }
 
-            return Ok(ApiResponse<UretimKayitResponseDto>.SuccessResult(kayit));
+            return Ok(kayit);
         }
 
         // 3. İstasyon veya Kalite Durumuna Göre Filtrele (GET: api/Uretim/filtre)
@@ -109,20 +110,23 @@ namespace MiniMesApi.Controllers
                 })
                 .ToListAsync(cancellationToken);
 
-            return Ok(ApiResponse<List<UretimKayitResponseDto>>.SuccessResult(sonuc, "Filtrelenmiş kayıtlar getirildi."));
+            return Ok(sonuc);
         }
 
         // 4. Yeni Üretim Kaydı Ekle (POST: api/Uretim)
         [HttpPost]
-        [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin,Operator")]
+        [Microsoft.AspNetCore.Authorization.Authorize(Policy = PolicyNames.ProductionWrite)]
         public async Task<IActionResult> UretimEkle([FromBody] CreateUretimKayitDto yeniDto)
         {
             // FluentValidation Doğrulaması
             var validationResult = await _validator.ValidateAsync(yeniDto);
             if (!validationResult.IsValid)
             {
-                var hatalar = validationResult.Errors.Select(e => e.ErrorMessage).ToList();
-                return BadRequest(ApiResponse<string>.FailResult("Validasyon hatası oluştu.", hatalar));
+                return BadRequest(new ValidationProblemDetails(validationResult.Errors
+                    .GroupBy(error => error.PropertyName)
+                    .ToDictionary(
+                        group => group.Key,
+                        group => group.Select(error => error.ErrorMessage).ToArray())));
             }
 
             // Mükerrer Barkod Kontrolü
@@ -131,7 +135,10 @@ namespace MiniMesApi.Controllers
 
             if (mukerrerVarMi)
             {
-                return Conflict(ApiResponse<string>.FailResult($"'{yeniDto.Urun20liKod}' barkodlu ürün zaten veritabanında kayıtlı!"));
+                return Problem(
+                    statusCode: StatusCodes.Status409Conflict,
+                    title: "Barkod zaten kayıtlı.",
+                    detail: $"'{yeniDto.Urun20liKod}' barkodlu aktif ürün kaydı zaten var.");
             }
 
             var yeniKayit = new UretimKayit
@@ -151,7 +158,10 @@ namespace MiniMesApi.Controllers
             }
             catch (DbUpdateException)
             {
-                return Conflict(ApiResponse<string>.FailResult($"'{yeniDto.Urun20liKod}' barkodlu ürün zaten veritabanında kayıtlı!"));
+                return Problem(
+                    statusCode: StatusCodes.Status409Conflict,
+                    title: "Barkod zaten kayıtlı.",
+                    detail: $"'{yeniDto.Urun20liKod}' barkodlu aktif ürün kaydı zaten var.");
             }
 
             var responseDto = new UretimKayitResponseDto
@@ -164,25 +174,28 @@ namespace MiniMesApi.Controllers
                 UretimTarihi = yeniKayit.UretimTarihi
             };
 
-            return CreatedAtAction(nameof(GetUretimById), new { id = yeniKayit.ID }, ApiResponse<UretimKayitResponseDto>.SuccessResult(responseDto, "Yeni üretim kaydı oluşturuldu."));
+            return CreatedAtAction(nameof(GetUretimById), new { id = yeniKayit.ID }, responseDto);
         }
 
         // 5. Üretim Kaydını Güncelle (PUT: api/Uretim/5)
         [HttpPut("{id}")]
-        [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
+        [Microsoft.AspNetCore.Authorization.Authorize(Policy = PolicyNames.ProductionManage)]
         public async Task<IActionResult> UretimGuncelle(int id, [FromBody] CreateUretimKayitDto guncelDto)
         {
             var validationResult = await _validator.ValidateAsync(guncelDto);
             if (!validationResult.IsValid)
             {
-                var hatalar = validationResult.Errors.Select(e => e.ErrorMessage).ToList();
-                return BadRequest(ApiResponse<string>.FailResult("Validasyon hatası oluştu.", hatalar));
+                return BadRequest(new ValidationProblemDetails(validationResult.Errors
+                    .GroupBy(error => error.PropertyName)
+                    .ToDictionary(
+                        group => group.Key,
+                        group => group.Select(error => error.ErrorMessage).ToArray())));
             }
 
             var mevcutKayit = await _context.UretimKayitlari.FindAsync(id);
             if (mevcutKayit == null || mevcutKayit.IsDeleted)
             {
-                return NotFound(ApiResponse<string>.FailResult($"{id} ID'li güncellenecek kayıt bulunamadı!"));
+                return Problem(statusCode: StatusCodes.Status404NotFound, title: $"{id} ID'li güncellenecek kayıt bulunamadı.");
             }
 
             mevcutKayit.IstasyonAdi = guncelDto.IstasyonAdi;
@@ -201,52 +214,45 @@ namespace MiniMesApi.Controllers
                 UretimTarihi = mevcutKayit.UretimTarihi
             };
 
-            return Ok(ApiResponse<UretimKayitResponseDto>.SuccessResult(responseDto, $"{id} ID'li üretim kaydı güncellendi."));
+            return Ok(responseDto);
         }
 
         // 6. Soft Delete ile Sil (DELETE: api/Uretim/5)
         [HttpDelete("{id}")]
-        [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
+        [Microsoft.AspNetCore.Authorization.Authorize(Policy = PolicyNames.ProductionManage)]
         public async Task<IActionResult> UretimSil(int id)
         {
             var uretimKayit = await _context.UretimKayitlari.FindAsync(id);
             if (uretimKayit == null || uretimKayit.IsDeleted)
             {
-                return NotFound(ApiResponse<string>.FailResult($"{id} ID'li aktif üretim kaydı bulunamadı!"));
+                return Problem(statusCode: StatusCodes.Status404NotFound, title: $"{id} ID'li aktif üretim kaydı bulunamadı.");
             }
 
             uretimKayit.IsDeleted = true;
             await _context.SaveChangesAsync();
 
-            return Ok(ApiResponse<string>.SuccessResult($"{id} ID'li üretim kaydı silindi.", "İşlem başarılı."));
+            return Ok(new { id, message = "Üretim kaydı silindi." });
         }
 
         [HttpDelete("hard-delete/{id}")]
-        [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
-public async Task<IActionResult> HardDelete(int id)
-{
-    try
-    {
-        // Entity Framework Global Query Filter varsa IgnoreQueryFilters kullanıyoruz
-        var kayit = await _context.UretimKayitlari.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.ID == id);
-        if (kayit == null)
+        [Microsoft.AspNetCore.Authorization.Authorize(Policy = PolicyNames.ProductionHardDelete)]
+        public async Task<IActionResult> HardDelete(int id)
         {
-            return NotFound(new ApiResponse<string> { Success = false, Message = "Kayıt bulunamadı." });
+            var kayit = await _context.UretimKayitlari.FirstOrDefaultAsync(x => x.ID == id);
+            if (kayit == null)
+            {
+                return Problem(statusCode: StatusCodes.Status404NotFound, title: "Kayıt bulunamadı.");
+            }
+
+            _context.UretimKayitlari.Remove(kayit);
+            await _context.SaveChangesAsync();
+
+            return Ok(new { id, message = "Kayıt kalıcı olarak silindi." });
         }
-
-        _context.UretimKayitlari.Remove(kayit);
-        await _context.SaveChangesAsync();
-
-        return Ok(new ApiResponse<string> { Success = true, Message = "Kayıt kalıcı olarak silindi." });
-    }
-    catch (Exception)
-    {
-        return StatusCode(500, ApiResponse<string>.FailResult("Kalıcı silme sırasında beklenmeyen bir hata oluştu."));
-    }
-}
 
         // 7. Silinen Kayıtları Listele (GET: api/Uretim/deleted)
         [HttpGet("deleted")]
+        [Microsoft.AspNetCore.Authorization.Authorize(Policy = PolicyNames.DeletedRecordsRead)]
         public async Task<IActionResult> GetDeletedUretimler(
             [FromQuery] int limit = 100,
             CancellationToken cancellationToken = default)
@@ -269,24 +275,24 @@ public async Task<IActionResult> HardDelete(int id)
                 })
                 .ToListAsync(cancellationToken);
 
-            return Ok(ApiResponse<List<UretimKayitResponseDto>>.SuccessResult(silinenler, "Silinmiş kayıtlar listelendi."));
+            return Ok(silinenler);
         }
 
         // 8. Silinen Kayıtları Geri Yükle (PUT: api/Uretim/restore/5)
         [HttpPut("restore/{id}")]
-        [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
+        [Microsoft.AspNetCore.Authorization.Authorize(Policy = PolicyNames.ProductionManage)]
         public async Task<IActionResult> RestoreUretim(int id)
         {
             var uretimKayit = await _context.UretimKayitlari.FindAsync(id);
             if (uretimKayit == null || !uretimKayit.IsDeleted)
             {
-                return NotFound(ApiResponse<string>.FailResult($"{id} ID'li silinmiş kayıt bulunamadı."));
+                return Problem(statusCode: StatusCodes.Status404NotFound, title: $"{id} ID'li silinmiş kayıt bulunamadı.");
             }
 
             uretimKayit.IsDeleted = false;
             await _context.SaveChangesAsync();
 
-            return Ok(ApiResponse<string>.SuccessResult($"{id} ID'li kayıt başarıyla geri yüklendi.", "İşlem başarılı."));
+            return Ok(new { id, message = "Kayıt başarıyla geri yüklendi." });
         }
 
         

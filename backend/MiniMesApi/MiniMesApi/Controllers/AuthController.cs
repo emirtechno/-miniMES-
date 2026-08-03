@@ -1,60 +1,109 @@
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Text;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.IdentityModel.Tokens;
+using Microsoft.AspNetCore.RateLimiting;
 using MiniMesApi.DTOs;
+using MiniMesApi.Models;
+using MiniMesApi.Security;
 
 namespace MiniMesApi.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public sealed class AuthController(IConfiguration configuration) : ControllerBase
+public sealed class AuthController(
+    UserManager<ApplicationUser> userManager,
+    SignInManager<ApplicationUser> signInManager,
+    IPasswordHasher<ApplicationUser> passwordHasher,
+    IJwtTokenService tokenService) : ControllerBase
 {
+    private static readonly ApplicationUser DummyUser = new() { UserName = "dummy", DisplayName = "dummy" };
+    private static readonly string DummyPasswordHash =
+        new PasswordHasher<ApplicationUser>().HashPassword(DummyUser, "DummyPassword!123");
+
     [AllowAnonymous]
     [HttpPost("login")]
-    public ActionResult<ApiResponse<LoginResponseDto>> Login([FromBody] LoginRequestDto request)
+    [EnableRateLimiting("login")]
+    public async Task<ActionResult<LoginResponseDto>> Login([FromBody] LoginRequestDto request)
     {
-        var users = configuration.GetSection("DevelopmentAuth:Users").Get<List<DevelopmentUser>>() ?? [];
-        var user = users.FirstOrDefault(candidate =>
-            string.Equals(candidate.Username, request.Username, StringComparison.OrdinalIgnoreCase) &&
-            candidate.Password == request.Password);
+        var user = await userManager.FindByNameAsync(request.Username);
 
         if (user is null)
         {
-            return Unauthorized(ApiResponse<LoginResponseDto>.FailResult("Kullanıcı adı veya parola hatalı."));
+            passwordHasher.VerifyHashedPassword(DummyUser, DummyPasswordHash, request.Password);
+            return Unauthorized(CreateUnauthorizedProblem());
         }
 
-        var key = configuration["Jwt:Key"];
-        var issuer = configuration["Jwt:Issuer"];
-        var audience = configuration["Jwt:Audience"];
-        if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(issuer) || string.IsNullOrWhiteSpace(audience))
+        var signInResult = await signInManager.CheckPasswordSignInAsync(
+            user,
+            request.Password,
+            lockoutOnFailure: true);
+        if (!signInResult.Succeeded || !user.IsActive)
         {
-            return Problem(statusCode: StatusCodes.Status500InternalServerError, title: "JWT yapılandırması eksik.");
+            return Unauthorized(CreateUnauthorizedProblem());
         }
 
-        var expiresAtUtc = DateTime.UtcNow.AddHours(8);
-        var claims = new List<Claim>
-        {
-            new(ClaimTypes.Name, user.Username),
-            new(ClaimTypes.Role, user.Role),
-            new("display_name", user.DisplayName),
-            new("permission", user.Permission)
-        };
-        var credentials = new SigningCredentials(
-            new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key)),
-            SecurityAlgorithms.HmacSha256);
-        var token = new JwtSecurityToken(issuer, audience, claims, expires: expiresAtUtc, signingCredentials: credentials);
+        return Ok(await tokenService.CreateAsync(user));
+    }
 
-        return Ok(ApiResponse<LoginResponseDto>.SuccessResult(new LoginResponseDto
+    [HttpGet("me")]
+    public async Task<ActionResult<CurrentUserDto>> Me()
+    {
+        var user = await userManager.GetUserAsync(User);
+        if (user is null)
         {
-            AccessToken = new JwtSecurityTokenHandler().WriteToken(token),
-            ExpiresAtUtc = expiresAtUtc,
-            Username = user.Username,
+            return Unauthorized(CreateUnauthorizedProblem());
+        }
+
+        var roles = User.FindAll(System.Security.Claims.ClaimTypes.Role)
+            .Select(claim => claim.Value)
+            .ToArray();
+        var permissions = User.FindAll("permission")
+            .Select(claim => claim.Value)
+            .ToArray();
+        return Ok(new CurrentUserDto
+        {
+            UserId = user.Id,
+            Username = user.UserName ?? string.Empty,
             DisplayName = user.DisplayName,
-            Role = user.Role,
-            Permission = user.Permission
-        }, "Giriş başarılı."));
+            IsActive = user.IsActive,
+            Roles = roles,
+            Permissions = permissions
+        });
+    }
+
+    [HttpPost("change-password")]
+    public async Task<IActionResult> ChangePassword(ChangePasswordDto request)
+    {
+        var user = await userManager.GetUserAsync(User);
+        if (user is null)
+        {
+            return Unauthorized(CreateUnauthorizedProblem());
+        }
+
+        var result = await userManager.ChangePasswordAsync(
+            user,
+            request.CurrentPassword,
+            request.NewPassword);
+        if (!result.Succeeded)
+        {
+            var errors = result.Errors
+                .GroupBy(error => error.Code)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.Select(error => error.Description).ToArray());
+            return BadRequest(new ValidationProblemDetails(errors));
+        }
+
+        return NoContent();
+    }
+
+    private static ProblemDetails CreateUnauthorizedProblem()
+    {
+        return new ProblemDetails
+        {
+            Status = StatusCodes.Status401Unauthorized,
+            Title = "Kimlik doğrulama başarısız.",
+            Detail = "Kullanıcı adı veya parola hatalı."
+        };
     }
 }

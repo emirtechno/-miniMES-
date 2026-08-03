@@ -1,195 +1,166 @@
 import axios from 'axios';
 
-const API_BASE_URL = (import.meta.env.VITE_MES_API_URL || 'http://localhost:58504/api').replace(/\/Uretim$/, '');
-const URETIM_API_URL = `${API_BASE_URL}/Uretim`;
-const ALARM_API_URL = `${API_BASE_URL}/Alarm`;
-const WORKORDER_API_URL = `${API_BASE_URL}/WorkOrder`;
-const BATCH_API_URL = `${API_BASE_URL}/Batch`;
+const API_BASE_URL = (import.meta.env.VITE_MES_API_URL || 'http://localhost:5000/api')
+  .replace(/\/+$/, '')
+  .replace(/\/Uretim$/, '');
 
-axios.interceptors.request.use((config) => {
-  const token = localStorage.getItem('mm_access_token');
+const apiClient = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 15000,
+});
+
+apiClient.interceptors.request.use((config) => {
+  const token = sessionStorage.getItem('mm_access_token');
+  const expiresAt = sessionStorage.getItem('mm_token_expires_at');
+  if (token && expiresAt && new Date(expiresAt) <= new Date()) {
+    window.dispatchEvent(new Event('mm:unauthorized'));
+    return Promise.reject(new axios.CanceledError('Oturum süresi doldu.'));
+  }
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
 
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401 && !error.config?.url?.endsWith('/Auth/login')) {
+      window.dispatchEvent(new Event('mm:unauthorized'));
+    }
+    return Promise.reject(error);
+  },
+);
+
+const unwrapList = (response) => (
+  response.data?.success ? response.data.data : (response.data || [])
+);
+
+export const getApiErrorMessage = (error, fallback = 'İşlem tamamlanamadı.') => {
+  const data = error?.response?.data;
+  if (data?.detail) return data.detail;
+  if (data?.title) return data.title;
+  if (data?.message) return data.message;
+  if (data?.errors) {
+    const validationErrors = Array.isArray(data.errors)
+      ? data.errors
+      : Object.values(data.errors).flat();
+    if (validationErrors.length) return validationErrors.join(' ');
+  }
+  return error?.message || fallback;
+};
+
 export const login = async (username, password) => {
-  const response = await axios.post(`${API_BASE_URL}/Auth/login`, { username, password });
+  const response = await apiClient.post('/Auth/login', { username, password });
   return response.data;
 };
 
-// Fallbacks for environments where IIS Express or Kestrel port differs
-const ALARM_FALLBACK_URLS = [
-  ALARM_API_URL,
-  'http://localhost:58504/api/Alarm',
-  'http://localhost:58600/api/Alarm'
-];
-
-const WORKORDER_FALLBACK_URLS = [
-  WORKORDER_API_URL,
-  'http://localhost:58504/api/WorkOrder',
-  'http://localhost:58600/api/WorkOrder'
-];
-
-// ==========================================
-// 🏭 ÜRETİM SERVİSLERİ (PRODUCTION)
-// ==========================================
+export const fetchCurrentUser = async () => {
+  const response = await apiClient.get('/Auth/me');
+  return response.data;
+};
 
 export const fetchProductionRecords = async () => {
-  const response = await axios.get(URETIM_API_URL);
-  return response.data?.success ? response.data.data : (response.data || []);
+  const response = await apiClient.get('/Uretim');
+  return unwrapList(response);
 };
 
 export const fetchDeletedProductionRecords = async () => {
-  const response = await axios.get(`${URETIM_API_URL}/deleted`);
-  return response.data?.success ? response.data.data : (response.data || []);
+  const response = await apiClient.get('/Uretim/deleted');
+  return unwrapList(response);
 };
 
 export const createProductionRecord = async (payload) => {
-  const response = await axios.post(URETIM_API_URL, payload);
+  const response = await apiClient.post('/Uretim', payload);
   return response.data;
 };
 
 export const updateProductionRecord = async (id, payload) => {
-  const response = await axios.put(`${URETIM_API_URL}/${id}`, payload);
+  const response = await apiClient.put(`/Uretim/${id}`, payload);
   return response.data;
 };
 
 export const deleteProductionRecord = async (id) => {
-  const response = await axios.delete(`${URETIM_API_URL}/${id}`);
+  const response = await apiClient.delete(`/Uretim/${id}`);
   return response.data;
 };
 
 export const restoreProductionRecord = async (id) => {
-  const response = await axios.put(`${URETIM_API_URL}/restore/${id}`);
+  const response = await apiClient.put(`/Uretim/restore/${id}`);
   return response.data;
 };
 
 export const hardDeleteProductionRecord = async (id) => {
-  if (!id) throw new Error("Kayıt ID bulunamadı.");
-  const response = await axios.delete(`${URETIM_API_URL}/hard-delete/${id}`);
+  const response = await apiClient.delete(`/Uretim/hard-delete/${id}`);
   return response.data;
 };
 
-// ==========================================
-// 🚨 ALARM SERVİSLERİ
-// ==========================================
 export const fetchAlarms = async () => {
-  let lastError;
-  for (const url of ALARM_FALLBACK_URLS) {
-    try {
-      const response = await axios.get(url);
-      return response.data?.success ? response.data.data : response.data;
-    } catch (err) {
-      lastError = err;
-    }
-  }
-  throw lastError;
+  const response = await apiClient.get('/Alarm');
+  return unwrapList(response);
 };
 
 export const createAlarm = async (payload) => {
-  let lastError;
-  for (const url of ALARM_FALLBACK_URLS) {
-    try {
-      const response = await axios.post(url, payload);
-      return response.data;
-    } catch (err) {
-      lastError = err;
-    }
-  }
-  throw lastError;
+  const response = await apiClient.post('/Alarm', payload);
+  return response.data;
 };
 
 export const acknowledgeAlarm = async (id) => {
-  let lastError;
-  for (const base of ALARM_FALLBACK_URLS) {
-    try {
-      const response = await axios.put(`${base}/acknowledge/${id}`);
-      return response.data;
-    } catch (err) {
-      lastError = err;
-    }
-  }
-  throw lastError;
+  const response = await apiClient.put(`/Alarm/acknowledge/${id}`);
+  return response.data;
 };
 
-// Alarm Silme (Hata ve Fallback Kontrollü)
 export const deleteAlarm = async (id) => {
-  if (!id) throw new Error("Alarm ID bulunamadı.");
-  
-  let lastError;
-  for (const base of ALARM_FALLBACK_URLS) {
-    try {
-      const response = await axios.delete(`${base}/${id}`);
-      return response.data;
-    } catch (err) {
-      lastError = err;
-      if (err.response) {
-        throw err;
-      }
-    }
-  }
-  throw lastError;
+  const response = await apiClient.delete(`/Alarm/${id}`);
+  return response.data;
 };
 
-// ==========================================
-// 📋 İŞ EMRİ SERVİSLERİ (WORK ORDERS)
-// ==========================================
 export const fetchWorkOrders = async () => {
-  let lastError;
-  for (const url of WORKORDER_FALLBACK_URLS) {
-    try {
-      const response = await axios.get(url);
-      return response.data?.success ? response.data.data : response.data;
-    } catch (err) {
-      lastError = err;
-    }
-  }
-  throw lastError;
+  const response = await apiClient.get('/WorkOrder');
+  return unwrapList(response);
 };
 
 export const createWorkOrder = async (payload) => {
-  let lastError;
-  for (const url of WORKORDER_FALLBACK_URLS) {
-    try {
-      const response = await axios.post(url, payload);
-      return response.data;
-    } catch (err) {
-      lastError = err;
-    }
-  }
-  throw lastError;
+  const response = await apiClient.post('/WorkOrder', payload);
+  return response.data;
 };
 
 export const advanceWorkOrder = async (id) => {
-  let lastError;
-  for (const base of WORKORDER_FALLBACK_URLS) {
-    try {
-      const response = await axios.put(`${base}/${id}/advance`);
-      return response.data;
-    } catch (err) {
-      lastError = err;
-    }
-  }
-  throw lastError;
+  const response = await apiClient.put(`/WorkOrder/${id}/advance`);
+  return response.data;
 };
 
 export const fetchBatches = async () => {
-  const response = await axios.get(BATCH_API_URL);
-  return response.data?.success ? response.data.data : (response.data || []);
+  const response = await apiClient.get('/Batch');
+  return unwrapList(response);
 };
-
-
-// MAKİNE METRİKLERİ VE TELEMETRİ
 
 export const fetchMachineMetrics = async () => {
-  const response = await axios.get('http://localhost:5000/api/MachineMetrics');
-  return response.data?.success ? response.data.data : (response.data || []);
+  const response = await apiClient.get('/MachineMetrics');
+  return unwrapList(response);
 };
 
-// OEE Metrik Servisi
 export const fetchLatestOee = async (stationId) => {
-  const response = await axios.get(`http://localhost:5000/api/Oee/latest/${stationId}`);
+  const response = await apiClient.get(`/Oee/latest/${encodeURIComponent(stationId)}`);
+  return response.data;
+};
+
+export const fetchUsers = async () => {
+  const response = await apiClient.get('/Users');
+  return response.data || [];
+};
+
+export const createUser = async (payload) => {
+  const response = await apiClient.post('/Users', payload);
+  return response.data;
+};
+
+export const updateUserRoles = async (id, roles) => {
+  const response = await apiClient.put(`/Users/${id}/roles`, { roles });
+  return response.data;
+};
+
+export const updateUserStatus = async (id, isActive) => {
+  const response = await apiClient.put(`/Users/${id}/status`, { isActive });
   return response.data;
 };
