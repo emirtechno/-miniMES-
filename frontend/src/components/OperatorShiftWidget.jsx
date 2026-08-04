@@ -5,6 +5,7 @@ import ShiftStartModal from './ShiftStartModal';
 import { useShiftSession } from '../context/ShiftSessionContext';
 import { ACTIVE_STATION_DEFINITIONS, getStationDisplayName } from '../constants/stations';
 import { getShiftLabel } from '../constants/shifts';
+import { formatScrapLabel } from '../utils/scrapLabel';
 
 /**
  * Shop-floor shift status card — start opens structured modal.
@@ -181,10 +182,7 @@ const OperatorShiftWidget = ({
       {shift.summary && !shift.active && (
         <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
           Son vardiya özeti: {shift.summary.operatorName} · {getStationDisplayName(shift.summary.stationId)} · {shift.summary.durationMinutes} dk
-          {' · '}Σ Fire {shift.summary.scrapCount}
-          {(shift.summary.manualScrapCount || 0) > 0
-            ? ` · bu vardiyada manuel +${shift.summary.manualScrapCount}`
-            : ''}
+          {' · '}{formatScrapLabel(shift.summary.scrapCount, shift.summary.manualScrapCount || 0)}
         </div>
       )}
 
