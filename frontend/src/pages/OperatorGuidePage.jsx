@@ -77,7 +77,7 @@ const OperatorGuidePage = () => (
       <h2 className="mes-section-title m-0">Akış</h2>
       <ol className="mt-3 space-y-2 text-sm">
         <li>1. Vardiya Başlat / “Başka Hat Başlat” veya “Fabrika Simülasyonu Başlat” (tüm üretim hatları + rastgele WO/parti)</li>
-        <li>2. Live Stream → her aktif hatta POST MachineMetrics (batch Actual/Good/Downtime)</li>
+        <li>2. Live Stream → her aktif hatta POST MachineMetrics (batch Actual/Good/Downtime); tick içi rastgele fire = Actual−Good → Σ Fire</li>
         <li>3. Manuel fire → aynı SSOT’a ek tick (Actual=adet, Good=0); Σ Fire anında artar ve vardiya bitince kalır</li>
         <li>4. Summary / OEE / Lot / Andon senkron; parti hedefi dolunca lot + iş emri tamamlanır</li>
         <li>5. Vardiya Bitir / Tüm Hatları Durdur; hedef dolunca hat otomatik kapanır</li>

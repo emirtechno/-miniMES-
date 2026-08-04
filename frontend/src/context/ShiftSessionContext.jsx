@@ -323,16 +323,29 @@ export const ShiftSessionProvider = ({ children, user, notify, canCreateAlarms }
     endShiftForStation(focusedStationId, options);
   }, [endShiftForStation, focusedStationId]);
 
-  const endAllShifts = useCallback(() => {
-    let count = 0;
+  const endAllShifts = useCallback((options = {}) => {
+    const nokByStation = options.metricsNokByStation || {};
+    let endedCount = 0;
+    let totalMetricsNok = 0;
+    let totalManual = 0;
+
     setSession((current) => {
       const nextShifts = { ...current.shifts };
+      endedCount = 0;
+      totalMetricsNok = 0;
+      totalManual = 0;
       for (const [stationId, existing] of Object.entries(current.shifts)) {
         if (!existing?.active) continue;
-        count += 1;
+        endedCount += 1;
         const mins = existing.startedAt
           ? Math.max(0, Math.floor((Date.now() - new Date(existing.startedAt).getTime()) / 60000))
           : 0;
+        const manualScrap = existing.scrapCount || 0;
+        const rawNok = nokByStation[stationId];
+        const metricsNok = Number.isFinite(Number(rawNok)) ? Math.max(0, Number(rawNok)) : null;
+        const displayScrap = metricsNok ?? manualScrap;
+        totalMetricsNok += displayScrap;
+        totalManual += manualScrap;
         nextShifts[stationId] = {
           ...createDefaultShift(stationId),
           stationId,
@@ -341,7 +354,9 @@ export const ShiftSessionProvider = ({ children, user, notify, canCreateAlarms }
             shiftCode: existing.shiftCode,
             stationId: existing.stationId,
             durationMinutes: mins,
-            scrapCount: existing.scrapCount,
+            scrapCount: displayScrap,
+            manualScrapCount: manualScrap,
+            metricsNok,
             endedAt: new Date().toISOString(),
           },
         };
@@ -352,10 +367,13 @@ export const ShiftSessionProvider = ({ children, user, notify, canCreateAlarms }
       };
     });
     setFactorySimActive(false);
-    if (count > 0) {
-      notify?.(`Tüm hatlar durduruldu (${count} vardiya).`, 'info');
+    if (endedCount > 0) {
+      const firePart = totalManual > 0 && totalMetricsNok !== totalManual
+        ? `Σ Fire (özet): ${totalMetricsNok} (manuel +${totalManual})`
+        : `Σ Fire (özet): ${totalMetricsNok}`;
+      notify?.(`Tüm hatlar durduruldu (${endedCount} vardiya) · ${firePart}.`, 'info');
     }
-    return count;
+    return endedCount;
   }, [notify]);
 
   const setStationId = useCallback((stationId) => {

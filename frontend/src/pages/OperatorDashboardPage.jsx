@@ -295,9 +295,9 @@ const OperatorDashboardPage = ({
           <span className="inline-flex items-center gap-2 font-semibold">
             <Radio size={16} className={(liveStreaming || sessionStreaming) ? 'animate-pulse' : ''} />
             {multiStream
-              ? `Live Stream açık — ${streamingStationIds.length} hat paralel tick yazıyor; lot/OEE senkron.`
+              ? `Live Stream açık — ${streamingStationIds.length} hat paralel tick yazıyor; batch fire (Actual−Good) Σ Fire’a eklenir.`
               : (liveStreaming || sessionStreaming)
-                ? 'Live Stream açık — her tick ~100–140 adet PLC batch yazar; lot/OEE senkron.'
+                ? 'Live Stream açık — her tick ~100–140 adet; rastgele batch fire Σ Fire (MachineMetrics) özetine yazılır.'
                 : 'Live Stream kapalı — “Vardiya Başlat” veya “Fabrika Simülasyonu Başlat” ile açın.'}
           </span>
           {(liveStreaming || sessionStreaming) && (
@@ -346,9 +346,10 @@ const OperatorDashboardPage = ({
           <div className="rounded-xl border border-red-200 bg-red-50/70 p-4">
             <div className="text-xs font-semibold uppercase tracking-wide text-red-800">Σ Fire (NOK)</div>
             <div className="font-display mt-1 text-3xl font-semibold text-red-950">{kpi.nok}</div>
-            {shift.active && (shift.scrapCount || 0) > 0 && (
-              <div className="mt-1 text-xs text-red-800">Manuel bu vardiya: +{shift.scrapCount}</div>
-            )}
+            <div className="mt-1 text-xs text-red-800">
+              Live Stream + manuel · MachineMetrics
+              {(shift.scrapCount || 0) > 0 ? ` · manuel +${shift.scrapCount}` : ''}
+            </div>
           </div>
           <div className={`rounded-xl border p-4 ${shift.active || activeShiftCount > 0 ? 'border-sky-200 bg-sky-50/80' : 'border-[color:var(--color-line)] bg-slate-50'}`}>
             <div className="text-xs font-semibold uppercase tracking-wide text-[color:var(--color-muted)]">Vardiya · Verim</div>
@@ -429,7 +430,7 @@ const OperatorDashboardPage = ({
         <CardHeader
           icon={History}
           title="Son PLC Tick’leri"
-          subtitle="MachineMetrics batch satırları (Gerçekleşen / Sağlam / Duruş)"
+          subtitle="MachineMetrics batch satırları — fire = Actual−Good (Live Stream + manuel SSOT)"
           actions={(
             <span className="inline-flex items-center gap-1 text-xs text-[color:var(--color-muted)]">
               <Activity size={13} />
@@ -476,7 +477,11 @@ const OperatorDashboardPage = ({
                 className="mes-btn-danger"
                 onClick={() => {
                   setShowStopAll(false);
-                  endAllShifts();
+                  const metricsNokByStation = {};
+                  for (const entry of activeShifts) {
+                    metricsNokByStation[entry.stationId] = stationKpi?.(entry.stationId)?.nok ?? 0;
+                  }
+                  endAllShifts({ metricsNokByStation });
                 }}
               >
                 <StopCircle size={16} />

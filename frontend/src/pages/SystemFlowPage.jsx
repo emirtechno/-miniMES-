@@ -38,7 +38,7 @@ const SystemFlowPage = () => (
           Live Stream yazımı
         </h2>
         <p className="mes-helper mt-2">
-          Vardiya Başlat veya Fabrika Simülasyonu → her ~10 sn aktif hatlar için <code>POST /MachineMetrics</code> (~100–140 adetlik batch).
+          Vardiya Başlat veya Fabrika Simülasyonu → her ~10 sn aktif hatlar için <code>POST /MachineMetrics</code> (~100–140 adetlik batch; 0–7 fire = Actual−Good → aynı Σ Fire SSOT).
           Manuel fire girişi de aynı endpoint’e yazar (Actual=adet, Good=0 → Σ Fire artar; vardiya bitince silinmez).
           Duruş/setup o hattı pause eder; üretime dönünce biriken süre downtime tick olarak yazılır.
           Simülasyon sunucuda rastgele iş emri + parti (200–1500) oluşturur; hedef dolunca lot/WO tamamlanır.
@@ -69,9 +69,9 @@ const SystemFlowPage = () => (
 {`[Fabrika Simülasyonu / Vardiya Başlat] (N hat)
       |  POST /Simulation/factory/start → WO + Lot (rastgele hedef)
       v
-[Live Stream × N] --POST--> [MachineMetrics] <-- OeeSimulationService (dev seed)
-[Manuel Fire]     --POST--> [MachineMetrics] (Actual=N, Good=0)  → Σ Fire += N
-[Üretime Dön]     --POST--> [MachineMetrics] (downtimeSeconds)   → Availability
+[Live Stream × N] --POST--> [MachineMetrics] (Actual/Good; fire=A−G) → Σ Fire += scrap
+[Manuel Fire]     --POST--> [MachineMetrics] (Actual=N, Good=0)       → Σ Fire += N
+[Üretime Dön]     --POST--> [MachineMetrics] (downtimeSeconds)        → Availability
       |                        |
       |                        +--> GET /summary --> Plant / Operator / Stations KPIs
       |                        +--> OeeCalculator --> SignalR oeeUpdated --> Andon

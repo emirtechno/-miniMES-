@@ -25,9 +25,13 @@ const pickDowntimeReason = (downtimeSeconds) => {
   return pool[Math.floor(Math.random() * pool.length)];
 };
 
+/**
+ * Simulated PLC batch: scrap is encoded as Actual−Good on the MachineMetrics row
+ * (same Σ Fire SSOT as manual fire). `_scrap` is client-only for anomaly detection.
+ */
 const buildTickPayload = (stationId, shiftCode) => {
   const actual = 100 + Math.floor(Math.random() * 41); // 100–140 industrial batch size
-  const scrap = Math.floor(Math.random() * 8);
+  const scrap = Math.floor(Math.random() * 8); // 0–7 fire in this batch → Σ Fire += scrap
   const good = Math.max(0, actual - scrap);
   const downtimeSeconds = Math.floor(Math.random() * 70);
   return {
