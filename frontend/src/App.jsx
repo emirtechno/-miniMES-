@@ -82,11 +82,28 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
     liveStreamActive,
     streamingStations,
     streamingStationIds,
+    activeShifts,
     activeShiftCount,
   } = useShiftSession();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [selectedStationDetail, setSelectedStationDetail] = useState(DEFAULT_STATION);
   const [autoRefresh, setAutoRefresh] = useState(true);
+
+  const summaryShiftCode = useMemo(() => {
+    if (!activeShifts.length) return undefined;
+    const codes = [...new Set(activeShifts.map((entry) => entry.shiftCode).filter(Boolean))];
+    return codes.length === 1 ? codes[0] : (shift.active ? shift.shiftCode : undefined);
+  }, [activeShifts, shift.active, shift.shiftCode]);
+
+  const summarySince = useMemo(() => {
+    const starts = activeShifts
+      .map((entry) => entry.startedAt)
+      .filter(Boolean)
+      .map((value) => new Date(value).getTime())
+      .filter((value) => !Number.isNaN(value));
+    if (!starts.length) return undefined;
+    return new Date(Math.min(...starts)).toISOString();
+  }, [activeShifts]);
 
   const isCurrentUserActive = currentUser?.status === 'Aktif';
   const hasPermission = (permission) => isCurrentUserActive && currentUser.permissions.includes(permission);
@@ -116,6 +133,8 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
     autoRefresh,
     liveStreamActive,
     streamStations: streamingStations,
+    summaryShiftCode,
+    summarySince,
     onSimulatedAnomalies: canCreateAlarms ? onSimulatedAnomalies : undefined,
     notify,
   });

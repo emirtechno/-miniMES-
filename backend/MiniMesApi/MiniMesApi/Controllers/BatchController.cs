@@ -126,6 +126,15 @@ public class BatchController : ControllerBase
         }
 
         await SyncProducedFromTelemetryAsync([batch], cancellationToken);
+
+        if (!BatchStatuses.TryAdvance(batch.Status, out var nextStatus, out var advanceError))
+        {
+            return Problem(statusCode: StatusCodes.Status409Conflict, title: advanceError);
+        }
+
+        batch.Status = nextStatus;
+        batch.UpdatedAt = DateTimeOffset.UtcNow;
+        await _context.SaveChangesAsync(cancellationToken);
         return Ok(await ToDtoAsync(batch, cancellationToken));
     }
 
@@ -139,7 +148,20 @@ public class BatchController : ControllerBase
             return NotFound();
         }
 
-        await SyncProducedFromTelemetryAsync([batch], cancellationToken);
+        if (!BatchStatuses.TryReopen(batch.Status, out var nextStatus, out var reopenError))
+        {
+            return Problem(statusCode: StatusCodes.Status409Conflict, title: reopenError);
+        }
+
+        batch.Status = nextStatus;
+        // Keep produced quantity; reopen only unlocks status for further telemetry.
+        if (batch.ProducedQuantity >= batch.TargetQuantity && batch.TargetQuantity > 0)
+        {
+            batch.ProducedQuantity = Math.Max(0, batch.TargetQuantity - 1);
+        }
+
+        batch.UpdatedAt = DateTimeOffset.UtcNow;
+        await _context.SaveChangesAsync(cancellationToken);
         return Ok(await ToDtoAsync(batch, cancellationToken));
     }
 

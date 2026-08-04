@@ -194,10 +194,12 @@ export const fetchMachineMetrics = async ({ stationId, cursor, limit = 50, signa
 };
 
 /** Aggregated KPIs from MachineMetrics SSOT (plant + per-station). */
-export const fetchTelemetrySummary = async ({ stationId, signal } = {}) => {
+export const fetchTelemetrySummary = async ({ stationId, shiftCode, since, signal } = {}) => {
   const response = await apiClient.get('/MachineMetrics/summary', {
     params: {
       stationId: stationId && stationId !== 'Tümü' ? stationId : undefined,
+      shiftCode: shiftCode || undefined,
+      since: since || undefined,
     },
     signal,
   });

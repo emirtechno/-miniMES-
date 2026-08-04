@@ -62,6 +62,9 @@ export function useTelemetry({
   /** @deprecated Prefer streamStations — kept for single-station callers */
   streamStationId,
   shiftCode,
+  /** Optional summary window — prefer active shift code / start time when available */
+  summaryShiftCode,
+  summarySince,
   onSimulatedAnomalies,
   notify,
 }) {
@@ -91,6 +94,11 @@ export function useTelemetry({
     [resolvedStreams],
   );
 
+  const summaryParams = useMemo(() => ({
+    shiftCode: summaryShiftCode || shiftCode || undefined,
+    since: summarySince || undefined,
+  }), [summaryShiftCode, shiftCode, summarySince]);
+
   const applySummaries = useCallback((rows) => {
     const plantRow = (rows || []).find((row) => !row.stationId);
     const stationRows = (rows || []).filter((row) => row.stationId);
@@ -110,13 +118,14 @@ export function useTelemetry({
       if (!background) setLoading(true);
       const [page, summaries] = await Promise.all([
         fetchMachineMetrics({ signal, limit: 120 }),
-        fetchTelemetrySummary({ signal }),
+        fetchTelemetrySummary({ signal, ...summaryParams }),
       ]);
       setMetrics(page.items || []);
       applySummaries(summaries);
       setError(null);
+      return summaries;
     } catch (err) {
-      if (err.name === 'CanceledError' || err.name === 'AbortError') return;
+      if (err.name === 'CanceledError' || err.name === 'AbortError') return undefined;
       setError(getApiErrorMessage(err, 'Telemetri özeti alınamadı.'));
       // Fallback: aggregate locally from fetched page if summary fails mid-stream.
       try {
@@ -132,10 +141,11 @@ export function useTelemetry({
       } catch {
         // keep previous
       }
+      return undefined;
     } finally {
       if (!background) setLoading(false);
     }
-  }, [applySummaries]);
+  }, [applySummaries, summaryParams]);
 
   useEffect(() => {
     if (!isAuthenticated) return undefined;
@@ -242,8 +252,10 @@ export function useTelemetry({
       goodProductionCount: 0,
       recordedAt: new Date().toISOString(),
     });
-    await refresh(undefined, { background: true });
-    return qty;
+    const summaries = await refresh(undefined, { background: true });
+    const stationRow = (summaries || []).find((row) => row.stationId === targetStation);
+    const nokAfter = Number(stationRow?.nok) || 0;
+    return { amount: qty, nokAfter };
   }, [canIngestTelemetry, refresh]);
 
   /**

@@ -82,14 +82,19 @@ const OperatorDashboardPage = ({
       return false;
     }
     try {
-      const amount = await ingestManualScrap({
+      const prevNok = kpi.nok;
+      const result = await ingestManualScrap({
         stationId,
         amount: qty,
         shiftCode: shift.shiftCode,
       });
+      const amount = typeof result === 'object' ? result.amount : result;
+      const nokAfter = typeof result === 'object' && Number.isFinite(result.nokAfter)
+        ? result.nokAfter
+        : prevNok + amount;
       logScrap(amount, { silent: true });
       notify?.(
-        `${amount} adet fire MachineMetrics’e eklendi — Σ Fire ${kpi.nok} → ${kpi.nok + amount}.`,
+        `${amount} adet fire MachineMetrics’e eklendi — Σ Fire ${prevNok} → ${nokAfter}.`,
         'success',
       );
       return true;
@@ -347,8 +352,8 @@ const OperatorDashboardPage = ({
             <div className="text-xs font-semibold uppercase tracking-wide text-red-800">Σ Fire (NOK)</div>
             <div className="font-display mt-1 text-3xl font-semibold text-red-950">{kpi.nok}</div>
             <div className="mt-1 text-xs text-red-800">
-              Live Stream + manuel · MachineMetrics
-              {(shift.scrapCount || 0) > 0 ? ` · manuel +${shift.scrapCount}` : ''}
+              Σ Fire = MachineMetrics (SSOT)
+              {(shift.scrapCount || 0) > 0 ? ` · bu vardiyada manuel +${shift.scrapCount}` : ''}
             </div>
           </div>
           <div className={`rounded-xl border p-4 ${shift.active || activeShiftCount > 0 ? 'border-sky-200 bg-sky-50/80' : 'border-[color:var(--color-line)] bg-slate-50'}`}>

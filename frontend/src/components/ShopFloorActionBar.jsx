@@ -139,7 +139,10 @@ const ShopFloorActionBar = ({
         >
           <Flame size={28} />
           <span>Fire / Hata Girişi</span>
-          <small>Σ Fire {metricsNok} · manuel +{shift.scrapCount || 0}</small>
+          <small>
+            Σ Fire {metricsNok}
+            {(shift.scrapCount || 0) > 0 ? ` · bu vardiyada manuel +${shift.scrapCount}` : ''}
+          </small>
         </button>
 
         <button
@@ -278,8 +281,10 @@ const ShopFloorActionBar = ({
             <ul className="m-0 list-none space-y-1 p-0 text-sm">
               <li><b>Operatör:</b> {shift.operatorName || '—'}</li>
               <li><b>İstasyon:</b> {shift.stationId}</li>
-              <li><b>Σ Fire (MachineMetrics):</b> {metricsNok}</li>
-              <li><b>Manuel fire (bu vardiya):</b> +{shift.scrapCount || 0}</li>
+              <li><b>Σ Fire (MachineMetrics SSOT):</b> {metricsNok}</li>
+              {(shift.scrapCount || 0) > 0 && (
+                <li><b>Manuel (denetim):</b> bu vardiyada +{shift.scrapCount} (Σ içinde)</li>
+              )}
               {shift.secondaryOperator && (
                 <li><b>İkincil op:</b> {shift.secondaryOperator.name}</li>
               )}

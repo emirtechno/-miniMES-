@@ -183,7 +183,7 @@ const OperatorShiftWidget = ({
           Son vardiya özeti: {shift.summary.operatorName} · {getStationDisplayName(shift.summary.stationId)} · {shift.summary.durationMinutes} dk
           {' · '}Σ Fire {shift.summary.scrapCount}
           {(shift.summary.manualScrapCount || 0) > 0
-            ? ` (manuel +${shift.summary.manualScrapCount})`
+            ? ` · bu vardiyada manuel +${shift.summary.manualScrapCount}`
             : ''}
         </div>
       )}
@@ -209,7 +209,7 @@ const OperatorShiftWidget = ({
             <p className="mes-helper">
               Yalnızca <strong>{getStationDisplayName(shift.stationId)}</strong> kapanacak.
               Σ Fire: {metricsNok}
-              {(shift.scrapCount || 0) > 0 ? ` · manuel +${shift.scrapCount}` : ''}
+              {(shift.scrapCount || 0) > 0 ? ` · bu vardiyada manuel +${shift.scrapCount}` : ''}
               {otherActive.length > 0
                 ? ` · Diğer ${otherActive.length} hat çalışmaya devam eder.`
                 : ''}
