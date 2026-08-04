@@ -34,5 +34,9 @@ namespace MiniMesApi.Models
         public WorkOrder? WorkOrder { get; set; }
 
         public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
+
+        /// <summary>Optimistic concurrency token — protects ProducedQuantity under concurrent lot sync.</summary>
+        [Timestamp]
+        public byte[] RowVersion { get; set; } = [];
     }
 }

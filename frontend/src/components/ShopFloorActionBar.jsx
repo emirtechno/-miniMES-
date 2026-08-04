@@ -25,6 +25,7 @@ const FALLBACK_REASONS = [
  */
 const ShopFloorActionBar = ({
   shift,
+  metricsNok = 0,
   notify,
   onKeypadLogin,
   onDowntime,
@@ -41,6 +42,9 @@ const ShopFloorActionBar = ({
   const [reasons, setReasons] = useState(FALLBACK_REASONS);
   const [selectedReason, setSelectedReason] = useState('NO_OPERATOR');
   const [scrapQty, setScrapQty] = useState(1);
+  const [scrapBusy, setScrapBusy] = useState(false);
+  const [downtimeBusy, setDowntimeBusy] = useState(false);
+  const [emergencyBusy, setEmergencyBusy] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -66,29 +70,54 @@ const ShopFloorActionBar = ({
   };
 
   const submitDowntime = async () => {
-    const reason = reasons.find((item) => item.code === selectedReason);
-    const ok = await onDowntime({
-      reasonCode: selectedReason,
-      reasonName: reason?.name,
-      isPlanned: reason?.isPlanned,
-    });
-    if (ok) setShowDowntime(false);
+    setDowntimeBusy(true);
+    try {
+      const reason = reasons.find((item) => item.code === selectedReason);
+      const ok = await onDowntime({
+        reasonCode: selectedReason,
+        reasonName: reason?.name,
+        isPlanned: reason?.isPlanned,
+      });
+      if (ok) setShowDowntime(false);
+    } finally {
+      setDowntimeBusy(false);
+    }
   };
 
   const submitEmergency = async () => {
-    await onEmergency({
-      reasonCode: 'BREAKDOWN',
-      reasonName: 'Arıza / Acil Durum',
-      isPlanned: false,
-      emergency: true,
-    });
+    setEmergencyBusy(true);
+    try {
+      await onEmergency({
+        reasonCode: 'BREAKDOWN',
+        reasonName: 'Arıza / Acil Durum',
+        isPlanned: false,
+        emergency: true,
+      });
+    } finally {
+      setEmergencyBusy(false);
+    }
+  };
+
+  const submitScrap = async () => {
+    setScrapBusy(true);
+    try {
+      const ok = await onScrap?.(scrapQty);
+      if (ok !== false) {
+        setShowScrap(false);
+        setScrapQty(1);
+      }
+    } finally {
+      setScrapBusy(false);
+    }
   };
 
   return (
     <section className="mes-surface p-5">
       <div className="mb-4">
         <h3 className="mes-section-title m-0">Operatör Saha Butonları</h3>
-        <p className="mes-helper mb-0 mt-1">Dokunmatik HMI aksiyon çubuğu — renk kodlu hızlı işlemler</p>
+        <p className="mes-helper mb-0 mt-1">
+          Dokunmatik HMI — Fire girişi Σ Fire (MachineMetrics) özetine eklenir
+        </p>
       </div>
 
       <div className="mes-hmi-grid">
@@ -112,7 +141,7 @@ const ShopFloorActionBar = ({
         >
           <Coffee size={28} />
           <span>{shift.onBreak || shift.inSetup ? 'Üretime Dön' : 'Duruş / Mola Bildir'}</span>
-          <small>Stoppage</small>
+          <small>Stoppage → metrik</small>
         </button>
 
         <button
@@ -122,7 +151,10 @@ const ShopFloorActionBar = ({
         >
           <Flame size={28} />
           <span>Fire / Hata Girişi</span>
-          <small>Scrap · {shift.scrapCount || 0}</small>
+          <small>
+            Σ Fire {metricsNok}
+            {(shift.scrapCount || 0) > 0 ? ` · bu vardiyada manuel +${shift.scrapCount}` : ''}
+          </small>
         </button>
 
         <button
@@ -141,10 +173,11 @@ const ShopFloorActionBar = ({
         <button
           type="button"
           className="mes-hmi-btn mes-hmi-danger"
+          disabled={emergencyBusy}
           onClick={() => requireActive(() => submitEmergency())}
         >
           <AlertOctagon size={28} />
-          <span>Arıza Bildir / Emergency</span>
+          <span>{emergencyBusy ? 'Bildiriliyor…' : 'Arıza Bildir / Emergency'}</span>
           <small>Kritik alarm</small>
         </button>
 
@@ -172,14 +205,21 @@ const ShopFloorActionBar = ({
       />
 
       {showDowntime && (
-        <div className="modal-overlay" role="presentation" onClick={() => setShowDowntime(false)}>
+        <div className="modal-overlay" role="presentation" onClick={() => !downtimeBusy && setShowDowntime(false)}>
           <div className="modal-card confirm-dialog" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between">
               <h3 className="m-0">Duruş / Mola Bildir</h3>
-              <button type="button" className="mes-btn-ghost" onClick={() => setShowDowntime(false)}><X size={16} /></button>
+              <button type="button" className="mes-btn-ghost" disabled={downtimeBusy} onClick={() => setShowDowntime(false)}><X size={16} /></button>
             </div>
-            <p className="mes-helper mb-0">Neden seçin — kayıt Andon / alarm akışına düşer.</p>
-            <select className="mes-input" value={selectedReason} onChange={(e) => setSelectedReason(e.target.value)}>
+            <p className="mes-helper mb-0">
+              Neden seçin — Live Stream duraklar; üretime dönünce süre MachineMetrics’e yazılır.
+            </p>
+            <select
+              className="mes-input"
+              value={selectedReason}
+              disabled={downtimeBusy}
+              onChange={(e) => setSelectedReason(e.target.value)}
+            >
               {reasons.map((reason) => (
                 <option key={reason.code} value={reason.code}>
                   {reason.name}{reason.isPlanned ? ' (planlı)' : ''}
@@ -187,48 +227,61 @@ const ShopFloorActionBar = ({
               ))}
             </select>
             <div className="confirm-actions">
-              <button type="button" className="mes-btn-secondary" onClick={() => setShowDowntime(false)}>Vazgeç</button>
-              <button type="button" className="mes-btn-primary" onClick={submitDowntime}>Kaydet</button>
+              <button type="button" className="mes-btn-secondary" disabled={downtimeBusy} onClick={() => setShowDowntime(false)}>Vazgeç</button>
+              <button type="button" className="mes-btn-primary" disabled={downtimeBusy} onClick={submitDowntime}>
+                {downtimeBusy ? 'Kaydediliyor…' : 'Kaydet'}
+              </button>
             </div>
           </div>
         </div>
       )}
 
       {showScrap && (
-        <div className="modal-overlay" role="presentation" onClick={() => setShowScrap(false)}>
+        <div className="modal-overlay" role="presentation" onClick={() => !scrapBusy && setShowScrap(false)}>
           <div className="modal-card confirm-dialog" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between">
               <h3 className="m-0">Fire / Hata Girişi</h3>
-              <button type="button" className="mes-btn-ghost" onClick={() => setShowScrap(false)}><X size={16} /></button>
+              <button type="button" className="mes-btn-ghost" disabled={scrapBusy} onClick={() => setShowScrap(false)}><X size={16} /></button>
             </div>
+            <p className="mes-helper mb-0">
+              Girdiğiniz adet <strong>Σ Fire</strong> özetine eklenir (MachineMetrics: Actual=adet, Good=0).
+              Mevcut Σ Fire: <strong>{metricsNok}</strong>
+              {(shift.scrapCount || 0) > 0 ? ` · bu vardiyada manuel +${shift.scrapCount}` : ''}.
+            </p>
             <label className="flex flex-col gap-1 text-sm font-medium">
-              Fire adedi
+              Eklenecek fire adedi
               <input
                 type="number"
                 min={1}
                 max={999}
                 className="mes-input"
                 value={scrapQty}
-                onChange={(e) => setScrapQty(Number(e.target.value) || 1)}
+                disabled={scrapBusy}
+                onChange={(e) => setScrapQty(Math.max(1, Math.min(999, Number(e.target.value) || 1)))}
               />
             </label>
             <div className="flex flex-wrap gap-2">
               {[1, 2, 5, 10].map((n) => (
-                <button key={n} type="button" className="mes-btn-secondary" onClick={() => setScrapQty(n)}>+{n}</button>
+                <button
+                  key={n}
+                  type="button"
+                  className="mes-btn-secondary"
+                  disabled={scrapBusy}
+                  onClick={() => setScrapQty((q) => Math.min(999, (Number(q) || 0) + n))}
+                >
+                  +{n}
+                </button>
               ))}
             </div>
             <div className="confirm-actions">
-              <button type="button" className="mes-btn-secondary" onClick={() => setShowScrap(false)}>Vazgeç</button>
+              <button type="button" className="mes-btn-secondary" disabled={scrapBusy} onClick={() => setShowScrap(false)}>Vazgeç</button>
               <button
                 type="button"
                 className="mes-btn-danger"
-                onClick={() => {
-                  onScrap(scrapQty);
-                  setShowScrap(false);
-                  setScrapQty(1);
-                }}
+                disabled={scrapBusy}
+                onClick={submitScrap}
               >
-                Kaydet
+                {scrapBusy ? 'Kaydediliyor…' : `Σ Fire’a +${scrapQty} ekle`}
               </button>
             </div>
           </div>
@@ -242,11 +295,16 @@ const ShopFloorActionBar = ({
               <h3 className="m-0 flex items-center gap-2"><ClipboardList size={18} /> Vardiyayı Bitir</h3>
               <button type="button" className="mes-btn-ghost" onClick={() => setShowEndSummary(false)}><X size={16} /></button>
             </div>
-            <p className="mes-helper mb-0">Oturum kapanacak ve özet kaydedilecek.</p>
+            <p className="mes-helper mb-0">
+              Oturum kapanır; Live Stream durur. Σ Fire metrikleri geçmişte kalır (sıfırlanmaz).
+            </p>
             <ul className="m-0 list-none space-y-1 p-0 text-sm">
               <li><b>Operatör:</b> {shift.operatorName || '—'}</li>
               <li><b>İstasyon:</b> {shift.stationId}</li>
-              <li><b>Fire toplamı:</b> {shift.scrapCount || 0}</li>
+              <li><b>Σ Fire (MachineMetrics SSOT):</b> {metricsNok}</li>
+              {(shift.scrapCount || 0) > 0 && (
+                <li><b>Manuel (denetim):</b> bu vardiyada +{shift.scrapCount} (KPI yedeklenmez)</li>
+              )}
               {shift.secondaryOperator && (
                 <li><b>İkincil op:</b> {shift.secondaryOperator.name}</li>
               )}

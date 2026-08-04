@@ -52,4 +52,13 @@ public sealed class TelemetryAggregatorTests
         Assert.Equal(0, map["B"].Nok);
         Assert.Equal(50, map["A"].Actual);
     }
+
+    [Fact]
+    public void FromTotals_scrap_is_actual_minus_good()
+    {
+        var summary = TelemetryAggregator.FromTotals("Montaj_Hatti_01", actual: 100, good: 93, downtimeSeconds: 0, tickCount: 1, lastRecordedAt: null);
+
+        Assert.Equal(7, summary.Nok);
+        Assert.Equal(93.0, summary.YieldPercent);
+    }
 }

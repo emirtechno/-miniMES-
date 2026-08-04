@@ -32,7 +32,9 @@ public class BatchController : ControllerBase
             return Problem(statusCode: StatusCodes.Status400BadRequest, title: "Geçersiz sayfalama imleci.");
         }
 
-        var query = _context.Batches.AsQueryable();
+        // Read path is side-effect free: no TargetQuantity rewrite and no SaveChanges.
+        // Legacy target scale-up lives on the write path (LotTelemetrySync) and seed data.
+        var query = _context.Batches.AsNoTracking();
         if (!string.IsNullOrWhiteSpace(cursor))
         {
             query = query.Where(batch => batch.Id < cursorId);
@@ -44,7 +46,6 @@ public class BatchController : ControllerBase
             .ToListAsync(cancellationToken);
 
         var pageBatches = batches.Take(limit).ToList();
-        await SyncProducedFromTelemetryAsync(pageBatches, cancellationToken);
 
         var workOrderIds = pageBatches
             .Where(batch => batch.WorkOrderId.HasValue)
@@ -68,8 +69,8 @@ public class BatchController : ControllerBase
     }
 
     /// <summary>
-    /// Normalize lot status from stored ProducedQuantity (advanced by Live Stream ticks).
-    /// Scales small demo targets so ~100–140 unit PLC ticks show meaningful progress.
+    /// Write-path helper: normalize lot status from stored ProducedQuantity
+    /// (advanced by Live Stream ticks via LotTelemetrySync). Does not rewrite TargetQuantity.
     /// </summary>
     private async Task SyncProducedFromTelemetryAsync(List<Batch> batches, CancellationToken cancellationToken)
     {
@@ -78,17 +79,6 @@ public class BatchController : ControllerBase
         var dirty = false;
         foreach (var batch in batches)
         {
-            // Legacy seeds used Target≈50–200; industrial ticks are ~120 — raise target for open lots
-            // that are not linked to a work order (sim lots keep their random planned qty).
-            if (batch.Status != BatchStatuses.Completed
-                && batch.WorkOrderId is null
-                && batch.TargetQuantity > 0
-                && batch.TargetQuantity < 500)
-            {
-                batch.TargetQuantity = 1000;
-                dirty = true;
-            }
-
             var produced = Math.Clamp(batch.ProducedQuantity, 0, Math.Max(batch.TargetQuantity, 0));
             var nextStatus = produced <= 0
                 ? BatchStatuses.Waiting
@@ -102,10 +92,6 @@ public class BatchController : ControllerBase
                 batch.Status = nextStatus;
                 batch.UpdatedAt = DateTimeOffset.UtcNow;
                 dirty = true;
-            }
-            else if (dirty)
-            {
-                batch.UpdatedAt = DateTimeOffset.UtcNow;
             }
         }
 
@@ -126,6 +112,15 @@ public class BatchController : ControllerBase
         }
 
         await SyncProducedFromTelemetryAsync([batch], cancellationToken);
+
+        if (!BatchStatuses.TryAdvance(batch.Status, out var nextStatus, out var advanceError))
+        {
+            return Problem(statusCode: StatusCodes.Status409Conflict, title: advanceError);
+        }
+
+        batch.Status = nextStatus;
+        batch.UpdatedAt = DateTimeOffset.UtcNow;
+        await _context.SaveChangesAsync(cancellationToken);
         return Ok(await ToDtoAsync(batch, cancellationToken));
     }
 
@@ -139,7 +134,20 @@ public class BatchController : ControllerBase
             return NotFound();
         }
 
-        await SyncProducedFromTelemetryAsync([batch], cancellationToken);
+        if (!BatchStatuses.TryReopen(batch.Status, out var nextStatus, out var reopenError))
+        {
+            return Problem(statusCode: StatusCodes.Status409Conflict, title: reopenError);
+        }
+
+        batch.Status = nextStatus;
+        // Keep produced quantity; reopen only unlocks status for further telemetry.
+        if (batch.ProducedQuantity >= batch.TargetQuantity && batch.TargetQuantity > 0)
+        {
+            batch.ProducedQuantity = Math.Max(0, batch.TargetQuantity - 1);
+        }
+
+        batch.UpdatedAt = DateTimeOffset.UtcNow;
+        await _context.SaveChangesAsync(cancellationToken);
         return Ok(await ToDtoAsync(batch, cancellationToken));
     }
 

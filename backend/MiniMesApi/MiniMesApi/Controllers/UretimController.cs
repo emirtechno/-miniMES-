@@ -8,6 +8,10 @@ using MiniMesApi.Security;
 
 namespace MiniMesApi.Controllers
 {
+    /// <summary>
+    /// ÜretimKayit (barkod/kalite OK|NOK|REWORK) is a traceability / genealogy path only.
+    /// Plant KPI scrap (Σ Fire) is MachineMetrics Actual−Good — do not dual-write NOK into metrics.
+    /// </summary>
     [Route("api/[controller]")]
     [ApiController]
     [Microsoft.AspNetCore.Authorization.Authorize]

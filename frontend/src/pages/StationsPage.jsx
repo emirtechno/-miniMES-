@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   BarChart3,
@@ -32,6 +32,27 @@ import { fetchLatestOee, fetchMachineMetrics } from '../services/api';
 import { useNonOverlappingPolling } from '../hooks/useNonOverlappingPolling';
 import { deriveLiveTelemetry } from '../utils/liveTelemetry';
 
+const DETAIL_FLASH_MS = 1400;
+
+/** Scroll detail panel inside `.mes-content` only (never scrollIntoView / window). */
+const scrollPanelIntoMesContent = (panel) => {
+  if (!panel) return;
+  const scroller = panel.closest('.mes-content');
+  if (!scroller) return;
+
+  if (window.scrollY !== 0) window.scrollTo(0, 0);
+  document.documentElement.scrollTop = 0;
+  document.body.scrollTop = 0;
+
+  const panelRect = panel.getBoundingClientRect();
+  const scrollerRect = scroller.getBoundingClientRect();
+  const nextTop = scroller.scrollTop + (panelRect.top - scrollerRect.top) - 8;
+  const maxTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+  const clamped = Math.min(Math.max(0, nextTop), maxTop);
+  // Instant: avoid animating through large white chart surfaces.
+  scroller.scrollTo({ top: clamped, behavior: 'auto' });
+};
+
 const statusFromMetrics = ({ total, nok, ok, streaming }) => {
   if (streaming && total === 0) return { key: 'run', label: 'Live Stream', pill: 'mes-pill-run', Icon: PlayCircle };
   if (total === 0) return { key: 'idle', label: 'Beklemede', pill: 'mes-pill-neutral', Icon: PauseCircle };
@@ -60,6 +81,8 @@ const StationsPage = ({
   const [oeeByStation, setOeeByStation] = useState({});
   const [metricByStation, setMetricByStation] = useState({});
   const [pulse, setPulse] = useState(0);
+  const [detailFlash, setDetailFlash] = useState(false);
+  const detailFlashTimerRef = useRef(null);
 
   const streamingSet = useMemo(
     () => new Set(activeShiftStationIds || []),
@@ -71,6 +94,17 @@ const StationsPage = ({
     const id = window.setInterval(() => setPulse(Date.now()), 1200);
     return () => window.clearInterval(id);
   }, [liveStreaming]);
+
+  useEffect(() => () => {
+    if (detailFlashTimerRef.current) window.clearTimeout(detailFlashTimerRef.current);
+  }, []);
+
+  // Keep document scroll at 0 while this page is mounted.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }, []);
 
   useNonOverlappingPolling(async (signal) => {
     const oeeEntries = await Promise.all(
@@ -100,6 +134,14 @@ const StationsPage = ({
   const openStationMetrics = (stationId) => {
     onSelectStation?.(stationId);
     navigate(`/makine-metrikleri?stationId=${encodeURIComponent(stationId)}`);
+  };
+
+  const selectStationSummary = (stationId) => {
+    onSelectStation?.(stationId);
+    scrollPanelIntoMesContent(document.getElementById('station-detail-panel'));
+    setDetailFlash(true);
+    if (detailFlashTimerRef.current) window.clearTimeout(detailFlashTimerRef.current);
+    detailFlashTimerRef.current = window.setTimeout(() => setDetailFlash(false), DETAIL_FLASH_MS);
   };
 
   const catalogStations = useMemo(() => {
@@ -256,8 +298,8 @@ const StationsPage = ({
                   <button
                     type="button"
                     className="mes-btn-secondary"
-                    title="Özet paneli için seç"
-                    onClick={() => onSelectStation?.(station.id)}
+                    title="Özet paneli için seç ve panele kaydır"
+                    onClick={() => selectStationSummary(station.id)}
                   >
                     Özet
                   </button>
@@ -268,7 +310,20 @@ const StationsPage = ({
         </div>
       </section>
 
-      <section className="mes-surface p-5">
+      <StationDetailPanel
+        stationsList={stationDetailOptions}
+        selectedStation={selectedStation}
+        onStationChange={onStationChange}
+        stationMetrics={stationMetrics}
+        recentTicks={recentTicks}
+        className={
+          detailFlash
+            ? 'outline outline-2 outline-[color:var(--color-vestel)] outline-offset-2 bg-red-50/30'
+            : ''
+        }
+      />
+
+      <section className="mes-surface p-5" data-stations-chart>
         <CardHeader
           icon={BarChart3}
           title="İstasyon Bazlı Üretim Hacmi"
@@ -302,14 +357,6 @@ const StationsPage = ({
           )}
         </div>
       </section>
-
-      <StationDetailPanel
-        stationsList={stationDetailOptions}
-        selectedStation={selectedStation}
-        onStationChange={onStationChange}
-        stationMetrics={stationMetrics}
-        recentTicks={recentTicks}
-      />
     </div>
   );
 };

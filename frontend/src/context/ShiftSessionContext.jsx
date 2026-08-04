@@ -255,10 +255,17 @@ export const ShiftSessionProvider = ({ children, user, notify, canCreateAlarms }
       const remaining = Object.values(current.shifts).filter(
         (entry) => entry.active && entry.stationId !== stationId,
       ).length;
+      const manualScrap = existing.scrapCount || 0;
+      // Σ Fire KPI is MachineMetrics NOK only — never fall back to sessionStorage scrapCount.
+      const metricsNok = Number.isFinite(Number(options.metricsNok))
+        ? Math.max(0, Number(options.metricsNok))
+        : 0;
+      const displayScrap = metricsNok;
       ended = {
         stationId,
         mins,
-        scrapCount: existing.scrapCount,
+        scrapCount: displayScrap,
+        manualScrapCount: manualScrap,
         remaining,
         auto: Boolean(options.autoComplete),
         lotNo: existing.sim?.lotNo,
@@ -280,7 +287,9 @@ export const ShiftSessionProvider = ({ children, user, notify, canCreateAlarms }
               shiftCode: existing.shiftCode,
               stationId: existing.stationId,
               durationMinutes: mins,
-              scrapCount: existing.scrapCount,
+              scrapCount: displayScrap,
+              manualScrapCount: manualScrap,
+              metricsNok,
               endedAt: new Date().toISOString(),
               autoComplete: Boolean(options.autoComplete),
               lotNo: existing.sim?.lotNo,
@@ -295,32 +304,49 @@ export const ShiftSessionProvider = ({ children, user, notify, canCreateAlarms }
       setFactorySimActive(false);
     }
     if (!options.silent) {
+      const fireLabel = ended.manualScrapCount > 0
+        ? `Σ Fire: ${ended.scrapCount} (manuel denetim +${ended.manualScrapCount})`
+        : `Σ Fire: ${ended.scrapCount}`;
       notify?.(
         ended.auto
           ? `Parti tamamlandı (${getStationDisplayName(ended.stationId)}${ended.lotNo ? ` · ${ended.lotNo}` : ''}${ended.targetQuantity ? ` · hedef ${ended.targetQuantity}` : ''}) — vardiya kapandı.${ended.remaining > 0 ? ` ${ended.remaining} hat devam ediyor.` : ''}`
           : ended.remaining > 0
-            ? `Vardiya bitti (${getStationDisplayName(ended.stationId)}) · ${ended.mins} dk · Fire: ${ended.scrapCount} · ${ended.remaining} hat hâlâ aktif`
-            : `Vardiya bitti · Live Stream durduruldu · ${ended.mins} dk · Fire: ${ended.scrapCount}`,
+            ? `Vardiya bitti (${getStationDisplayName(ended.stationId)}) · ${ended.mins} dk · ${fireLabel} · ${ended.remaining} hat hâlâ aktif`
+            : `Vardiya bitti · Live Stream durduruldu · ${ended.mins} dk · ${fireLabel}`,
         ended.auto ? 'success' : 'info',
       );
     }
     return true;
   }, [notify]);
 
-  const endShift = useCallback(() => {
-    endShiftForStation(focusedStationId);
+  const endShift = useCallback((options = {}) => {
+    endShiftForStation(focusedStationId, options);
   }, [endShiftForStation, focusedStationId]);
 
-  const endAllShifts = useCallback(() => {
-    let count = 0;
+  const endAllShifts = useCallback((options = {}) => {
+    const nokByStation = options.metricsNokByStation || {};
+    let endedCount = 0;
+    let totalMetricsNok = 0;
+    let totalManual = 0;
+
     setSession((current) => {
       const nextShifts = { ...current.shifts };
+      endedCount = 0;
+      totalMetricsNok = 0;
+      totalManual = 0;
       for (const [stationId, existing] of Object.entries(current.shifts)) {
         if (!existing?.active) continue;
-        count += 1;
+        endedCount += 1;
         const mins = existing.startedAt
           ? Math.max(0, Math.floor((Date.now() - new Date(existing.startedAt).getTime()) / 60000))
           : 0;
+        const manualScrap = existing.scrapCount || 0;
+        const rawNok = nokByStation[stationId];
+        // Σ Fire KPI is MachineMetrics NOK only — scrapCount is audit tally, not a fallback.
+        const metricsNok = Number.isFinite(Number(rawNok)) ? Math.max(0, Number(rawNok)) : 0;
+        const displayScrap = metricsNok;
+        totalMetricsNok += displayScrap;
+        totalManual += manualScrap;
         nextShifts[stationId] = {
           ...createDefaultShift(stationId),
           stationId,
@@ -329,7 +355,9 @@ export const ShiftSessionProvider = ({ children, user, notify, canCreateAlarms }
             shiftCode: existing.shiftCode,
             stationId: existing.stationId,
             durationMinutes: mins,
-            scrapCount: existing.scrapCount,
+            scrapCount: displayScrap,
+            manualScrapCount: manualScrap,
+            metricsNok,
             endedAt: new Date().toISOString(),
           },
         };
@@ -340,10 +368,13 @@ export const ShiftSessionProvider = ({ children, user, notify, canCreateAlarms }
       };
     });
     setFactorySimActive(false);
-    if (count > 0) {
-      notify?.(`Tüm hatlar durduruldu (${count} vardiya).`, 'info');
+    if (endedCount > 0) {
+      const firePart = totalManual > 0
+        ? `Σ Fire (özet): ${totalMetricsNok} (manuel denetim +${totalManual})`
+        : `Σ Fire (özet): ${totalMetricsNok}`;
+      notify?.(`Tüm hatlar durduruldu (${endedCount} vardiya) · ${firePart}.`, 'info');
     }
-    return count;
+    return endedCount;
   }, [notify]);
 
   const setStationId = useCallback((stationId) => {
@@ -427,13 +458,16 @@ export const ShiftSessionProvider = ({ children, user, notify, canCreateAlarms }
     notify?.('Setup / model değişimi zamanlayıcısı başladı.', 'info');
   }, [canCreateAlarms, notify, shift.active, shift.operatorName, shift.stationId, updateFocusedShift]);
 
-  const logScrap = useCallback((count) => {
+  /** Local session tally of manual scrap entries (SSOT write happens via ingestManualScrap). */
+  const logScrap = useCallback((count, { silent = false } = {}) => {
     const amount = Math.max(1, Number(count) || 1);
     updateFocusedShift((current) => ({
       ...current,
       scrapCount: (current.scrapCount || 0) + amount,
     }));
-    notify?.(`${amount} adet fire kaydedildi.`, 'info');
+    if (!silent) {
+      notify?.(`${amount} adet manuel fire oturuma işlendi.`, 'info');
+    }
   }, [notify, updateFocusedShift]);
 
   const loginSecondaryOperator = useCallback((pin, nameHint) => {

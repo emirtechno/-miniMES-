@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.EntityFrameworkCore;
 using MiniMesApi.Models;
 
@@ -14,16 +15,71 @@ public interface ILotTelemetrySync
 
 public sealed class LotTelemetrySync(MesDbContext context) : ILotTelemetrySync
 {
+    /// <summary>
+    /// Per-station gate so concurrent ingest + OEE sim ticks cannot last-write-wins
+    /// ProducedQuantity on the same open lots.
+    /// </summary>
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> StationGates = new(StringComparer.Ordinal);
+
     public async Task ApplyGoodUnitsAsync(string stationId, int goodUnits, CancellationToken cancellationToken = default)
     {
         if (goodUnits <= 0 || string.IsNullOrWhiteSpace(stationId)) return;
 
+        var gate = StationGates.GetOrAdd(stationId, static _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            // SQL Server: wrap in a transaction. InMemory (tests) has no transactions —
+            // the station gate still serializes same-process writers.
+            if (context.Database.IsRelational())
+            {
+                await using var tx = await context.Database
+                    .BeginTransactionAsync(cancellationToken)
+                    .ConfigureAwait(false);
+
+                const int maxAttempts = 3;
+                for (var attempt = 1; attempt <= maxAttempts; attempt++)
+                {
+                    try
+                    {
+                        await ApplyCoreAsync(stationId, goodUnits, cancellationToken)
+                            .ConfigureAwait(false);
+                        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+                        return;
+                    }
+                    catch (DbUpdateConcurrencyException) when (attempt < maxAttempts)
+                    {
+                        foreach (var entry in context.ChangeTracker.Entries())
+                        {
+                            await entry.ReloadAsync(cancellationToken).ConfigureAwait(false);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                await ApplyCoreAsync(stationId, goodUnits, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    private async Task ApplyCoreAsync(
+        string stationId,
+        int goodUnits,
+        CancellationToken cancellationToken)
+    {
+        // Reload open lots under the station lock so concurrent callers see committed state.
         var openBatches = await context.Batches
             .Where(batch => batch.Station == stationId
                 && batch.Status != BatchStatuses.Completed
                 && batch.ProducedQuantity < batch.TargetQuantity)
             .OrderBy(batch => batch.Id)
-            .ToListAsync(cancellationToken);
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
 
         if (openBatches.Count == 0) return;
 
@@ -33,7 +89,8 @@ public sealed class LotTelemetrySync(MesDbContext context) : ILotTelemetrySync
         {
             if (remaining <= 0) break;
 
-            // Legacy demo targets (~50–200) fill in one ~120-unit tick — scale before applying.
+            // Write-only legacy scale-up: demo seeds used Target≈50–200; industrial ticks are ~120.
+            // GET /Batch must never rewrite targets — only this ingest/sync path may.
             if (batch.TargetQuantity > 0 && batch.TargetQuantity < 500 && batch.WorkOrderId is null)
             {
                 batch.TargetQuantity = 1000;
@@ -59,7 +116,8 @@ public sealed class LotTelemetrySync(MesDbContext context) : ILotTelemetrySync
         {
             var workOrders = await context.WorkOrders
                 .Where(order => completedWorkOrderIds.Contains(order.Id))
-                .ToListAsync(cancellationToken);
+                .ToListAsync(cancellationToken)
+                .ConfigureAwait(false);
 
             foreach (var order in workOrders)
             {
@@ -74,12 +132,13 @@ public sealed class LotTelemetrySync(MesDbContext context) : ILotTelemetrySync
         // Soft link: station WO without FK still advances to InProgress on first production.
         var openStationOrders = await context.WorkOrders
             .Where(order => order.Station == stationId && order.Status == WorkOrderStatuses.Waiting)
-            .ToListAsync(cancellationToken);
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
         foreach (var order in openStationOrders)
         {
             order.Status = WorkOrderStatuses.InProgress;
         }
 
-        await context.SaveChangesAsync(cancellationToken);
+        await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }
 }

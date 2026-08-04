@@ -40,6 +40,7 @@ const MachineMetricsPanel = ({
   stationKpi,
   batches = [],
   metricsFeed = [],
+  preferSharedFeed = false,
 }) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const stationFromUrl = searchParams.get('stationId');
@@ -78,6 +79,8 @@ const MachineMetricsPanel = ({
 
   useMesHub({ onOeeUpdated: handleOeeUpdated });
 
+  // O5: when Live Stream / shared useTelemetry feed is active, skip independent poll
+  // to avoid triple GET /MachineMetrics traffic.
   useNonOverlappingPolling(async (signal) => {
     try {
       const page = await fetchMachineMetrics({
@@ -101,9 +104,9 @@ const MachineMetricsPanel = ({
       setLoading(false);
     }
   }, {
-    enabled: true,
+    enabled: !preferSharedFeed,
     intervalMs: isFactorySimulationActive ? 8000 : 20000,
-    resetKey: `${selectedStation}:${isFactorySimulationActive}`,
+    resetKey: `${selectedStation}:${isFactorySimulationActive}:${preferSharedFeed}`,
   });
 
   const stationsList = useMemo(
@@ -137,13 +140,15 @@ const MachineMetricsPanel = ({
 
   // Prefer shared feed when Live Stream is pushing; otherwise poll locally.
   useEffect(() => {
-    if (!metricsFeed?.length) return;
+    if (!preferSharedFeed || !metricsFeed?.length) return;
     if (selectedStation === 'Tümü') {
       setMetrics(metricsFeed.slice(0, 80));
+      setLoading(false);
       return;
     }
     setMetrics(metricsFeed.filter((item) => item.stationId === selectedStation).slice(0, 80));
-  }, [metricsFeed, selectedStation]);
+    setLoading(false);
+  }, [metricsFeed, selectedStation, preferSharedFeed]);
 
   const latestMetric = metrics[0];
   const telemetry = useMemo(

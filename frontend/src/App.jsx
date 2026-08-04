@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import MachineMetricsPanel from './components/MachineMetricsPanel';
 import {
@@ -82,11 +82,36 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
     liveStreamActive,
     streamingStations,
     streamingStationIds,
+    activeShifts,
     activeShiftCount,
   } = useShiftSession();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [selectedStationDetail, setSelectedStationDetail] = useState(DEFAULT_STATION);
   const [autoRefresh, setAutoRefresh] = useState(true);
+
+  // Keep document scroll at 0 — nested scrollIntoView / focus can still move window.scrollY
+  // and expose body canvas as a white fog under the fixed shell.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }, [location.pathname]);
+
+  const summaryShiftCode = useMemo(() => {
+    if (!activeShifts.length) return undefined;
+    const codes = [...new Set(activeShifts.map((entry) => entry.shiftCode).filter(Boolean))];
+    return codes.length === 1 ? codes[0] : (shift.active ? shift.shiftCode : undefined);
+  }, [activeShifts, shift.active, shift.shiftCode]);
+
+  const summarySince = useMemo(() => {
+    const starts = activeShifts
+      .map((entry) => entry.startedAt)
+      .filter(Boolean)
+      .map((value) => new Date(value).getTime())
+      .filter((value) => !Number.isNaN(value));
+    if (!starts.length) return undefined;
+    return new Date(Math.min(...starts)).toISOString();
+  }, [activeShifts]);
 
   const isCurrentUserActive = currentUser?.status === 'Aktif';
   const hasPermission = (permission) => isCurrentUserActive && currentUser.permissions.includes(permission);
@@ -116,6 +141,8 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
     autoRefresh,
     liveStreamActive,
     streamStations: streamingStations,
+    summaryShiftCode,
+    summarySince,
     onSimulatedAnomalies: canCreateAlarms ? onSimulatedAnomalies : undefined,
     notify,
   });
@@ -209,9 +236,11 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
                 </h1>
                 <p className="m-0 text-xs text-[color:var(--color-muted)] md:text-sm">
                   {isOperatorPersona ? 'Shop-floor operatör görünümü' : 'Yönetici / Ana Merkez görünümü'}
-                  {liveStreamActive
+                  {liveStreamActive && canIngestTelemetry
                     ? ` · Live Stream (${streamingStationIds.length} hat)`
-                    : ''}
+                    : liveStreamActive
+                      ? ' · Vardiya açık (yazma yetkisi yok)'
+                      : ''}
                 </p>
               </div>
             </div>
@@ -233,10 +262,14 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
                   : `${shift.operatorName || 'Operatör'} · ${getShiftLabel(shift.shiftCode)} · ${elapsedLabel}`}
               </span>
             )}
-            {liveStreamActive ? (
+            {liveStreamActive && canIngestTelemetry ? (
               <span className="mes-pill-warn" title="Vardiya Live Stream → MachineMetrics (çoklu hat)">
                 <Activity size={14} />
                 Live Stream{streamingStationIds.length > 1 ? ` · ${streamingStationIds.length}` : ''}
+              </span>
+            ) : liveStreamActive ? (
+              <span className="mes-pill-neutral" title="Vardiya açık ancak production.write yok — telemetri tick yazılmıyor">
+                Stream (yazma yok)
               </span>
             ) : (
               <span className="mes-pill-neutral" title="Vardiya Başlat ile telemetri akışı açılır">
@@ -304,6 +337,8 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
                   batches={workOrders.batches}
                   liveStreaming={liveStreamActive}
                   canIngestTelemetry={canIngestTelemetry}
+                  ingestManualScrap={telemetry.ingestManualScrap}
+                  ingestDowntimeTick={telemetry.ingestDowntimeTick}
                   onRefreshOrders={async () => {
                     await Promise.all([
                       workOrders.loadWorkOrders?.(),
@@ -327,6 +362,7 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
                   stationKpi={telemetry.stationKpi}
                   batches={workOrders.batches}
                   metricsFeed={telemetry.metrics}
+                  preferSharedFeed={liveStreamActive}
                 />
               )}
             />
@@ -363,6 +399,7 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
                   alarms={{
                     items: alarms.alarms,
                     loading: alarms.alarmLoading,
+                    busyAlarmId: alarms.busyAlarmId,
                     error: alarms.alarmError,
                     onCreateTest: alarms.createTestAlarm,
                     onAcknowledge: alarms.handleAcknowledgeAlarm,

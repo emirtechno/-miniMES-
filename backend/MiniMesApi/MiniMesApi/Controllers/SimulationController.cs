@@ -1,3 +1,4 @@
+using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MiniMesApi.DTOs;
@@ -13,7 +14,9 @@ namespace MiniMesApi.Controllers;
 [Route("api/[controller]")]
 [ApiController]
 [Authorize]
-public sealed class SimulationController(IFactorySimulationService simulation) : ControllerBase
+public sealed class SimulationController(
+    IFactorySimulationService simulation,
+    IValidator<StartFactorySimulationRequest> validator) : ControllerBase
 {
     [HttpPost("factory/start")]
     [Authorize(Policy = PolicyNames.ProductionWrite)]
@@ -21,9 +24,18 @@ public sealed class SimulationController(IFactorySimulationService simulation) :
         [FromBody] StartFactorySimulationRequest? request,
         CancellationToken cancellationToken)
     {
-        var result = await simulation.StartAsync(
-            request ?? new StartFactorySimulationRequest(),
-            cancellationToken);
+        var body = request ?? new StartFactorySimulationRequest();
+        var validation = await validator.ValidateAsync(body, cancellationToken);
+        if (!validation.IsValid)
+        {
+            return BadRequest(new ValidationProblemDetails(validation.Errors
+                .GroupBy(error => error.PropertyName)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.Select(error => error.ErrorMessage).ToArray())));
+        }
+
+        var result = await simulation.StartAsync(body, cancellationToken);
         return Ok(result);
     }
 

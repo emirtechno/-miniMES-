@@ -76,13 +76,15 @@ if (jwt.Key.Length < 32)
 
 builder.Services.AddIdentityCore<ApplicationUser>(options =>
     {
-        // Factory-operator friendly: short numeric PINs (e.g. admin/123) allowed.
-        options.Password.RequiredLength = 3;
+        // Development: short numeric PINs (admin/123) for shop-floor UX.
+        // Non-Development: enforce a stronger policy — Production must not inherit RequiredLength=3.
+        var relaxPassword = builder.Environment.IsDevelopment();
+        options.Password.RequiredLength = relaxPassword ? 3 : 8;
         options.Password.RequireDigit = true;
-        options.Password.RequireLowercase = false;
-        options.Password.RequireUppercase = false;
-        options.Password.RequireNonAlphanumeric = false;
-        options.Password.RequiredUniqueChars = 1;
+        options.Password.RequireLowercase = !relaxPassword;
+        options.Password.RequireUppercase = !relaxPassword;
+        options.Password.RequireNonAlphanumeric = !relaxPassword;
+        options.Password.RequiredUniqueChars = relaxPassword ? 1 : 2;
         options.Lockout.AllowedForNewUsers = true;
         options.Lockout.MaxFailedAccessAttempts = 5;
         options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);

@@ -1,10 +1,12 @@
-using Microsoft.AspNetCore.Mvc;
+using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MiniMesApi.DTOs;
 using MiniMesApi.Infrastructure;
 using MiniMesApi.Models;
 using MiniMesApi.Security;
+using MiniMesApi.Services;
 
 namespace MiniMesApi.Controllers
 {
@@ -14,10 +16,17 @@ namespace MiniMesApi.Controllers
     public class WorkOrderController : ControllerBase
     {
         private readonly MesDbContext _context;
+        private readonly IValidator<CreateWorkOrderDto> _validator;
+        private readonly IAuditLogService _audit;
 
-        public WorkOrderController(MesDbContext context)
+        public WorkOrderController(
+            MesDbContext context,
+            IValidator<CreateWorkOrderDto> validator,
+            IAuditLogService audit)
         {
             _context = context;
+            _validator = validator;
+            _audit = audit;
         }
 
         [HttpGet]
@@ -70,9 +79,14 @@ namespace MiniMesApi.Controllers
             [FromBody] CreateWorkOrderDto request,
             CancellationToken cancellationToken)
         {
-            if (!StationCatalog.Contains(request.Station))
+            var validation = await _validator.ValidateAsync(request, cancellationToken);
+            if (!validation.IsValid)
             {
-                return Problem(statusCode: StatusCodes.Status400BadRequest, title: "Geçersiz istasyon kimliği.");
+                return BadRequest(new ValidationProblemDetails(validation.Errors
+                    .GroupBy(error => error.PropertyName)
+                    .ToDictionary(
+                        group => group.Key,
+                        group => group.Select(error => error.ErrorMessage).ToArray())));
             }
 
             var exists = await _context.WorkOrders
@@ -105,6 +119,14 @@ namespace MiniMesApi.Controllers
                     title: "İş emri numarası zaten kullanılıyor.");
             }
 
+            await _audit.WriteAsync(
+                AuditEntityTypes.WorkOrder,
+                workOrder.Id.ToString(),
+                AuditActions.Create,
+                User,
+                $"orderNo={workOrder.OrderNo}; station={workOrder.Station}; qty={workOrder.Quantity}",
+                cancellationToken);
+
             return CreatedAtAction(nameof(GetWorkOrder), new { id = workOrder.Id }, ToDto(workOrder));
         }
 
@@ -134,11 +156,19 @@ namespace MiniMesApi.Controllers
                 return Problem(statusCode: StatusCodes.Status409Conflict, title: advanceError);
             }
 
+            var previous = order.Status;
             order.Status = nextStatus;
 
             try
             {
                 await _context.SaveChangesAsync(cancellationToken);
+                await _audit.WriteAsync(
+                    AuditEntityTypes.WorkOrder,
+                    order.Id.ToString(),
+                    AuditActions.Advance,
+                    User,
+                    $"orderNo={order.OrderNo}; {previous}→{order.Status}",
+                    cancellationToken);
                 return Ok(ToDto(order));
             }
             catch (DbUpdateConcurrencyException)

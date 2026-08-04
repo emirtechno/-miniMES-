@@ -25,6 +25,8 @@ const OperatorDashboardPage = ({
   batches = [],
   liveStreaming = false,
   canIngestTelemetry = false,
+  ingestManualScrap,
+  ingestDowntimeTick,
   onRefreshOrders,
 }) => {
   const {
@@ -68,6 +70,68 @@ const OperatorDashboardPage = ({
     () => recentTicks.filter((tick) => tick.stationId === stationId).slice(0, 8),
     [recentTicks, stationId],
   );
+
+  /** Additive: POST MachineMetrics (Actual=N, Good=0) so Σ Fire KPI updates immediately. */
+  const handleScrap = async (qty) => {
+    if (!shift.active) {
+      notify?.('Önce vardiyayı başlatın.', 'error');
+      return false;
+    }
+    if (!canIngestTelemetry || typeof ingestManualScrap !== 'function') {
+      notify?.('Fire kaydı için production.write yetkisi gerekir.', 'error');
+      return false;
+    }
+    try {
+      const prevNok = kpi.nok;
+      const result = await ingestManualScrap({
+        stationId,
+        amount: qty,
+        shiftCode: shift.shiftCode,
+      });
+      const amount = typeof result === 'object' ? result.amount : result;
+      const nokAfter = typeof result === 'object' && Number.isFinite(result.nokAfter)
+        ? result.nokAfter
+        : prevNok + amount;
+      logScrap(amount, { silent: true });
+      notify?.(
+        `${amount} adet fire MachineMetrics’e eklendi — Σ Fire ${prevNok} → ${nokAfter}.`,
+        'success',
+      );
+      return true;
+    } catch (error) {
+      notify?.(getApiErrorMessage(error, 'Fire kaydı yazılamadı.'), 'error');
+      return false;
+    }
+  };
+
+  /** Flush open pause/setup duration into MachineMetrics before ending (same as resume). */
+  const flushOpenDowntime = async (entry) => {
+    if (!entry || !canIngestTelemetry || typeof ingestDowntimeTick !== 'function') return;
+    const pauseStart = entry.breakStartedAt || entry.setupStartedAt;
+    if (!pauseStart) return;
+    const secs = Math.max(1, Math.floor((Date.now() - new Date(pauseStart).getTime()) / 1000));
+    try {
+      await ingestDowntimeTick({
+        stationId: entry.stationId,
+        downtimeSeconds: secs,
+        reasonCode: entry.breakReason || (entry.inSetup ? 'CHANGEOVER' : 'OTHER'),
+        shiftCode: entry.shiftCode,
+      });
+    } catch (error) {
+      notify?.(getApiErrorMessage(error, 'Duruş süresi metrik olarak yazılamadı.'), 'error');
+    }
+  };
+
+  /** On resume, persist pause duration into MachineMetrics (Availability SSOT). */
+  const handleResume = async () => {
+    await flushOpenDowntime(shift);
+    resumeProduction();
+  };
+
+  const handleEndShift = async () => {
+    await flushOpenDowntime(shift);
+    endShift({ metricsNok: kpi.nok });
+  };
 
   const activeOrder = workOrders.find(
     (order) => order.station === stationId && order.status !== 'Tamamlandı',
@@ -120,9 +184,13 @@ const OperatorDashboardPage = ({
       if (!reached) continue;
 
       autoCompletedRef.current.add(doneKey);
-      endShiftForStation(entry.stationId, { autoComplete: true });
+      const stationKpiRow = stationKpi?.(entry.stationId);
+      endShiftForStation(entry.stationId, {
+        autoComplete: true,
+        metricsNok: stationKpiRow?.nok,
+      });
     }
-  }, [activeShifts, batches, endShiftForStation]);
+  }, [activeShifts, batches, endShiftForStation, stationKpi]);
 
   useEffect(() => {
     if (activeShiftCount === 0) {
@@ -230,20 +298,22 @@ const OperatorDashboardPage = ({
         />
         <div
           className={`mb-4 rounded-xl border px-4 py-3 text-sm ${
-            liveStreaming || sessionStreaming
+            (liveStreaming || sessionStreaming) && canIngestTelemetry
               ? 'border-emerald-200 bg-emerald-50/80 text-emerald-950'
               : 'border-[color:var(--color-line)] bg-slate-50 text-[color:var(--color-muted)]'
           }`}
         >
           <span className="inline-flex items-center gap-2 font-semibold">
-            <Radio size={16} className={(liveStreaming || sessionStreaming) ? 'animate-pulse' : ''} />
-            {multiStream
-              ? `Live Stream açık — ${streamingStationIds.length} hat paralel tick yazıyor; lot/OEE senkron.`
+            <Radio size={16} className={((liveStreaming || sessionStreaming) && canIngestTelemetry) ? 'animate-pulse' : ''} />
+            {(liveStreaming || sessionStreaming) && canIngestTelemetry
+              ? (multiStream
+                ? `Live Stream açık — ${streamingStationIds.length} hat paralel tick yazıyor; batch fire (Actual−Good) Σ Fire’a eklenir.`
+                : 'Live Stream açık — her tick ~100–140 adet; rastgele batch fire Σ Fire (MachineMetrics) özetine yazılır.')
               : (liveStreaming || sessionStreaming)
-                ? 'Live Stream açık — her tick ~100–140 adet PLC batch yazar; lot/OEE senkron.'
+                ? 'Vardiya açık ancak production.write yok — Live Stream tick yazılmıyor (yalnızca izleme).'
                 : 'Live Stream kapalı — “Vardiya Başlat” veya “Fabrika Simülasyonu Başlat” ile açın.'}
           </span>
-          {(liveStreaming || sessionStreaming) && (
+          {(liveStreaming || sessionStreaming) && canIngestTelemetry && (
             <Link to={`/makine-metrikleri?stationId=${encodeURIComponent(stationId)}`} className="ml-3 underline">
               Makine Metrikleri
             </Link>
@@ -289,6 +359,10 @@ const OperatorDashboardPage = ({
           <div className="rounded-xl border border-red-200 bg-red-50/70 p-4">
             <div className="text-xs font-semibold uppercase tracking-wide text-red-800">Σ Fire (NOK)</div>
             <div className="font-display mt-1 text-3xl font-semibold text-red-950">{kpi.nok}</div>
+            <div className="mt-1 text-xs text-red-800">
+              Σ Fire = MachineMetrics (SSOT)
+              {(shift.scrapCount || 0) > 0 ? ` · bu vardiyada manuel +${shift.scrapCount}` : ''}
+            </div>
           </div>
           <div className={`rounded-xl border p-4 ${shift.active || activeShiftCount > 0 ? 'border-sky-200 bg-sky-50/80' : 'border-[color:var(--color-line)] bg-slate-50'}`}>
             <div className="text-xs font-semibold uppercase tracking-wide text-[color:var(--color-muted)]">Vardiya · Verim</div>
@@ -318,19 +392,23 @@ const OperatorDashboardPage = ({
       <OperatorShiftWidget
         user={currentUser}
         stationId={stationId}
+        metricsNok={kpi.nok}
         onStationChange={handleStationChange}
+        onEndShift={handleEndShift}
+        onResume={handleResume}
       />
 
       <ShopFloorActionBar
         shift={shift}
+        metricsNok={kpi.nok}
         notify={notify}
         onKeypadLogin={loginSecondaryOperator}
         onDowntime={reportDowntime}
-        onScrap={logScrap}
+        onScrap={handleScrap}
         onSetup={startSetup}
         onEmergency={reportDowntime}
-        onEndShift={endShift}
-        onResume={resumeProduction}
+        onEndShift={handleEndShift}
+        onResume={handleResume}
       />
 
       <section className="mes-surface p-5">
@@ -365,7 +443,7 @@ const OperatorDashboardPage = ({
         <CardHeader
           icon={History}
           title="Son PLC Tick’leri"
-          subtitle="MachineMetrics batch satırları (Gerçekleşen / Sağlam / Duruş)"
+          subtitle="MachineMetrics batch satırları — fire = Actual−Good (Live Stream + manuel SSOT)"
           actions={(
             <span className="inline-flex items-center gap-1 text-xs text-[color:var(--color-muted)]">
               <Activity size={13} />
@@ -410,9 +488,14 @@ const OperatorDashboardPage = ({
               <button
                 type="button"
                 className="mes-btn-danger"
-                onClick={() => {
+                onClick={async () => {
                   setShowStopAll(false);
-                  endAllShifts();
+                  const metricsNokByStation = {};
+                  for (const entry of activeShifts) {
+                    metricsNokByStation[entry.stationId] = stationKpi?.(entry.stationId)?.nok ?? 0;
+                    await flushOpenDowntime(entry);
+                  }
+                  endAllShifts({ metricsNokByStation });
                 }}
               >
                 <StopCircle size={16} />

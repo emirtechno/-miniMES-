@@ -7,7 +7,8 @@ import CardHeader from '../components/CardHeader';
 import { ACTIVE_STATION_DEFINITIONS, getStationDisplayName } from '../constants/stations';
 
 /**
- * Quality / lot / alarms — scrap derived from MachineMetrics (Actual − Good), not 1-by-1 barcodes.
+ * Quality / lot / alarms — scrap KPIs from MachineMetrics (Actual − Good) only.
+ * ÜretimKayit NOK is a separate barcode/traceability path and must not feed Σ Fire.
  */
 const QualityPage = ({
   workOrders,
@@ -83,6 +84,7 @@ const QualityPage = ({
 
     <AlarmPanel
       alarms={alarms.items}
+      busyAlarmId={alarms.busyAlarmId}
       onAcknowledge={permissions.canManageAlarms ? alarms.onAcknowledge : undefined}
       onResolve={permissions.canManageAlarms ? alarms.onResolve : undefined}
     />
@@ -95,7 +97,7 @@ const QualityPage = ({
       <CardHeader
         icon={XCircle}
         title={`Fire içeren telemetri tick’leri (${scrapTicks.length})`}
-        subtitle="Actual − Good > 0 olan MachineMetrics satırları (barkod listesi yok)"
+        subtitle="Σ Fire SSOT = MachineMetrics Actual−Good. ÜretimKayit NOK (barkod) KPI’ya karışmaz — izlenebilirlik kaydıdır."
       />
       <div className="table-wrapper">
         <table className="modern-table">

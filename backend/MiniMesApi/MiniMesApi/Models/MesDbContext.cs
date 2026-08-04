@@ -91,6 +91,7 @@ namespace MiniMesApi.Models
             {
                 entity.HasIndex(batch => batch.WorkOrderId);
                 entity.HasIndex(batch => new { batch.Station, batch.Status });
+                entity.Property(batch => batch.RowVersion).IsRowVersion();
                 entity.HasOne(batch => batch.WorkOrder)
                     .WithMany()
                     .HasForeignKey(batch => batch.WorkOrderId)

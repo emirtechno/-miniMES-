@@ -25,9 +25,13 @@ const pickDowntimeReason = (downtimeSeconds) => {
   return pool[Math.floor(Math.random() * pool.length)];
 };
 
+/**
+ * Simulated PLC batch: scrap is encoded as Actual−Good on the MachineMetrics row
+ * (same Σ Fire SSOT as manual fire). `_scrap` is client-only for anomaly detection.
+ */
 const buildTickPayload = (stationId, shiftCode) => {
   const actual = 100 + Math.floor(Math.random() * 41); // 100–140 industrial batch size
-  const scrap = Math.floor(Math.random() * 8);
+  const scrap = Math.floor(Math.random() * 8); // 0–7 fire in this batch → Σ Fire += scrap
   const good = Math.max(0, actual - scrap);
   const downtimeSeconds = Math.floor(Math.random() * 70);
   return {
@@ -58,6 +62,9 @@ export function useTelemetry({
   /** @deprecated Prefer streamStations — kept for single-station callers */
   streamStationId,
   shiftCode,
+  /** Optional summary window — prefer active shift code / start time when available */
+  summaryShiftCode,
+  summarySince,
   onSimulatedAnomalies,
   notify,
 }) {
@@ -87,6 +94,11 @@ export function useTelemetry({
     [resolvedStreams],
   );
 
+  const summaryParams = useMemo(() => ({
+    shiftCode: summaryShiftCode || shiftCode || undefined,
+    since: summarySince || undefined,
+  }), [summaryShiftCode, shiftCode, summarySince]);
+
   const applySummaries = useCallback((rows) => {
     const plantRow = (rows || []).find((row) => !row.stationId);
     const stationRows = (rows || []).filter((row) => row.stationId);
@@ -106,13 +118,14 @@ export function useTelemetry({
       if (!background) setLoading(true);
       const [page, summaries] = await Promise.all([
         fetchMachineMetrics({ signal, limit: 120 }),
-        fetchTelemetrySummary({ signal }),
+        fetchTelemetrySummary({ signal, ...summaryParams }),
       ]);
       setMetrics(page.items || []);
       applySummaries(summaries);
       setError(null);
+      return summaries;
     } catch (err) {
-      if (err.name === 'CanceledError' || err.name === 'AbortError') return;
+      if (err.name === 'CanceledError' || err.name === 'AbortError') return undefined;
       setError(getApiErrorMessage(err, 'Telemetri özeti alınamadı.'));
       // Fallback: aggregate locally from fetched page if summary fails mid-stream.
       try {
@@ -128,10 +141,11 @@ export function useTelemetry({
       } catch {
         // keep previous
       }
+      return undefined;
     } finally {
       if (!background) setLoading(false);
     }
-  }, [applySummaries]);
+  }, [applySummaries, summaryParams]);
 
   useEffect(() => {
     if (!isAuthenticated) return undefined;
@@ -213,6 +227,72 @@ export function useTelemetry({
     [recentTicks],
   );
 
+  /**
+   * Manual shop-floor scrap: append-only MachineMetrics tick (Actual=N, Good=0).
+   * Additive MES rule — Σ Fire (Actual−Good) increases by N and persists after shift end.
+   */
+  const ingestManualScrap = useCallback(async ({ stationId, amount, shiftCode: scrapShiftCode } = {}) => {
+    if (!canIngestTelemetry) {
+      throw new Error('Fire kaydı için production.write yetkisi gerekir.');
+    }
+    const qty = Math.max(1, Math.min(999, Number(amount) || 1));
+    const targetStation = stationId || DEFAULT_STATION;
+    if (!ACTIVE_STATIONS.includes(targetStation)) {
+      throw new Error('Geçersiz istasyon kimliği.');
+    }
+
+    await createMachineMetric({
+      stationId: targetStation,
+      plannedProductionSeconds: 60,
+      downtimeSeconds: 0,
+      downtimeReasonCode: 'NONE',
+      shiftCode: scrapShiftCode || undefined,
+      idealCycleTimeSeconds: 2,
+      actualProductionCount: qty,
+      goodProductionCount: 0,
+      recordedAt: new Date().toISOString(),
+    });
+    const summaries = await refresh(undefined, { background: true });
+    const stationRow = (summaries || []).find((row) => row.stationId === targetStation);
+    const nokAfter = Number(stationRow?.nok) || 0;
+    return { amount: qty, nokAfter };
+  }, [canIngestTelemetry, refresh]);
+
+  /**
+   * When operator ends downtime/setup, write accumulated stoppage into MachineMetrics
+   * so Availability / Andon reflect the pause (not only local shift flags).
+   */
+  const ingestDowntimeTick = useCallback(async ({
+    stationId,
+    downtimeSeconds,
+    reasonCode,
+    shiftCode: dtShiftCode,
+  } = {}) => {
+    if (!canIngestTelemetry) return null;
+    const secs = Math.max(1, Math.min(3600, Math.floor(Number(downtimeSeconds) || 0)));
+    if (secs <= 0) return null;
+    const targetStation = stationId || DEFAULT_STATION;
+    if (!ACTIVE_STATIONS.includes(targetStation)) {
+      throw new Error('Geçersiz istasyon kimliği.');
+    }
+    const reason = reasonCode && reasonCode !== 'NONE' ? reasonCode : 'OTHER';
+    const planned = Math.max(secs, 60);
+
+    await createMachineMetric({
+      stationId: targetStation,
+      plannedProductionSeconds: planned,
+      downtimeSeconds: secs,
+      downtimeReasonCode: reason,
+      shiftCode: dtShiftCode || undefined,
+      idealCycleTimeSeconds: 2,
+      actualProductionCount: 0,
+      goodProductionCount: 0,
+      recordedAt: new Date().toISOString(),
+    });
+    await refresh(undefined, { background: true });
+    return secs;
+  }, [canIngestTelemetry, refresh]);
+
   return {
     metrics,
     recentTicks,
@@ -224,6 +304,8 @@ export function useTelemetry({
     loading,
     error,
     refresh: () => refresh(undefined, { background: false }),
+    ingestManualScrap,
+    ingestDowntimeTick,
     notifyError: notify,
   };
 }

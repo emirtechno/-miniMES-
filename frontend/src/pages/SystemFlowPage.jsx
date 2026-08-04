@@ -38,9 +38,10 @@ const SystemFlowPage = () => (
           Live Stream yazımı
         </h2>
         <p className="mes-helper mt-2">
-          Vardiya Başlat veya Fabrika Simülasyonu → her ~10 sn aktif hatlar için <code>POST /MachineMetrics</code> (~100–140 adetlik batch).
-          Simülasyon sunucuda rastgele iş emri + parti (200–1500) oluşturur; hedef dolunca lot/WO tamamlanır ve o hattın vardiyası kapanır.
-          Birden fazla hat aynı anda stream edebilir. Duruş/setup yalnızca o hattı pause eder.
+          Vardiya Başlat veya Fabrika Simülasyonu → her ~10 sn aktif hatlar için <code>POST /MachineMetrics</code> (~100–140 adetlik batch; 0–7 fire = Actual−Good → aynı Σ Fire SSOT).
+          Manuel fire girişi de aynı endpoint’e yazar (Actual=adet, Good=0 → Σ Fire artar; vardiya bitince silinmez).
+          Duruş/setup o hattı pause eder; üretime dönünce biriken süre downtime tick olarak yazılır.
+          Simülasyon sunucuda rastgele iş emri + parti (200–1500) oluşturur; hedef dolunca lot/WO tamamlanır.
         </p>
       </article>
       <article className="mes-surface p-5">
@@ -52,7 +53,8 @@ const SystemFlowPage = () => (
           <li>Fabrika / Operatör / İstasyon KPI → <code>GET /MachineMetrics/summary</code></li>
           <li>Trend / tablo → <code>GET /MachineMetrics</code></li>
           <li>OEE / Andon → latest metric + SignalR <code>oeeUpdated</code></li>
-          <li>Lot → BatchController Σ Good sync</li>
+          <li>Lot → BatchController (yazma yolu LotTelemetrySync; GET /Batch yan etkisiz)</li>
+          <li>ÜretimKayit OK/NOK → barkod izlenebilirlik (KPI scrap değil)</li>
         </ul>
       </article>
     </section>
@@ -68,14 +70,16 @@ const SystemFlowPage = () => (
 {`[Fabrika Simülasyonu / Vardiya Başlat] (N hat)
       |  POST /Simulation/factory/start → WO + Lot (rastgele hedef)
       v
-[Live Stream × N] --POST--> [MachineMetrics] <-- OeeSimulationService (dev seed)
+[Live Stream × N] --POST--> [MachineMetrics] (Actual/Good; fire=A−G) → Σ Fire += scrap
+[Manuel Fire]     --POST--> [MachineMetrics] (Actual=N, Good=0)       → Σ Fire += N
+[Üretime Dön]     --POST--> [MachineMetrics] (downtimeSeconds)        → Availability
       |                        |
       |                        +--> GET /summary --> Plant / Operator / Stations KPIs
       |                        +--> OeeCalculator --> SignalR oeeUpdated --> Andon
       |                        +--> Σ Good --> Batch.ProducedQuantity (+ WO complete)
       v
 [Anomali] --> POST /Alarm --> Andon
-[Hedef doldu / Vardiya Bitir] --> o hat PAUSE (diğerleri devam)`}
+[Hedef doldu / Vardiya Bitir] --> o hat PAUSE (diğerleri devam; metrik geçmişi kalır)`}
       </pre>
     </section>
 

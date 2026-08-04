@@ -95,6 +95,16 @@ namespace MiniMesApi.Services
             dbContext.MachineMetrics.AddRange(metrics);
             await dbContext.SaveChangesAsync(cancellationToken);
 
+            // Same lot/WO progress path as MachineMetricsController.IngestMetric.
+            var lotSync = scope.ServiceProvider.GetRequiredService<ILotTelemetrySync>();
+            foreach (var metric in metrics)
+            {
+                await lotSync.ApplyGoodUnitsAsync(
+                    metric.StationId,
+                    metric.GoodProductionCount,
+                    cancellationToken);
+            }
+
             var publisher = scope.ServiceProvider.GetRequiredService<IMesRealtimePublisher>();
             var oeePayload = metrics
                 .Select(OeeCalculator.Calculate)

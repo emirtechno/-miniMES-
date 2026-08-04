@@ -5,12 +5,20 @@ import ShiftStartModal from './ShiftStartModal';
 import { useShiftSession } from '../context/ShiftSessionContext';
 import { ACTIVE_STATION_DEFINITIONS, getStationDisplayName } from '../constants/stations';
 import { getShiftLabel } from '../constants/shifts';
+import { formatScrapLabel } from '../utils/scrapLabel';
 
 /**
  * Shop-floor shift status card — start opens structured modal.
  * Supports concurrent shifts on multiple stations/lines.
  */
-const OperatorShiftWidget = ({ user, stationId, onStationChange }) => {
+const OperatorShiftWidget = ({
+  user,
+  stationId,
+  metricsNok = 0,
+  onStationChange,
+  onEndShift,
+  onResume,
+}) => {
   const {
     shift,
     elapsedLabel,
@@ -25,6 +33,16 @@ const OperatorShiftWidget = ({ user, stationId, onStationChange }) => {
   } = useShiftSession();
   const [showStartModal, setShowStartModal] = useState(false);
   const [showEndConfirm, setShowEndConfirm] = useState(false);
+
+  const finishShift = () => {
+    if (typeof onEndShift === 'function') onEndShift();
+    else endShift({ metricsNok });
+  };
+
+  const handleResumeClick = () => {
+    if (typeof onResume === 'function') onResume();
+    else resumeProduction();
+  };
 
   const statusLabel = !shift.active
     ? 'Pasif'
@@ -68,7 +86,7 @@ const OperatorShiftWidget = ({ user, stationId, onStationChange }) => {
               </>
             )}
             {shift.active && (shift.onBreak || shift.inSetup) && (
-              <button type="button" className="mes-btn-primary" onClick={resumeProduction}>
+              <button type="button" className="mes-btn-primary" onClick={handleResumeClick}>
                 <PlayCircle size={16} />
                 Üretime Dön
               </button>
@@ -163,7 +181,8 @@ const OperatorShiftWidget = ({ user, stationId, onStationChange }) => {
 
       {shift.summary && !shift.active && (
         <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-          Son vardiya özeti: {shift.summary.operatorName} · {getStationDisplayName(shift.summary.stationId)} · {shift.summary.durationMinutes} dk · Fire {shift.summary.scrapCount}
+          Son vardiya özeti: {shift.summary.operatorName} · {getStationDisplayName(shift.summary.stationId)} · {shift.summary.durationMinutes} dk
+          {' · '}{formatScrapLabel(shift.summary.scrapCount, shift.summary.manualScrapCount || 0)}
         </div>
       )}
 
@@ -187,7 +206,8 @@ const OperatorShiftWidget = ({ user, stationId, onStationChange }) => {
             <h3>Vardiyayı Bitir?</h3>
             <p className="mes-helper">
               Yalnızca <strong>{getStationDisplayName(shift.stationId)}</strong> kapanacak.
-              Fire: {shift.scrapCount || 0}
+              Σ Fire: {metricsNok}
+              {(shift.scrapCount || 0) > 0 ? ` · bu vardiyada manuel +${shift.scrapCount}` : ''}
               {otherActive.length > 0
                 ? ` · Diğer ${otherActive.length} hat çalışmaya devam eder.`
                 : ''}
@@ -199,7 +219,7 @@ const OperatorShiftWidget = ({ user, stationId, onStationChange }) => {
                 className="mes-btn-danger"
                 onClick={() => {
                   setShowEndConfirm(false);
-                  endShift();
+                  finishShift();
                 }}
               >
                 <Coffee size={16} />

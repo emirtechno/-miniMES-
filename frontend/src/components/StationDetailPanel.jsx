@@ -2,8 +2,18 @@ import { Activity } from 'lucide-react';
 import InfoTip from './InfoTip';
 import { getStationDisplayName } from '../constants/stations';
 
-const StationDetailPanel = ({ stationsList, selectedStation, onStationChange, stationMetrics, recentTicks = [] }) => (
-  <section className="mes-surface p-5">
+const StationDetailPanel = ({
+  stationsList,
+  selectedStation,
+  onStationChange,
+  stationMetrics,
+  recentTicks = [],
+  className = '',
+}) => (
+  <section
+    id="station-detail-panel"
+    className={`mes-surface relative z-0 p-5 transition ${className}`.trim()}
+  >
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
       <div className="flex items-center gap-2">
         <Activity size={20} className="text-[color:var(--color-vestel)]" />
