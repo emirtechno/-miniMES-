@@ -12,7 +12,7 @@ const StationDetailPanel = ({
 }) => (
   <section
     id="station-detail-panel"
-    className={`mes-surface p-5 scroll-mt-4 transition ring-offset-2 ${className}`.trim()}
+    className={`mes-surface relative z-0 p-5 transition ${className}`.trim()}
   >
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
       <div className="flex items-center gap-2">

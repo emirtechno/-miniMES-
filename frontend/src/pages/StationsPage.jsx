@@ -34,22 +34,23 @@ import { deriveLiveTelemetry } from '../utils/liveTelemetry';
 
 const DETAIL_FLASH_MS = 1400;
 
-/** Scroll target inside `.mes-content` only — never document/body (avoids phantom white space). */
+/** Scroll detail panel inside `.mes-content` only (never scrollIntoView / window). */
 const scrollPanelIntoMesContent = (panel) => {
   if (!panel) return;
   const scroller = panel.closest('.mes-content');
-  if (!scroller) {
-    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
-    return;
-  }
-  const panelTop = panel.getBoundingClientRect().top;
-  const scrollerTop = scroller.getBoundingClientRect().top;
-  const nextTop = scroller.scrollTop + (panelTop - scrollerTop);
-  scroller.scrollTo({ top: Math.max(0, nextTop), behavior: 'smooth' });
-  // Undo any accidental window/document scroll from prior scrollIntoView misuse.
+  if (!scroller) return;
+
   if (window.scrollY !== 0) window.scrollTo(0, 0);
-  if (document.documentElement.scrollTop) document.documentElement.scrollTop = 0;
-  if (document.body.scrollTop) document.body.scrollTop = 0;
+  document.documentElement.scrollTop = 0;
+  document.body.scrollTop = 0;
+
+  const panelRect = panel.getBoundingClientRect();
+  const scrollerRect = scroller.getBoundingClientRect();
+  const nextTop = scroller.scrollTop + (panelRect.top - scrollerRect.top) - 8;
+  const maxTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+  const clamped = Math.min(Math.max(0, nextTop), maxTop);
+  // Instant: avoid animating through large white chart surfaces.
+  scroller.scrollTo({ top: clamped, behavior: 'auto' });
 };
 
 const statusFromMetrics = ({ total, nok, ok, streaming }) => {
@@ -96,6 +97,13 @@ const StationsPage = ({
 
   useEffect(() => () => {
     if (detailFlashTimerRef.current) window.clearTimeout(detailFlashTimerRef.current);
+  }, []);
+
+  // Keep document scroll at 0 while this page is mounted.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
   }, []);
 
   useNonOverlappingPolling(async (signal) => {
@@ -302,7 +310,20 @@ const StationsPage = ({
         </div>
       </section>
 
-      <section className="mes-surface p-5">
+      <StationDetailPanel
+        stationsList={stationDetailOptions}
+        selectedStation={selectedStation}
+        onStationChange={onStationChange}
+        stationMetrics={stationMetrics}
+        recentTicks={recentTicks}
+        className={
+          detailFlash
+            ? 'outline outline-2 outline-[color:var(--color-vestel)] outline-offset-2 bg-red-50/30'
+            : ''
+        }
+      />
+
+      <section className="mes-surface p-5" data-stations-chart>
         <CardHeader
           icon={BarChart3}
           title="İstasyon Bazlı Üretim Hacmi"
@@ -336,19 +357,6 @@ const StationsPage = ({
           )}
         </div>
       </section>
-
-      <StationDetailPanel
-        stationsList={stationDetailOptions}
-        selectedStation={selectedStation}
-        onStationChange={onStationChange}
-        stationMetrics={stationMetrics}
-        recentTicks={recentTicks}
-        className={
-          detailFlash
-            ? 'ring-2 ring-[color:var(--color-vestel)] bg-red-50/30'
-            : ''
-        }
-      />
     </div>
   );
 };

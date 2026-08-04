@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import MachineMetricsPanel from './components/MachineMetricsPanel';
 import {
@@ -88,6 +88,14 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [selectedStationDetail, setSelectedStationDetail] = useState(DEFAULT_STATION);
   const [autoRefresh, setAutoRefresh] = useState(true);
+
+  // Keep document scroll at 0 — nested scrollIntoView / focus can still move window.scrollY
+  // and expose body canvas as a white fog under the fixed shell.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }, [location.pathname]);
 
   const summaryShiftCode = useMemo(() => {
     if (!activeShifts.length) return undefined;
