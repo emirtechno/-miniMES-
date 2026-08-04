@@ -53,13 +53,18 @@ const StationsPage = ({
   onSelectStation,
   byStation = {},
   liveStreaming = false,
-  activeShiftStationId = null,
+  activeShiftStationIds = [],
 }) => {
   const navigate = useNavigate();
   const [lineFilter, setLineFilter] = useState('Tümü');
   const [oeeByStation, setOeeByStation] = useState({});
   const [metricByStation, setMetricByStation] = useState({});
   const [pulse, setPulse] = useState(0);
+
+  const streamingSet = useMemo(
+    () => new Set(activeShiftStationIds || []),
+    [activeShiftStationIds],
+  );
 
   useEffect(() => {
     if (!liveStreaming) return undefined;
@@ -132,7 +137,7 @@ const StationsPage = ({
               Kartlar Live Stream telemetrisini yansıtır: OK/NOK ve OEE MachineMetrics özetinden;
               sıcaklık / RPM / titreşim ise duruş–Actual/Good–çevrimden türetilmiş göstergelerdir (PLC kolonu değil).
               “Detayı Aç” Makine Metrikleri’ne istasyon filtresiyle gider.
-              <InfoTip text="Vardiya Başlat ile Live Stream açılır; duruş/setup sırasında akış duraklar. Sıcaklık/RPM/Titreşim deriveLiveTelemetry ile üretilir." className="ml-1" />
+              <InfoTip text="Vardiya Başlat veya Fabrika Simülasyonu ile Live Stream açılır; birden fazla hat aynı anda çalışabilir. Parti hedefi dolunca o hat otomatik kapanır. Duruş/setup yalnızca o hatta akışı duraklatır." className="ml-1" />
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -155,7 +160,7 @@ const StationsPage = ({
             const total = kpi.actual || 0;
             const ok = kpi.good || 0;
             const nok = kpi.nok || 0;
-            const streamingHere = liveStreaming && activeShiftStationId === station.id;
+            const streamingHere = liveStreaming && streamingSet.has(station.id);
             const status = statusFromMetrics({ total, ok, nok, streaming: streamingHere });
             const StatusIcon = status.Icon;
             const isSelected = selectedStation === station.id;

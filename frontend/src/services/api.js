@@ -170,6 +170,17 @@ export const updateBatchProgress = async (id, payload) => {
   return response.data;
 };
 
+/** Seeds open work orders + lots and returns per-line targets for multi-line Live Stream. */
+export const startFactorySimulation = async (payload = {}) => {
+  const response = await apiClient.post('/Simulation/factory/start', payload);
+  return response.data;
+};
+
+export const fetchFactorySimulationStatus = async ({ signal } = {}) => {
+  const response = await apiClient.get('/Simulation/factory/status', { signal });
+  return response.data;
+};
+
 export const fetchMachineMetrics = async ({ stationId, cursor, limit = 50, signal } = {}) => {
   const response = await apiClient.get('/MachineMetrics', {
     params: {

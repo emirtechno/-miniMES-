@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { PlayCircle, X } from 'lucide-react';
 import { ACTIVE_STATION_DEFINITIONS, DEFAULT_STATION } from '../constants/stations';
 import { SHIFT_SCHEDULES } from '../constants/shifts';
 
 /**
  * Structured dialog for starting a shop-floor shift session.
+ * Other occupied stations remain running; this starts (or replaces) one station.
  */
 const ShiftStartModal = ({
   open,
@@ -13,19 +14,28 @@ const ShiftStartModal = ({
   defaultOperatorName = '',
   defaultOperatorId = '',
   defaultStationId = DEFAULT_STATION,
+  occupiedStationIds = [],
 }) => {
   const [operatorName, setOperatorName] = useState(defaultOperatorName);
   const [operatorId, setOperatorId] = useState(defaultOperatorId);
   const [shiftCode, setShiftCode] = useState(SHIFT_SCHEDULES[0].code);
   const [stationId, setStationId] = useState(defaultStationId);
 
+  const occupied = useMemo(() => new Set(occupiedStationIds), [occupiedStationIds]);
+
+  const preferredDefault = useMemo(() => {
+    if (defaultStationId && !occupied.has(defaultStationId)) return defaultStationId;
+    const free = ACTIVE_STATION_DEFINITIONS.find((station) => !occupied.has(station.id));
+    return free?.id || defaultStationId || DEFAULT_STATION;
+  }, [defaultStationId, occupied]);
+
   useEffect(() => {
     if (!open) return;
     setOperatorName(defaultOperatorName || '');
     setOperatorId(defaultOperatorId || '');
-    setStationId(defaultStationId || DEFAULT_STATION);
+    setStationId(preferredDefault);
     setShiftCode(SHIFT_SCHEDULES[0].code);
-  }, [open, defaultOperatorName, defaultOperatorId, defaultStationId]);
+  }, [open, defaultOperatorName, defaultOperatorId, preferredDefault]);
 
   if (!open) return null;
 
@@ -40,6 +50,8 @@ const ShiftStartModal = ({
     });
   };
 
+  const selectedOccupied = occupied.has(stationId);
+
   return (
     <div className="modal-overlay" role="presentation" onClick={onClose}>
       <div
@@ -52,7 +64,9 @@ const ShiftStartModal = ({
         <div className="flex items-start justify-between gap-3">
           <div>
             <h3 id="shift-start-title" className="m-0">Vardiya Başlat</h3>
-            <p className="mes-helper mb-0 mt-1">Operatör, vardiya ve istasyon bilgisini girin.</p>
+            <p className="mes-helper mb-0 mt-1">
+              Operatör, vardiya ve istasyon bilgisini girin. Diğer aktif hatlar çalışmaya devam eder.
+            </p>
           </div>
           <button type="button" className="mes-btn-ghost" onClick={onClose} aria-label="Kapat">
             <X size={16} />
@@ -95,10 +109,16 @@ const ShiftStartModal = ({
               {ACTIVE_STATION_DEFINITIONS.map((station) => (
                 <option key={station.id} value={station.id}>
                   {station.displayName} ({station.line})
+                  {occupied.has(station.id) ? ' — zaten aktif' : ''}
                 </option>
               ))}
             </select>
           </label>
+          {selectedOccupied && (
+            <p className="mes-helper m-0 text-amber-800">
+              Bu istasyonda zaten aktif vardiya var; başlatırsanız mevcut oturum yenilenir. Diğer hatlar etkilenmez.
+            </p>
+          )}
 
           <div className="confirm-actions">
             <button type="button" className="mes-btn-secondary" onClick={onClose}>Vazgeç</button>

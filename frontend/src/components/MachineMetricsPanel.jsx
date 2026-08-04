@@ -35,6 +35,7 @@ const resolveInitialStation = (param) => {
 const MachineMetricsPanel = ({
   isFactorySimulationActive = false,
   shiftStationId,
+  shiftStationIds = [],
   shiftActive = false,
   stationKpi,
   batches = [],
@@ -201,10 +202,16 @@ const MachineMetricsPanel = ({
           <span className="inline-flex items-center gap-2 font-semibold">
             <Activity size={16} className={isFactorySimulationActive ? 'animate-pulse' : ''} />
             {isFactorySimulationActive
-              ? `Live Stream açık${shiftStationId ? ` · istasyon ${getStationDisplayName(shiftStationId)}` : ''} — telemetri ve lot ilerlemesi güncelleniyor.`
+              ? `Live Stream açık${
+                (shiftStationIds?.length || 0) > 1
+                  ? ` · ${shiftStationIds.length} hat (${shiftStationIds.map(getStationDisplayName).join(', ')})`
+                  : shiftStationId
+                    ? ` · istasyon ${getStationDisplayName(shiftStationId)}`
+                    : ''
+              } — telemetri ve lot ilerlemesi güncelleniyor.`
               : shiftActive
                 ? 'Vardiya aktif ancak duruş/setup’ta — Live Stream duraklatıldı. Üretime dönünce akış devam eder.'
-                : 'Live Stream kapalı — Operatör Panelinden Vardiya Başlat ile telemetri motorunu açın.'}
+                : 'Live Stream kapalı — Operatör Panelinden Vardiya Başlat ile telemetri motorunu açın (çoklu hat desteklenir).'}
           </span>
           <p className="mt-2 mb-0 text-xs opacity-80">
             * Sıcaklık / RPM / Titreşim alanları PLC kolonundan gelmez; MachineMetrics (duruş, Actual/Good, çevrim)

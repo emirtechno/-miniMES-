@@ -25,15 +25,37 @@ const pickDowntimeReason = (downtimeSeconds) => {
   return pool[Math.floor(Math.random() * pool.length)];
 };
 
+const buildTickPayload = (stationId, shiftCode) => {
+  const actual = 100 + Math.floor(Math.random() * 41); // 100–140 industrial batch size
+  const scrap = Math.floor(Math.random() * 8);
+  const good = Math.max(0, actual - scrap);
+  const downtimeSeconds = Math.floor(Math.random() * 70);
+  return {
+    stationId,
+    plannedProductionSeconds: 300,
+    downtimeSeconds,
+    downtimeReasonCode: pickDowntimeReason(downtimeSeconds),
+    shiftCode: shiftCode || undefined,
+    idealCycleTimeSeconds: 2,
+    actualProductionCount: actual,
+    goodProductionCount: good,
+    recordedAt: new Date().toISOString(),
+    _scrap: scrap,
+  };
+};
+
 /**
  * Machine Telemetry SSOT engine.
  * Live Stream writes MachineMetrics batch ticks; all KPIs aggregate from those rows.
+ * Supports concurrent multi-station streams from active shifts.
  */
 export function useTelemetry({
   isAuthenticated,
   canIngestTelemetry,
   autoRefresh,
   liveStreamActive,
+  streamStations = [],
+  /** @deprecated Prefer streamStations — kept for single-station callers */
   streamStationId,
   shiftCode,
   onSimulatedAnomalies,
@@ -44,6 +66,26 @@ export function useTelemetry({
   const [byStation, setByStation] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  const resolvedStreams = useMemo(() => {
+    if (Array.isArray(streamStations) && streamStations.length > 0) {
+      return streamStations
+        .filter((entry) => entry?.stationId && ACTIVE_STATIONS.includes(entry.stationId))
+        .map((entry) => ({
+          stationId: entry.stationId,
+          shiftCode: entry.shiftCode || shiftCode,
+        }));
+    }
+    if (streamStationId && ACTIVE_STATIONS.includes(streamStationId)) {
+      return [{ stationId: streamStationId, shiftCode }];
+    }
+    return [];
+  }, [streamStations, streamStationId, shiftCode]);
+
+  const streamResetKey = useMemo(
+    () => resolvedStreams.map((entry) => `${entry.stationId}:${entry.shiftCode || ''}`).sort().join('|'),
+    [resolvedStreams],
+  );
 
   const applySummaries = useCallback((rows) => {
     const plantRow = (rows || []).find((row) => !row.stationId);
@@ -108,56 +150,46 @@ export function useTelemetry({
     },
   );
 
-  // Shift-driven Live Stream → POST MachineMetrics batch ticks (not 1-by-1 Uretim).
+  // Shift-driven Live Stream → POST MachineMetrics batch ticks for every streaming station.
   useNonOverlappingPolling(async (signal) => {
-    const focusedStation = streamStationId
-      && ACTIVE_STATIONS.includes(streamStationId)
-      ? streamStationId
-      : ACTIVE_STATIONS[Math.floor(Math.random() * ACTIVE_STATIONS.length)] || DEFAULT_STATION;
+    const targets = resolvedStreams.length > 0
+      ? resolvedStreams
+      : [{
+        stationId: ACTIVE_STATIONS[Math.floor(Math.random() * ACTIVE_STATIONS.length)] || DEFAULT_STATION,
+        shiftCode,
+      }];
 
-    const actual = 100 + Math.floor(Math.random() * 41); // 100–140 industrial batch size
-    const scrap = Math.floor(Math.random() * 8);
-    const good = Math.max(0, actual - scrap);
-    const downtimeSeconds = Math.floor(Math.random() * 70);
-    const payload = {
-      stationId: focusedStation,
-      plannedProductionSeconds: 300,
-      downtimeSeconds,
-      downtimeReasonCode: pickDowntimeReason(downtimeSeconds),
-      shiftCode: shiftCode || undefined,
-      idealCycleTimeSeconds: 2,
-      actualProductionCount: actual,
-      goodProductionCount: good,
-      recordedAt: new Date().toISOString(),
-    };
+    for (const stream of targets) {
+      const payload = buildTickPayload(stream.stationId, stream.shiftCode);
+      const { _scrap: scrap, ...apiPayload } = payload;
+      await createMachineMetric(apiPayload, { signal });
 
-    await createMachineMetric(payload, { signal });
-
-    const telemetry = deriveLiveTelemetry(
-      {
-        downtimeSeconds,
-        actualProductionCount: actual,
-        goodProductionCount: good,
-        idealCycleTimeSeconds: 2,
-      },
-      Date.now(),
-      true,
-    );
-    const anomalies = detectTelemetryAnomalies(telemetry, { nokSpike: scrap >= 6 });
-    if (anomalies.length && typeof onSimulatedAnomalies === 'function') {
-      try {
-        await onSimulatedAnomalies(focusedStation, anomalies, { signal });
-      } catch (err) {
-        console.error(err);
+      const telemetry = deriveLiveTelemetry(
+        {
+          downtimeSeconds: payload.downtimeSeconds,
+          actualProductionCount: payload.actualProductionCount,
+          goodProductionCount: payload.goodProductionCount,
+          idealCycleTimeSeconds: 2,
+        },
+        Date.now(),
+        true,
+      );
+      const anomalies = detectTelemetryAnomalies(telemetry, { nokSpike: scrap >= 6 });
+      if (anomalies.length && typeof onSimulatedAnomalies === 'function') {
+        try {
+          await onSimulatedAnomalies(stream.stationId, anomalies, { signal });
+        } catch (err) {
+          console.error(err);
+        }
       }
     }
 
     await refresh(signal, { background: true });
   }, {
-    enabled: liveStreamActive && canIngestTelemetry,
+    enabled: liveStreamActive && canIngestTelemetry && resolvedStreams.length > 0,
     intervalMs: 10000,
     runImmediately: true,
-    resetKey: `${streamStationId || ''}:${liveStreamActive}:${shiftCode || ''}`,
+    resetKey: `${streamResetKey}:${liveStreamActive}`,
   });
 
   const stationChartData = useMemo(

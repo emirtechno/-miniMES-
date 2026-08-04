@@ -68,6 +68,15 @@ export function useWorkOrders({
     },
   );
 
+  useNonOverlappingPolling(
+    (signal) => loadWorkOrders(signal),
+    {
+      enabled: isAuthenticated,
+      intervalMs: 12000,
+      runImmediately: false,
+    },
+  );
+
   const handleWorkOrderSubmit = useCallback(async (event) => {
     event.preventDefault();
     if (!canManageWorkOrders) {
