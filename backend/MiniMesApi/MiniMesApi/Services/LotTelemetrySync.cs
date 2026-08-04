@@ -5,6 +5,7 @@ namespace MiniMesApi.Services;
 
 /// <summary>
 /// Advances open lots from Live Stream / PLC batch ticks (GoodProductionCount deltas).
+/// Completes linked work orders when their executing lot reaches target.
 /// </summary>
 public interface ILotTelemetrySync
 {
@@ -26,13 +27,14 @@ public sealed class LotTelemetrySync(MesDbContext context) : ILotTelemetrySync
 
         if (openBatches.Count == 0) return;
 
+        var completedWorkOrderIds = new HashSet<int>();
         var remaining = goodUnits;
         foreach (var batch in openBatches)
         {
             if (remaining <= 0) break;
 
             // Legacy demo targets (~50–200) fill in one ~120-unit tick — scale before applying.
-            if (batch.TargetQuantity > 0 && batch.TargetQuantity < 500)
+            if (batch.TargetQuantity > 0 && batch.TargetQuantity < 500 && batch.WorkOrderId is null)
             {
                 batch.TargetQuantity = 1000;
             }
@@ -46,6 +48,36 @@ public sealed class LotTelemetrySync(MesDbContext context) : ILotTelemetrySync
                 : BatchStatuses.InProgress;
             batch.UpdatedAt = DateTimeOffset.UtcNow;
             remaining -= apply;
+
+            if (batch.Status == BatchStatuses.Completed && batch.WorkOrderId is int workOrderId)
+            {
+                completedWorkOrderIds.Add(workOrderId);
+            }
+        }
+
+        if (completedWorkOrderIds.Count > 0)
+        {
+            var workOrders = await context.WorkOrders
+                .Where(order => completedWorkOrderIds.Contains(order.Id))
+                .ToListAsync(cancellationToken);
+
+            foreach (var order in workOrders)
+            {
+                // Complete WO when its linked lot hits target (1:1 sim model).
+                if (order.Status != WorkOrderStatuses.Completed)
+                {
+                    order.Status = WorkOrderStatuses.Completed;
+                }
+            }
+        }
+
+        // Soft link: station WO without FK still advances to InProgress on first production.
+        var openStationOrders = await context.WorkOrders
+            .Where(order => order.Station == stationId && order.Status == WorkOrderStatuses.Waiting)
+            .ToListAsync(cancellationToken);
+        foreach (var order in openStationOrders)
+        {
+            order.Status = WorkOrderStatuses.InProgress;
         }
 
         await context.SaveChangesAsync(cancellationToken);

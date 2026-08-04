@@ -12,8 +12,8 @@ using MiniMesApi.Models;
 namespace MiniMesApi.Migrations
 {
     [DbContext(typeof(MesDbContext))]
-    [Migration("20260803082334_AddPhaseThreePaginationConcurrency")]
-    partial class AddPhaseThreePaginationConcurrency
+    [Migration("20260804074239_AddBatchWorkOrderLink")]
+    partial class AddBatchWorkOrderLink
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -166,10 +166,24 @@ namespace MiniMesApi.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<DateTimeOffset?>("AcknowledgedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("AcknowledgedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<string>("Description")
                         .IsRequired()
                         .HasMaxLength(400)
                         .HasColumnType("nvarchar(400)");
+
+                    b.Property<DateTimeOffset?>("ResolvedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ResolvedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("Severity")
                         .IsRequired()
@@ -186,8 +200,8 @@ namespace MiniMesApi.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
-                    b.Property<DateTime>("Time")
-                        .HasColumnType("datetime2");
+                    b.Property<DateTimeOffset>("Time")
+                        .HasColumnType("datetimeoffset");
 
                     b.Property<string>("Title")
                         .IsRequired()
@@ -275,6 +289,55 @@ namespace MiniMesApi.Migrations
                     b.ToTable("AspNetUsers", (string)null);
                 });
 
+            modelBuilder.Entity("MiniMesApi.Models.AuditLog", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("ActorUserId")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("ActorUsername")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Details")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("EntityId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<DateTimeOffset>("OccurredAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OccurredAtUtc")
+                        .IsDescending();
+
+                    b.HasIndex("EntityType", "EntityId", "OccurredAtUtc")
+                        .IsDescending(false, false, true);
+
+                    b.ToTable("AuditLogs");
+                });
+
             modelBuilder.Entity("MiniMesApi.Models.Batch", b =>
                 {
                     b.Property<int>("Id")
@@ -287,6 +350,9 @@ namespace MiniMesApi.Migrations
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("ProducedQuantity")
+                        .HasColumnType("int");
 
                     b.Property<string>("Product")
                         .IsRequired()
@@ -306,16 +372,31 @@ namespace MiniMesApi.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)");
 
-                    b.Property<string>("UpdatedAt")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("nvarchar(32)");
+                    b.Property<int>("TargetQuantity")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("WorkOrderId")
+                        .HasColumnType("int");
 
                     b.HasKey("Id");
 
                     b.HasIndex("ProductId");
 
-                    b.ToTable("Batches");
+                    b.HasIndex("WorkOrderId");
+
+                    b.HasIndex("Station", "Status");
+
+                    b.ToTable("Batches", t =>
+                        {
+                            t.HasCheckConstraint("CK_Batches_ProducedQuantity", "[ProducedQuantity] >= 0");
+
+                            t.HasCheckConstraint("CK_Batches_Status", "[Status] IN (N'Bekliyor', N'İşlemde', N'Tamamlandı')");
+
+                            t.HasCheckConstraint("CK_Batches_TargetQuantity", "[TargetQuantity] > 0");
+                        });
                 });
 
             modelBuilder.Entity("MiniMesApi.Models.MachineMetric", b =>
@@ -329,6 +410,11 @@ namespace MiniMesApi.Migrations
                     b.Property<int>("ActualProductionCount")
                         .HasColumnType("int");
 
+                    b.Property<string>("DowntimeReasonCode")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
                     b.Property<double>("DowntimeSeconds")
                         .HasColumnType("float");
 
@@ -341,8 +427,13 @@ namespace MiniMesApi.Migrations
                     b.Property<double>("PlannedProductionSeconds")
                         .HasColumnType("float");
 
-                    b.Property<DateTime>("RecordedAt")
-                        .HasColumnType("datetime2");
+                    b.Property<DateTimeOffset>("RecordedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ShiftCode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
                     b.Property<string>("StationId")
                         .IsRequired()
@@ -351,8 +442,12 @@ namespace MiniMesApi.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("DowntimeReasonCode");
+
                     b.HasIndex("RecordedAt", "Id")
                         .IsDescending();
+
+                    b.HasIndex("ShiftCode", "RecordedAt");
 
                     b.HasIndex("StationId", "RecordedAt", "Id")
                         .IsDescending(false, true, true);
@@ -361,7 +456,13 @@ namespace MiniMesApi.Migrations
                         {
                             t.HasCheckConstraint("CK_MachineMetrics_Counts", "[ActualProductionCount] >= 0 AND [GoodProductionCount] >= 0 AND [GoodProductionCount] <= [ActualProductionCount]");
 
+                            t.HasCheckConstraint("CK_MachineMetrics_DowntimeReason", "[DowntimeReasonCode] IN (N'NONE', N'PLANNED_MAINTENANCE', N'BREAKDOWN', N'MATERIAL_SHORTAGE', N'CHANGEOVER', N'NO_OPERATOR', N'QUALITY_HOLD', N'OTHER')");
+
+                            t.HasCheckConstraint("CK_MachineMetrics_DowntimeReasonConsistency", "([DowntimeSeconds] = 0 AND [DowntimeReasonCode] = N'NONE') OR ([DowntimeSeconds] > 0 AND [DowntimeReasonCode] <> N'NONE')");
+
                             t.HasCheckConstraint("CK_MachineMetrics_Durations", "[PlannedProductionSeconds] > 0 AND [DowntimeSeconds] >= 0 AND [DowntimeSeconds] <= [PlannedProductionSeconds] AND [IdealCycleTimeSeconds] > 0");
+
+                            t.HasCheckConstraint("CK_MachineMetrics_ShiftCode", "[ShiftCode] IN (N'SHIFT_A', N'SHIFT_B', N'SHIFT_C')");
                         });
                 });
 
@@ -373,8 +474,8 @@ namespace MiniMesApi.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
 
                     b.Property<string>("Description")
                         .IsRequired()
@@ -407,6 +508,17 @@ namespace MiniMesApi.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("ID"));
 
+                    b.Property<DateTimeOffset?>("DeletedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DeletedByUserId")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("DeletedByUsername")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
@@ -425,8 +537,8 @@ namespace MiniMesApi.Migrations
                         .HasMaxLength(12)
                         .HasColumnType("nvarchar(12)");
 
-                    b.Property<DateTime>("UretimTarihi")
-                        .HasColumnType("datetime2");
+                    b.Property<DateTimeOffset>("UretimTarihi")
+                        .HasColumnType("datetimeoffset");
 
                     b.Property<string>("Urun20liKod")
                         .IsRequired()
@@ -438,6 +550,8 @@ namespace MiniMesApi.Migrations
                     b.HasIndex("Urun20liKod")
                         .IsUnique()
                         .HasFilter("[IsDeleted] = 0");
+
+                    b.HasIndex("IsDeleted", "DeletedAtUtc");
 
                     b.HasIndex("IsDeleted", "UretimTarihi", "ID")
                         .IsDescending(false, true, true);
@@ -493,6 +607,8 @@ namespace MiniMesApi.Migrations
                     b.ToTable("WorkOrders", t =>
                         {
                             t.HasCheckConstraint("CK_WorkOrders_Quantity", "[Quantity] > 0");
+
+                            t.HasCheckConstraint("CK_WorkOrders_Status", "[Status] IN (N'Bekliyor', N'Devam Ediyor', N'Tamamlandı')");
                         });
                 });
 
@@ -540,11 +656,11 @@ namespace MiniMesApi.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
 
-                    b.Property<DateTime>("EntryTime")
-                        .HasColumnType("datetime2");
+                    b.Property<DateTimeOffset>("EntryTime")
+                        .HasColumnType("datetimeoffset");
 
-                    b.Property<DateTime?>("ExitTime")
-                        .HasColumnType("datetime2");
+                    b.Property<DateTimeOffset?>("ExitTime")
+                        .HasColumnType("datetimeoffset");
 
                     b.Property<int>("StationId")
                         .HasColumnType("int");
@@ -660,6 +776,13 @@ namespace MiniMesApi.Migrations
                     b.HasOne("MiniMesApi.Models.Product", null)
                         .WithMany("Batches")
                         .HasForeignKey("ProductId");
+
+                    b.HasOne("MiniMesApi.Models.WorkOrder", "WorkOrder")
+                        .WithMany()
+                        .HasForeignKey("WorkOrderId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("WorkOrder");
                 });
 
             modelBuilder.Entity("TraceabilityLog", b =>

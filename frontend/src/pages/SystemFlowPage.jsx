@@ -38,8 +38,9 @@ const SystemFlowPage = () => (
           Live Stream yazımı
         </h2>
         <p className="mes-helper mt-2">
-          Vardiya Başlat → her ~10 sn <code>POST /MachineMetrics</code> ile ~100–140 adetlik batch tick.
-          Duruş/setup pause; vardiya bitince stream durur. Andon anomali (titreşim/ısınma/duruş/fire) aynı tick’ten doğar.
+          Vardiya Başlat veya Fabrika Simülasyonu → her ~10 sn aktif hatlar için <code>POST /MachineMetrics</code> (~100–140 adetlik batch).
+          Simülasyon sunucuda rastgele iş emri + parti (200–1500) oluşturur; hedef dolunca lot/WO tamamlanır ve o hattın vardiyası kapanır.
+          Birden fazla hat aynı anda stream edebilir. Duruş/setup yalnızca o hattı pause eder.
         </p>
       </article>
       <article className="mes-surface p-5">
@@ -64,17 +65,17 @@ const SystemFlowPage = () => (
         </h2>
       </div>
       <pre className="m-0 overflow-x-auto bg-slate-950 p-5 font-mono text-xs leading-6 text-slate-100">
-{`[Vardiya Başlat]
-      |
+{`[Fabrika Simülasyonu / Vardiya Başlat] (N hat)
+      |  POST /Simulation/factory/start → WO + Lot (rastgele hedef)
       v
-[Live Stream] --POST--> [MachineMetrics] <-- OeeSimulationService (dev seed)
+[Live Stream × N] --POST--> [MachineMetrics] <-- OeeSimulationService (dev seed)
       |                        |
       |                        +--> GET /summary --> Plant / Operator / Stations KPIs
       |                        +--> OeeCalculator --> SignalR oeeUpdated --> Andon
-      |                        +--> Σ Good --> Batch.ProducedQuantity (lot bars)
+      |                        +--> Σ Good --> Batch.ProducedQuantity (+ WO complete)
       v
 [Anomali] --> POST /Alarm --> Andon
-[Vardiya Bitir / Duruş] --> Live Stream PAUSE`}
+[Hedef doldu / Vardiya Bitir] --> o hat PAUSE (diğerleri devam)`}
       </pre>
     </section>
 

@@ -34,7 +34,10 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowReactApp",
         policy => policy.WithOrigins(allowedOrigins)
                         .AllowAnyHeader()
-                        .AllowAnyMethod());
+                        .AllowAnyMethod()
+                        // Required for browser SignalR (negotiate + WebSockets) when the UI
+                        // talks to the API cross-origin instead of via the Vite /hubs proxy.
+                        .AllowCredentials());
 });
 
 // 1. Veritabanı Bağlantısı
@@ -73,8 +76,8 @@ if (jwt.Key.Length < 32)
 
 builder.Services.AddIdentityCore<ApplicationUser>(options =>
     {
-        // Factory-operator friendly: length + digit only (no symbol / case maze).
-        options.Password.RequiredLength = 6;
+        // Factory-operator friendly: short numeric PINs (e.g. admin/123) allowed.
+        options.Password.RequiredLength = 3;
         options.Password.RequireDigit = true;
         options.Password.RequireLowercase = false;
         options.Password.RequireUppercase = false;
@@ -209,6 +212,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IAuditLogService, AuditLogService>();
 builder.Services.AddScoped<ILotTelemetrySync, LotTelemetrySync>();
+builder.Services.AddScoped<IFactorySimulationService, FactorySimulationService>();
 builder.Services.AddSingleton<IMesRealtimePublisher, MesRealtimePublisher>();
 builder.Services.AddSignalR();
 
@@ -262,7 +266,11 @@ if (!isTesting)
         var db = scope.ServiceProvider.GetRequiredService<MesDbContext>();
         var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("DatabaseInitialization");
         await db.Database.MigrateAsync();
-        await IdentityBootstrapper.InitializeAsync(scope.ServiceProvider, builder.Configuration, logger);
+        await IdentityBootstrapper.InitializeAsync(
+            scope.ServiceProvider,
+            builder.Configuration,
+            app.Environment,
+            logger);
 
         if (app.Environment.IsDevelopment())
         {

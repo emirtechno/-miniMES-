@@ -375,9 +375,16 @@ namespace MiniMesApi.Migrations
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<int?>("WorkOrderId")
+                        .HasColumnType("int");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ProductId");
+
+                    b.HasIndex("WorkOrderId");
+
+                    b.HasIndex("Station", "Status");
 
                     b.ToTable("Batches", t =>
                         {
@@ -766,6 +773,13 @@ namespace MiniMesApi.Migrations
                     b.HasOne("MiniMesApi.Models.Product", null)
                         .WithMany("Batches")
                         .HasForeignKey("ProductId");
+
+                    b.HasOne("MiniMesApi.Models.WorkOrder", "WorkOrder")
+                        .WithMany()
+                        .HasForeignKey("WorkOrderId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("WorkOrder");
                 });
 
             modelBuilder.Entity("TraceabilityLog", b =>

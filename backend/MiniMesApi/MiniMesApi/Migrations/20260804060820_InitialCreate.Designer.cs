@@ -12,8 +12,8 @@ using MiniMesApi.Models;
 namespace MiniMesApi.Migrations
 {
     [DbContext(typeof(MesDbContext))]
-    [Migration("20260803095810_AddDomainInvariantsShiftDowntimeAudit")]
-    partial class AddDomainInvariantsShiftDowntimeAudit
+    [Migration("20260804060820_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -166,10 +166,24 @@ namespace MiniMesApi.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<DateTimeOffset?>("AcknowledgedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("AcknowledgedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<string>("Description")
                         .IsRequired()
                         .HasMaxLength(400)
                         .HasColumnType("nvarchar(400)");
+
+                    b.Property<DateTimeOffset?>("ResolvedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ResolvedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("Severity")
                         .IsRequired()
@@ -337,6 +351,9 @@ namespace MiniMesApi.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
+                    b.Property<int>("ProducedQuantity")
+                        .HasColumnType("int");
+
                     b.Property<string>("Product")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -355,6 +372,9 @@ namespace MiniMesApi.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)");
 
+                    b.Property<int>("TargetQuantity")
+                        .HasColumnType("int");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -362,7 +382,14 @@ namespace MiniMesApi.Migrations
 
                     b.HasIndex("ProductId");
 
-                    b.ToTable("Batches");
+                    b.ToTable("Batches", t =>
+                        {
+                            t.HasCheckConstraint("CK_Batches_ProducedQuantity", "[ProducedQuantity] >= 0");
+
+                            t.HasCheckConstraint("CK_Batches_Status", "[Status] IN (N'Bekliyor', N'İşlemde', N'Tamamlandı')");
+
+                            t.HasCheckConstraint("CK_Batches_TargetQuantity", "[TargetQuantity] > 0");
+                        });
                 });
 
             modelBuilder.Entity("MiniMesApi.Models.MachineMetric", b =>
