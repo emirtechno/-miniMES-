@@ -34,7 +34,10 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowReactApp",
         policy => policy.WithOrigins(allowedOrigins)
                         .AllowAnyHeader()
-                        .AllowAnyMethod());
+                        .AllowAnyMethod()
+                        // Required for browser SignalR (negotiate + WebSockets) when the UI
+                        // talks to the API cross-origin instead of via the Vite /hubs proxy.
+                        .AllowCredentials());
 });
 
 // 1. Veritabanı Bağlantısı
