@@ -8,6 +8,7 @@ public static class IdentityBootstrapper
     public static async Task InitializeAsync(
         IServiceProvider serviceProvider,
         IConfiguration configuration,
+        IHostEnvironment environment,
         ILogger logger)
     {
         var roleManager = serviceProvider.GetRequiredService<RoleManager<IdentityRole>>();
@@ -20,34 +21,89 @@ public static class IdentityBootstrapper
             }
         }
 
-        var username = configuration["IdentityBootstrap:AdminUsername"];
-        var password = configuration["IdentityBootstrap:AdminPassword"];
+        var userManager = serviceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        // Development: keep documented local passwords in sync (create or reset).
+        // Other environments: create only when missing — never overwrite existing hashes.
+        var syncPasswords = environment.IsDevelopment();
+
+        await EnsureSeedUserAsync(
+            userManager,
+            username: configuration["IdentityBootstrap:AdminUsername"],
+            password: configuration["IdentityBootstrap:AdminPassword"],
+            displayName: configuration["IdentityBootstrap:AdminDisplayName"],
+            email: configuration["IdentityBootstrap:AdminEmail"],
+            role: AppRoles.Admin,
+            syncPassword: syncPasswords,
+            logger);
+
+        await EnsureSeedUserAsync(
+            userManager,
+            username: configuration["IdentityBootstrap:OperatorUsername"],
+            password: configuration["IdentityBootstrap:OperatorPassword"],
+            displayName: configuration["IdentityBootstrap:OperatorDisplayName"],
+            email: configuration["IdentityBootstrap:OperatorEmail"],
+            role: AppRoles.Operator,
+            syncPassword: syncPasswords,
+            logger);
+    }
+
+    private static async Task EnsureSeedUserAsync(
+        UserManager<ApplicationUser> userManager,
+        string? username,
+        string? password,
+        string? displayName,
+        string? email,
+        string role,
+        bool syncPassword,
+        ILogger logger)
+    {
         if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
         {
-            logger.LogInformation("Identity bootstrap yöneticisi yapılandırılmadı.");
             return;
         }
 
-        var userManager = serviceProvider.GetRequiredService<UserManager<ApplicationUser>>();
         var user = await userManager.FindByNameAsync(username);
         if (user is null)
         {
             user = new ApplicationUser
             {
                 UserName = username,
-                DisplayName = configuration["IdentityBootstrap:AdminDisplayName"] ?? username,
-                Email = configuration["IdentityBootstrap:AdminEmail"],
-                EmailConfirmed = true
+                DisplayName = string.IsNullOrWhiteSpace(displayName) ? username : displayName,
+                Email = email,
+                EmailConfirmed = true,
+                IsActive = true
             };
 
             var createResult = await userManager.CreateAsync(user, password);
-            EnsureSucceeded(createResult, "Bootstrap yöneticisi oluşturulamadı.");
+            EnsureSucceeded(createResult, $"Bootstrap kullanıcısı '{username}' oluşturulamadı.");
+            logger.LogInformation("Bootstrap kullanıcısı oluşturuldu: {Username} ({Role})", username, role);
+        }
+        else if (syncPassword)
+        {
+            if (!await userManager.CheckPasswordAsync(user, password))
+            {
+                var token = await userManager.GeneratePasswordResetTokenAsync(user);
+                var resetResult = await userManager.ResetPasswordAsync(user, token, password);
+                EnsureSucceeded(resetResult, $"Bootstrap kullanıcısı '{username}' parolası güncellenemedi.");
+                logger.LogInformation(
+                    "Development: bootstrap kullanıcısı parolası senkronize edildi: {Username}",
+                    username);
+            }
+
+            if (!user.IsActive)
+            {
+                user.IsActive = true;
+                EnsureSucceeded(await userManager.UpdateAsync(user), $"'{username}' etkinleştirilemedi.");
+            }
+
+            await userManager.SetLockoutEndDateAsync(user, null);
+            await userManager.ResetAccessFailedCountAsync(user);
         }
 
-        if (!await userManager.IsInRoleAsync(user, AppRoles.Admin))
+        if (!await userManager.IsInRoleAsync(user, role))
         {
-            var roleResult = await userManager.AddToRoleAsync(user, AppRoles.Admin);
-            EnsureSucceeded(roleResult, "Bootstrap yöneticisine Admin rolü atanamadı.");
+            var roleResult = await userManager.AddToRoleAsync(user, role);
+            EnsureSucceeded(roleResult, $"Bootstrap kullanıcısına '{role}' rolü atanamadı.");
         }
     }
 
