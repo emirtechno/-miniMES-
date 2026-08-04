@@ -304,6 +304,8 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
                   batches={workOrders.batches}
                   liveStreaming={liveStreamActive}
                   canIngestTelemetry={canIngestTelemetry}
+                  ingestManualScrap={telemetry.ingestManualScrap}
+                  ingestDowntimeTick={telemetry.ingestDowntimeTick}
                   onRefreshOrders={async () => {
                     await Promise.all([
                       workOrders.loadWorkOrders?.(),

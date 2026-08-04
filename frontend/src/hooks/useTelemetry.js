@@ -213,6 +213,70 @@ export function useTelemetry({
     [recentTicks],
   );
 
+  /**
+   * Manual shop-floor scrap: append-only MachineMetrics tick (Actual=N, Good=0).
+   * Additive MES rule — Σ Fire (Actual−Good) increases by N and persists after shift end.
+   */
+  const ingestManualScrap = useCallback(async ({ stationId, amount, shiftCode: scrapShiftCode } = {}) => {
+    if (!canIngestTelemetry) {
+      throw new Error('Fire kaydı için production.write yetkisi gerekir.');
+    }
+    const qty = Math.max(1, Math.min(999, Number(amount) || 1));
+    const targetStation = stationId || DEFAULT_STATION;
+    if (!ACTIVE_STATIONS.includes(targetStation)) {
+      throw new Error('Geçersiz istasyon kimliği.');
+    }
+
+    await createMachineMetric({
+      stationId: targetStation,
+      plannedProductionSeconds: 60,
+      downtimeSeconds: 0,
+      downtimeReasonCode: 'NONE',
+      shiftCode: scrapShiftCode || undefined,
+      idealCycleTimeSeconds: 2,
+      actualProductionCount: qty,
+      goodProductionCount: 0,
+      recordedAt: new Date().toISOString(),
+    });
+    await refresh(undefined, { background: true });
+    return qty;
+  }, [canIngestTelemetry, refresh]);
+
+  /**
+   * When operator ends downtime/setup, write accumulated stoppage into MachineMetrics
+   * so Availability / Andon reflect the pause (not only local shift flags).
+   */
+  const ingestDowntimeTick = useCallback(async ({
+    stationId,
+    downtimeSeconds,
+    reasonCode,
+    shiftCode: dtShiftCode,
+  } = {}) => {
+    if (!canIngestTelemetry) return null;
+    const secs = Math.max(1, Math.min(3600, Math.floor(Number(downtimeSeconds) || 0)));
+    if (secs <= 0) return null;
+    const targetStation = stationId || DEFAULT_STATION;
+    if (!ACTIVE_STATIONS.includes(targetStation)) {
+      throw new Error('Geçersiz istasyon kimliği.');
+    }
+    const reason = reasonCode && reasonCode !== 'NONE' ? reasonCode : 'OTHER';
+    const planned = Math.max(secs, 60);
+
+    await createMachineMetric({
+      stationId: targetStation,
+      plannedProductionSeconds: planned,
+      downtimeSeconds: secs,
+      downtimeReasonCode: reason,
+      shiftCode: dtShiftCode || undefined,
+      idealCycleTimeSeconds: 2,
+      actualProductionCount: 0,
+      goodProductionCount: 0,
+      recordedAt: new Date().toISOString(),
+    });
+    await refresh(undefined, { background: true });
+    return secs;
+  }, [canIngestTelemetry, refresh]);
+
   return {
     metrics,
     recentTicks,
@@ -224,6 +288,8 @@ export function useTelemetry({
     loading,
     error,
     refresh: () => refresh(undefined, { background: false }),
+    ingestManualScrap,
+    ingestDowntimeTick,
     notifyError: notify,
   };
 }

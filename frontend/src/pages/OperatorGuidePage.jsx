@@ -12,7 +12,7 @@ const sections = [
     icon: HardHat,
     title: 'Operatör Paneli',
     path: '/operator',
-    body: 'Vardiya Başlat Live Stream’i açar; birden fazla hat aynı anda çalışabilir. “Fabrika Simülasyonu Başlat” tüm üretim hatlarında rastgele iş emri + parti oluşturur; hedef miktara ulaşınca hat otomatik kapanır.',
+    body: 'Vardiya Başlat Live Stream’i açar; birden fazla hat aynı anda çalışabilir. “Fire / Hata Girişi” Σ Fire’a ekler (MachineMetrics Actual=N, Good=0). “Fabrika Simülasyonu” tüm hatlarda rastgele WO/parti açar.',
   },
   {
     icon: Wrench,
@@ -78,8 +78,9 @@ const OperatorGuidePage = () => (
       <ol className="mt-3 space-y-2 text-sm">
         <li>1. Vardiya Başlat / “Başka Hat Başlat” veya “Fabrika Simülasyonu Başlat” (tüm üretim hatları + rastgele WO/parti)</li>
         <li>2. Live Stream → her aktif hatta POST MachineMetrics (batch Actual/Good/Downtime)</li>
-        <li>3. Summary / OEE / Lot / Andon senkron güncellenir; parti hedefi dolunca lot + iş emri tamamlanır</li>
-        <li>4. Vardiya Bitir (tek hat) veya Tüm Hatları Durdur; hedef dolunca hat otomatik kapanır</li>
+        <li>3. Manuel fire → aynı SSOT’a ek tick (Actual=adet, Good=0); Σ Fire anında artar ve vardiya bitince kalır</li>
+        <li>4. Summary / OEE / Lot / Andon senkron; parti hedefi dolunca lot + iş emri tamamlanır</li>
+        <li>5. Vardiya Bitir / Tüm Hatları Durdur; hedef dolunca hat otomatik kapanır</li>
       </ol>
       <div className="mt-4 flex flex-wrap gap-2">
         <Link to="/sistem" className="mes-btn-primary"><Radio size={16} /> Sistem Akışı</Link>
