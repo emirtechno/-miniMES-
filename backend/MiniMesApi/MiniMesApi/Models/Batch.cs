@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace MiniMesApi.Models
 {
@@ -25,6 +26,12 @@ namespace MiniMesApi.Models
         public int TargetQuantity { get; set; } = 100;
 
         public int ProducedQuantity { get; set; }
+
+        /// <summary>Optional link to the demand work order this lot executes against.</summary>
+        public int? WorkOrderId { get; set; }
+
+        [ForeignKey(nameof(WorkOrderId))]
+        public WorkOrder? WorkOrder { get; set; }
 
         public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
     }

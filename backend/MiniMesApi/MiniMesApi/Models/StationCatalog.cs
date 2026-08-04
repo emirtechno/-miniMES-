@@ -26,6 +26,22 @@ public static class StationCatalog
         TestAndPackaging
     ];
 
+    /// <summary>
+    /// Production lines used by factory-wide simulation (excludes pure QC / shipping / legacy).
+    /// </summary>
+    public static readonly string[] ProductionLines =
+    [
+        AssemblyLine1,
+        AssemblyLine2,
+        AssemblyLine3,
+        ElectronicsBoardAssembly,
+        PackagingLine1,
+        PackagingLine2
+    ];
+
     public static bool Contains(string stationId) =>
         All.Contains(stationId, StringComparer.Ordinal);
+
+    public static bool IsProductionLine(string stationId) =>
+        ProductionLines.Contains(stationId, StringComparer.Ordinal);
 }

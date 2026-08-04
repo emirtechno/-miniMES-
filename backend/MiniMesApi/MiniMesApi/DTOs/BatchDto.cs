@@ -12,6 +12,8 @@ public sealed class BatchDto
     public int TargetQuantity { get; init; }
     public int ProducedQuantity { get; init; }
     public double ProgressPercent { get; init; }
+    public int? WorkOrderId { get; init; }
+    public string? WorkOrderNo { get; init; }
     public DateTimeOffset UpdatedAt { get; init; }
 }
 
