@@ -89,6 +89,12 @@ namespace MiniMesApi.Models
 
             modelBuilder.Entity<Batch>(entity =>
             {
+                entity.HasIndex(batch => batch.WorkOrderId);
+                entity.HasIndex(batch => new { batch.Station, batch.Status });
+                entity.HasOne(batch => batch.WorkOrder)
+                    .WithMany()
+                    .HasForeignKey(batch => batch.WorkOrderId)
+                    .OnDelete(DeleteBehavior.SetNull);
                 entity.ToTable(table =>
                 {
                     table.HasCheckConstraint(

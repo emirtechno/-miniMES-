@@ -46,7 +46,18 @@ public class BatchController : ControllerBase
         var pageBatches = batches.Take(limit).ToList();
         await SyncProducedFromTelemetryAsync(pageBatches, cancellationToken);
 
-        var items = pageBatches.Select(ToDto).ToArray();
+        var workOrderIds = pageBatches
+            .Where(batch => batch.WorkOrderId.HasValue)
+            .Select(batch => batch.WorkOrderId!.Value)
+            .Distinct()
+            .ToList();
+        var orderNos = workOrderIds.Count == 0
+            ? new Dictionary<int, string>()
+            : await _context.WorkOrders.AsNoTracking()
+                .Where(order => workOrderIds.Contains(order.Id))
+                .ToDictionaryAsync(order => order.Id, order => order.OrderNo, cancellationToken);
+
+        var items = pageBatches.Select(batch => ToDto(batch, orderNos)).ToArray();
         return Ok(new CursorPage<BatchDto>
         {
             Items = items,
@@ -67,8 +78,12 @@ public class BatchController : ControllerBase
         var dirty = false;
         foreach (var batch in batches)
         {
-            // Legacy seeds used Target≈50–200; industrial ticks are ~120 — raise target for open lots.
-            if (batch.Status != BatchStatuses.Completed && batch.TargetQuantity > 0 && batch.TargetQuantity < 500)
+            // Legacy seeds used Target≈50–200; industrial ticks are ~120 — raise target for open lots
+            // that are not linked to a work order (sim lots keep their random planned qty).
+            if (batch.Status != BatchStatuses.Completed
+                && batch.WorkOrderId is null
+                && batch.TargetQuantity > 0
+                && batch.TargetQuantity < 500)
             {
                 batch.TargetQuantity = 1000;
                 dirty = true;
@@ -111,7 +126,7 @@ public class BatchController : ControllerBase
         }
 
         await SyncProducedFromTelemetryAsync([batch], cancellationToken);
-        return Ok(ToDto(batch));
+        return Ok(await ToDtoAsync(batch, cancellationToken));
     }
 
     [HttpPost("{id:int}/reopen")]
@@ -125,7 +140,7 @@ public class BatchController : ControllerBase
         }
 
         await SyncProducedFromTelemetryAsync([batch], cancellationToken);
-        return Ok(ToDto(batch));
+        return Ok(await ToDtoAsync(batch, cancellationToken));
     }
 
     [HttpPut("{id:int}/progress")]
@@ -150,13 +165,37 @@ public class BatchController : ControllerBase
         }
 
         await SyncProducedFromTelemetryAsync([batch], cancellationToken);
-        return Ok(ToDto(batch));
+        return Ok(await ToDtoAsync(batch, cancellationToken));
     }
 
-    private static BatchDto ToDto(Batch batch)
+    private async Task<BatchDto> ToDtoAsync(Batch batch, CancellationToken cancellationToken)
+    {
+        string? orderNo = null;
+        if (batch.WorkOrderId is int workOrderId)
+        {
+            orderNo = await _context.WorkOrders.AsNoTracking()
+                .Where(order => order.Id == workOrderId)
+                .Select(order => order.OrderNo)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+
+        return ToDto(
+            batch,
+            orderNo is null
+                ? new Dictionary<int, string>()
+                : new Dictionary<int, string> { [batch.WorkOrderId!.Value] = orderNo });
+    }
+
+    private static BatchDto ToDto(Batch batch, IReadOnlyDictionary<int, string> orderNos)
     {
         var target = Math.Max(batch.TargetQuantity, 1);
         var produced = Math.Max(batch.ProducedQuantity, 0);
+        string? workOrderNo = null;
+        if (batch.WorkOrderId is int workOrderId)
+        {
+            orderNos.TryGetValue(workOrderId, out workOrderNo);
+        }
+
         return new BatchDto
         {
             Id = batch.Id,
@@ -167,6 +206,8 @@ public class BatchController : ControllerBase
             TargetQuantity = batch.TargetQuantity,
             ProducedQuantity = batch.ProducedQuantity,
             ProgressPercent = Math.Round(Math.Min(100d, produced * 100d / target), 1),
+            WorkOrderId = batch.WorkOrderId,
+            WorkOrderNo = workOrderNo,
             UpdatedAt = batch.UpdatedAt
         };
     }

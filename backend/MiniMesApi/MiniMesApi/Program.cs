@@ -209,6 +209,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IAuditLogService, AuditLogService>();
 builder.Services.AddScoped<ILotTelemetrySync, LotTelemetrySync>();
+builder.Services.AddScoped<IFactorySimulationService, FactorySimulationService>();
 builder.Services.AddSingleton<IMesRealtimePublisher, MesRealtimePublisher>();
 builder.Services.AddSignalR();
 
