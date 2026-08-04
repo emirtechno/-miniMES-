@@ -15,6 +15,7 @@ Bu proje, Vestel MES (Manufacturing Execution System) Staj Projesi kapsamında g
 ## 📌 Özellikler ve Endpoint'ler
 
  Üretim Takibi: Üretim kayıtlarını listeleme, ekleme ve güncelleme (`/api/Uretim`)
+ Fabrika Simülasyonu: Açık iş emri + parti seed ve çok hatlı Live Stream hazırlığı (`POST /api/Simulation/factory/start`)
  CORS Desteği: React arayüzü ile güvenli haberleşme konfigürasyonu
  Swagger UI: Tüm API servislerini interaktif olarak test etme imkanı
 
@@ -34,15 +35,35 @@ geliştirme veritabanları doğrudan yükseltilemez. Veriyi yedekleyip geliştir
 veritabanını migration'larla yeniden oluşturun. Paylaşılan bir veritabanında geçmişi
 elle işaretlemeden önce şemayı ve veriyi yedekleyip DBA incelemesi yapın.
 
-`AlignPhaseOneSchema` migration'ı benzersiz indeksleri eklemeden önce yinelenen iş
-emri, kullanıcı, ürün, istasyon ve aktif barkod kayıtlarını kontrol eder; uyumsuz
-veri varsa veri silmek yerine açıklayıcı bir hatayla durur.
+### Migration squash (20260804060820_InitialCreate)
+
+Geçmiş incremental migration'lar tek bir `InitialCreate` ile birleştirildi. Bu, **yalnızca
+boş/yeni veritabanları** veya squash'tan sonra sıfırlanan geliştirme DB'leri için güvenlidir.
+
+Eski migration adları (`20260729…`, `20260803…` vb.) `__EFMigrationsHistory` içinde
+kayıtlı bir DB'ye bu squash uygulandığında EF, `InitialCreate`'i yeniden çalıştırmaya
+çalışır ve tablo çakışmalarıyla kırılır. Yerel/dev için güvenli yol:
+
+1. Gerekirse veriyi yedekleyin.
+2. `MiniMESDB` veritabanını silin veya yeniden oluşturun.
+3. Uygulamayı başlatın (`MigrateAsync`) veya `dotnet ef database update` çalıştırın.
+
+Paylaşılan/staging/production DB'de squash **yapmayın**; orada eski geçmiş korunmalı
+veya DBA tarafından bilinçli bir baseline/history rewrite planlanmalıdır.
 
 ## Identity ve JWT Yapılandırması
 
 Kimlik doğrulama ASP.NET Core Identity kullanır. JWT imzalama anahtarı ve ilk yönetici
-parolası kaynak kodda tutulmaz. Uygulamayı ilk kez başlatmadan önce en az aşağıdaki
-ortam değişkenlerini sağlayın:
+parolası kaynak kodda tutulmaz (`appsettings.json` içinde `Jwt:Key` yoktur).
+
+Yerel geliştirme (Windows) için User Secrets önerilir:
+
+```bash
+cd backend/MiniMesApi
+dotnet user-secrets set "Jwt:Key" "en-az-32-karakterlik-rastgele-bir-imzalama-anahtari" --project MiniMesApi/MiniMesApi.csproj
+```
+
+Alternatif olarak ortam değişkenleri:
 
 ```bash
 export Jwt__Key='en-az-32-karakterlik-rastgele-bir-imzalama-anahtari'
