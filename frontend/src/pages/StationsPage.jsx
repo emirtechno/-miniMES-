@@ -34,6 +34,24 @@ import { deriveLiveTelemetry } from '../utils/liveTelemetry';
 
 const DETAIL_FLASH_MS = 1400;
 
+/** Scroll target inside `.mes-content` only — never document/body (avoids phantom white space). */
+const scrollPanelIntoMesContent = (panel) => {
+  if (!panel) return;
+  const scroller = panel.closest('.mes-content');
+  if (!scroller) {
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+    return;
+  }
+  const panelTop = panel.getBoundingClientRect().top;
+  const scrollerTop = scroller.getBoundingClientRect().top;
+  const nextTop = scroller.scrollTop + (panelTop - scrollerTop);
+  scroller.scrollTo({ top: Math.max(0, nextTop), behavior: 'smooth' });
+  // Undo any accidental window/document scroll from prior scrollIntoView misuse.
+  if (window.scrollY !== 0) window.scrollTo(0, 0);
+  if (document.documentElement.scrollTop) document.documentElement.scrollTop = 0;
+  if (document.body.scrollTop) document.body.scrollTop = 0;
+};
+
 const statusFromMetrics = ({ total, nok, ok, streaming }) => {
   if (streaming && total === 0) return { key: 'run', label: 'Live Stream', pill: 'mes-pill-run', Icon: PlayCircle };
   if (total === 0) return { key: 'idle', label: 'Beklemede', pill: 'mes-pill-neutral', Icon: PauseCircle };
@@ -112,8 +130,7 @@ const StationsPage = ({
 
   const selectStationSummary = (stationId) => {
     onSelectStation?.(stationId);
-    const panel = document.getElementById('station-detail-panel');
-    panel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    scrollPanelIntoMesContent(document.getElementById('station-detail-panel'));
     setDetailFlash(true);
     if (detailFlashTimerRef.current) window.clearTimeout(detailFlashTimerRef.current);
     detailFlashTimerRef.current = window.setTimeout(() => setDetailFlash(false), DETAIL_FLASH_MS);
