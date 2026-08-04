@@ -107,3 +107,12 @@ export function getStationMeta(stationId) {
 export const isCanonicalStation = (stationId) => STATIONS.includes(stationId);
 
 export const PRODUCTION_LINES = [...new Set(ACTIVE_STATION_DEFINITIONS.map((s) => s.line))];
+
+/** Production lines for factory simulation (excludes QC / shipping / legacy). */
+export const PRODUCTION_LINE_CODES = new Set(['MONTAJ', 'ELEKTRONIK', 'PAKET']);
+
+export const PRODUCTION_STATION_DEFINITIONS = ACTIVE_STATION_DEFINITIONS.filter(
+  (station) => PRODUCTION_LINE_CODES.has(station.lineCode),
+);
+
+export const PRODUCTION_STATION_IDS = PRODUCTION_STATION_DEFINITIONS.map((station) => station.id);

@@ -12,7 +12,7 @@ const sections = [
     icon: HardHat,
     title: 'Operatör Paneli',
     path: '/operator',
-    body: 'Vardiya Başlat Live Stream’i açar; her tick PLC batch (ör. 128/125) yazar. Sayaçlar Σ Good / Σ Fire.',
+    body: 'Vardiya Başlat Live Stream’i açar; birden fazla hat aynı anda çalışabilir. “Fabrika Simülasyonu Başlat” tüm üretim hatlarında rastgele iş emri + parti oluşturur; hedef miktara ulaşınca hat otomatik kapanır.',
   },
   {
     icon: Wrench,
@@ -76,10 +76,10 @@ const OperatorGuidePage = () => (
     <section className="mes-surface p-5">
       <h2 className="mes-section-title m-0">Akış</h2>
       <ol className="mt-3 space-y-2 text-sm">
-        <li>1. Vardiya Başlat</li>
-        <li>2. Live Stream → POST MachineMetrics (batch Actual/Good/Downtime)</li>
-        <li>3. Summary / OEE / Lot / Andon senkron güncellenir</li>
-        <li>4. Vardiya Bitir → stream durur</li>
+        <li>1. Vardiya Başlat / “Başka Hat Başlat” veya “Fabrika Simülasyonu Başlat” (tüm üretim hatları + rastgele WO/parti)</li>
+        <li>2. Live Stream → her aktif hatta POST MachineMetrics (batch Actual/Good/Downtime)</li>
+        <li>3. Summary / OEE / Lot / Andon senkron güncellenir; parti hedefi dolunca lot + iş emri tamamlanır</li>
+        <li>4. Vardiya Bitir (tek hat) veya Tüm Hatları Durdur; hedef dolunca hat otomatik kapanır</li>
       </ol>
       <div className="mt-4 flex flex-wrap gap-2">
         <Link to="/sistem" className="mes-btn-primary"><Radio size={16} /> Sistem Akışı</Link>

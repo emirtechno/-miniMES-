@@ -2,7 +2,6 @@ import { useCallback, useMemo, useState } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import MachineMetricsPanel from './components/MachineMetricsPanel';
 import {
-  Factory,
   Activity,
   Cpu,
   RefreshCw,
@@ -25,6 +24,7 @@ import { ShiftSessionProvider, useShiftSession } from './context/ShiftSessionCon
 
 import AppNavLinks from './components/AppNavLinks';
 import PersonaSwitcher from './components/PersonaSwitcher';
+import VestelMark from './components/VestelMark';
 import LoginPage from './pages/LoginPage';
 import QualityPage from './pages/QualityPage';
 import StationsPage from './pages/StationsPage';
@@ -76,7 +76,14 @@ function MainLayout() {
 function MainLayoutShell({ currentUser, logout, notify, confirm }) {
   const location = useLocation();
   const { persona, setPersona, isOperatorPersona, isExecutivePersona, allowedPersonas } = usePersona();
-  const { shift, elapsedLabel } = useShiftSession();
+  const {
+    shift,
+    elapsedLabel,
+    liveStreamActive,
+    streamingStations,
+    streamingStationIds,
+    activeShiftCount,
+  } = useShiftSession();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [selectedStationDetail, setSelectedStationDetail] = useState(DEFAULT_STATION);
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -89,9 +96,6 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
   const canCreateAlarms = hasPermission('alarms.write');
   const canManageAlarms = hasPermission('alarms.manage');
   const canManageUsers = hasPermission('users.manage');
-
-  const liveStreamActive = Boolean(shift.active && !shift.onBreak && !shift.inSetup);
-  const streamStationId = shift.active ? shift.stationId : null;
 
   const alarms = useAlarms({
     isAuthenticated: true,
@@ -111,8 +115,7 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
     canIngestTelemetry,
     autoRefresh,
     liveStreamActive,
-    streamStationId,
-    shiftCode: shift.active ? shift.shiftCode : undefined,
+    streamStations: streamingStations,
     onSimulatedAnomalies: canCreateAlarms ? onSimulatedAnomalies : undefined,
     notify,
   });
@@ -156,11 +159,17 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
 
   const pageTitle = navItems.find((item) => item.match(location.pathname))?.label || 'VESTEL MES';
 
+  // Andon must stay inside MainLayout so Live Stream (useTelemetry) keeps posting
+  // MachineMetrics → oeeUpdated while the saha ekranı is open.
+  if (location.pathname === '/andon') {
+    return <AndonPage />;
+  }
+
   return (
     <div className="mes-shell">
       <aside className="mes-sidebar">
         <div className="mes-brand">
-          <Factory className="text-[color:var(--color-vestel)]" size={28} />
+          <VestelMark className="text-[color:var(--color-vestel)]" size={28} />
           <span>VESTEL MES</span>
         </div>
         <AppNavLinks items={navItems} />
@@ -175,7 +184,7 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
           <aside className="relative z-10 flex h-full w-72 flex-col gap-4 bg-slate-950 p-4 text-slate-200">
             <div className="flex items-center justify-between">
               <div className="mes-brand text-base">
-                <Factory className="text-[color:var(--color-vestel)]" size={22} />
+                <VestelMark className="text-[color:var(--color-vestel)]" size={22} />
                 VESTEL MES
               </div>
               <button type="button" className="mes-btn-secondary border-slate-700 bg-slate-900 text-white" onClick={() => setMobileNavOpen(false)}>
@@ -200,7 +209,9 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
                 </h1>
                 <p className="m-0 text-xs text-[color:var(--color-muted)] md:text-sm">
                   {isOperatorPersona ? 'Shop-floor operatör görünümü' : 'Yönetici / Ana Merkez görünümü'}
-                  {liveStreamActive ? ' · Live Stream (MachineMetrics)' : ''}
+                  {liveStreamActive
+                    ? ` · Live Stream (${streamingStationIds.length} hat)`
+                    : ''}
                 </p>
               </div>
             </div>
@@ -215,15 +226,17 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
               <Radio size={14} />
               {alarms.liveConnected ? 'Canlı' : 'Bağlantı Yok'}
             </span>
-            {shift.active && (
-              <span className="mes-pill-ok" title="Aktif vardiya">
-                {shift.operatorName || 'Operatör'} · {getShiftLabel(shift.shiftCode)} · {elapsedLabel}
+            {activeShiftCount > 0 && (
+              <span className="mes-pill-ok" title="Aktif vardiya(lar)">
+                {activeShiftCount > 1
+                  ? `${activeShiftCount} hat aktif`
+                  : `${shift.operatorName || 'Operatör'} · ${getShiftLabel(shift.shiftCode)} · ${elapsedLabel}`}
               </span>
             )}
             {liveStreamActive ? (
-              <span className="mes-pill-warn" title="Vardiya Live Stream → MachineMetrics">
+              <span className="mes-pill-warn" title="Vardiya Live Stream → MachineMetrics (çoklu hat)">
                 <Activity size={14} />
-                Live Stream
+                Live Stream{streamingStationIds.length > 1 ? ` · ${streamingStationIds.length}` : ''}
               </span>
             ) : (
               <span className="mes-pill-neutral" title="Vardiya Başlat ile telemetri akışı açılır">
@@ -290,6 +303,13 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
                   workOrders={workOrders.workOrders}
                   batches={workOrders.batches}
                   liveStreaming={liveStreamActive}
+                  canIngestTelemetry={canIngestTelemetry}
+                  onRefreshOrders={async () => {
+                    await Promise.all([
+                      workOrders.loadWorkOrders?.(),
+                      workOrders.loadBatches?.(),
+                    ]);
+                  }}
                 />
               )}
             />
@@ -302,7 +322,8 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
                 <MachineMetricsPanel
                   isFactorySimulationActive={liveStreamActive}
                   shiftStationId={shift.stationId}
-                  shiftActive={shift.active}
+                  shiftStationIds={streamingStationIds}
+                  shiftActive={activeShiftCount > 0}
                   stationKpi={telemetry.stationKpi}
                   batches={workOrders.batches}
                   metricsFeed={telemetry.metrics}
@@ -324,7 +345,7 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
                   stations={stationsList}
                   byStation={telemetry.byStation}
                   liveStreaming={liveStreamActive}
-                  activeShiftStationId={streamStationId}
+                  activeShiftStationIds={streamingStationIds}
                 />
               )}
             />
@@ -381,7 +402,6 @@ function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/andon" element={<AndonPage />} />
       <Route path="/*" element={<MainLayout />} />
     </Routes>
   );
