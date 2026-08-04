@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, Link } from 'react-router-dom';
 import { Activity, AlertTriangle, Factory, Radio } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { fetchAlarms, fetchLatestOeeAll, fetchTelemetrySummary } from '../services/api';
 import { useMesHub } from '../hooks/useMesHub';
+import { useNonOverlappingPolling } from '../hooks/useNonOverlappingPolling';
 import { ACTIVE_STATION_DEFINITIONS, getStationDisplayName } from '../constants/stations';
 import './AndonPage.css';
 
@@ -21,6 +22,31 @@ const severityTone = (severity) => {
   return 'warn';
 };
 
+/** Normalize SignalR / REST OEE rows (camelCase or PascalCase, single or array). */
+const normalizeOeeMetrics = (payload) => {
+  const list = Array.isArray(payload) ? payload : payload ? [payload] : [];
+  return list
+    .map((raw) => {
+      if (!raw || typeof raw !== 'object') return null;
+      const stationId = raw.stationId ?? raw.StationId;
+      if (!stationId) return null;
+      return {
+        stationId,
+        oee: Number(raw.oee ?? raw.Oee),
+        availability: Number(raw.availability ?? raw.Availability),
+        performance: Number(raw.performance ?? raw.Performance),
+        quality: Number(raw.quality ?? raw.Quality),
+        goodProduction: Number(raw.goodProduction ?? raw.GoodProduction ?? 0),
+        scrapProduction: Number(raw.scrapProduction ?? raw.ScrapProduction ?? 0),
+        downtimeReason: (raw.downtimeReason ?? raw.DowntimeReason) || 'Yok',
+        shiftName: raw.shiftName ?? raw.ShiftName,
+        shiftCode: raw.shiftCode ?? raw.ShiftCode,
+        lastUpdated: raw.lastUpdated ?? raw.LastUpdated,
+      };
+    })
+    .filter(Boolean);
+};
+
 const AndonPage = () => {
   const { isAuthenticated, currentUser } = useAuth();
   const [oeeByStation, setOeeByStation] = useState({});
@@ -29,59 +55,97 @@ const AndonPage = () => {
   const [clock, setClock] = useState(new Date());
   const [hubConnected, setHubConnected] = useState(false);
   const [loading, setLoading] = useState(true);
+  const plantGoodTimerRef = useRef(null);
 
   useEffect(() => {
     const timer = window.setInterval(() => setClock(new Date()), 1000);
     return () => window.clearInterval(timer);
   }, []);
 
+  useEffect(() => () => {
+    if (plantGoodTimerRef.current != null) window.clearTimeout(plantGoodTimerRef.current);
+  }, []);
+
+  const applyOeeMetrics = useCallback((payload) => {
+    const metrics = normalizeOeeMetrics(payload);
+    if (!metrics.length) return;
+    setOeeByStation((current) => {
+      const next = { ...current };
+      for (const metric of metrics) {
+        next[metric.stationId] = metric;
+      }
+      return next;
+    });
+  }, []);
+
+  const refreshPlantGood = useCallback(async (signal) => {
+    try {
+      const summaries = await fetchTelemetrySummary({ signal });
+      const plant = (summaries || []).find((row) => !row.stationId);
+      setPlantGood(plant ? Number(plant.good) || 0 : null);
+    } catch (error) {
+      if (error.name !== 'CanceledError' && error.name !== 'AbortError') {
+        console.error(error);
+      }
+    }
+  }, []);
+
+  const schedulePlantGoodRefresh = useCallback(() => {
+    if (plantGoodTimerRef.current != null) window.clearTimeout(plantGoodTimerRef.current);
+    plantGoodTimerRef.current = window.setTimeout(() => {
+      plantGoodTimerRef.current = null;
+      refreshPlantGood();
+    }, 750);
+  }, [refreshPlantGood]);
+
+  const loadSnapshot = useCallback(async (signal, { background = false } = {}) => {
+    try {
+      if (!background) setLoading(true);
+      const [alarmPage, summaries, latestOee] = await Promise.all([
+        fetchAlarms({ signal, limit: 30, openOnly: true }),
+        fetchTelemetrySummary({ signal }),
+        fetchLatestOeeAll({ signal }),
+      ]);
+      setAlarms((alarmPage.items || []).filter((alarm) => !isClosedAlarm(alarm.status)).slice(0, 8));
+      const plant = (summaries || []).find((row) => !row.stationId);
+      setPlantGood(plant ? Number(plant.good) || 0 : null);
+      const map = {};
+      for (const metric of normalizeOeeMetrics(latestOee)) {
+        map[metric.stationId] = metric;
+      }
+      setOeeByStation(map);
+    } catch (error) {
+      if (error.name !== 'CanceledError' && error.name !== 'AbortError') {
+        console.error(error);
+      }
+    } finally {
+      if (!background) setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!isAuthenticated) return undefined;
     const controller = new AbortController();
+    loadSnapshot(controller.signal);
+    return () => controller.abort();
+  }, [isAuthenticated, loadSnapshot]);
 
-    const load = async () => {
-      try {
-        setLoading(true);
-        // 3 parallel calls (was 2 + N station OEE fan-out).
-        const [alarmPage, summaries, latestOee] = await Promise.all([
-          fetchAlarms({ signal: controller.signal, limit: 30, openOnly: true }),
-          fetchTelemetrySummary({ signal: controller.signal }),
-          fetchLatestOeeAll({ signal: controller.signal }),
-        ]);
-        setAlarms((alarmPage.items || []).filter((alarm) => !isClosedAlarm(alarm.status)).slice(0, 8));
-        const plant = (summaries || []).find((row) => !row.stationId);
-        setPlantGood(plant ? Number(plant.good) || 0 : null);
-        const map = {};
-        for (const metric of latestOee || []) {
-          if (metric?.stationId) map[metric.stationId] = metric;
-        }
-        setOeeByStation(map);
-      } catch (error) {
-        if (error.name !== 'CanceledError' && error.name !== 'AbortError') {
-          console.error(error);
-        }
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    load();
-    const refresh = window.setInterval(load, 20000);
-    return () => {
-      controller.abort();
-      window.clearInterval(refresh);
-    };
-  }, [isAuthenticated]);
+  // Polling fallback when hub is quiet or Live Stream runs in another tab.
+  useNonOverlappingPolling(
+    (signal) => loadSnapshot(signal, { background: true }),
+    {
+      enabled: isAuthenticated,
+      intervalMs: hubConnected ? 8000 : 5000,
+      runImmediately: false,
+      resetKey: String(hubConnected),
+    },
+  );
 
   const { connected } = useMesHub({
     onOeeUpdated: (metrics) => {
-      setOeeByStation((current) => {
-        const next = { ...current };
-        for (const metric of metrics || []) {
-          next[metric.stationId] = metric;
-        }
-        return next;
-      });
+      applyOeeMetrics(metrics);
+      // Σ Sağlam comes from summary aggregate — debounce across multi-line ticks.
+      schedulePlantGoodRefresh();
     },
     onAlarmCreated: (alarm) => {
       if (isClosedAlarm(alarm.status)) return;
@@ -109,7 +173,7 @@ const AndonPage = () => {
   const averageOee = useMemo(() => {
     const values = ANDON_STATIONS
       .map((id) => oeeByStation[id]?.oee)
-      .filter((value) => typeof value === 'number');
+      .filter((value) => typeof value === 'number' && !Number.isNaN(value));
     if (!values.length) return null;
     return values.reduce((sum, value) => sum + value, 0) / values.length;
   }, [oeeByStation]);
@@ -159,7 +223,7 @@ const AndonPage = () => {
         {ANDON_STATIONS.map((stationId) => {
           const metric = oeeByStation[stationId];
           const oee = metric?.oee;
-          const tone = oee == null ? 'idle' : oee >= 85 ? 'good' : oee >= 60 ? 'warn' : 'bad';
+          const tone = oee == null || Number.isNaN(oee) ? 'idle' : oee >= 85 ? 'good' : oee >= 60 ? 'warn' : 'bad';
           return (
             <article key={stationId} className={`andon-station ${tone}`}>
               <header>
@@ -168,7 +232,7 @@ const AndonPage = () => {
               </header>
               <div className="andon-oee">
                 <Activity size={22} />
-                <strong>{oee == null ? '—' : `%${Number(oee).toFixed(1)}`}</strong>
+                <strong>{oee == null || Number.isNaN(oee) ? '—' : `%${Number(oee).toFixed(1)}`}</strong>
               </div>
               <dl>
                 <div><dt>Kullanılabilirlik</dt><dd>{metric?.availability ?? '—'}%</dd></div>

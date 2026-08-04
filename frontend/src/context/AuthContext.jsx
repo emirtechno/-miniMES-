@@ -27,7 +27,8 @@ const getStoredSession = () => {
   try {
     const user = JSON.parse(sessionStorage.getItem('mm_auth_user') || 'null');
     const expiresAt = sessionStorage.getItem('mm_token_expires_at');
-    if (user && expiresAt && new Date(expiresAt) > new Date()) {
+    const token = sessionStorage.getItem('mm_access_token');
+    if (user && token && expiresAt && new Date(expiresAt) > new Date()) {
       return { user, expiresAt };
     }
   } catch {

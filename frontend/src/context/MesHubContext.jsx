@@ -26,6 +26,8 @@ export function MesHubProvider({ children }) {
       return undefined;
     }
 
+    let cancelled = false;
+    let retryTimer = null;
     const connection = new HubConnectionBuilder()
       .withUrl(HUB_URL, {
         accessTokenFactory: () => sessionStorage.getItem('mm_access_token') || '',
@@ -48,19 +50,45 @@ export function MesHubProvider({ children }) {
     connection.on('alarmUpdated', (alarm) => emit('alarmUpdated', alarm));
     connection.on('alarmDeleted', (payload) => emit('alarmDeleted', payload));
     connection.on('oeeUpdated', (metrics) => emit('oeeUpdated', metrics));
-    connection.onreconnected(() => setConnected(true));
-    connection.onclose(() => setConnected(false));
+    connection.onreconnecting(() => {
+      if (!cancelled) setConnected(false);
+    });
+    connection.onreconnected(() => {
+      if (!cancelled) setConnected(true);
+    });
+    connection.onclose(() => {
+      if (!cancelled) setConnected(false);
+    });
 
-    connection.start()
-      .then(() => setConnected(true))
-      .catch((error) => {
+    // StrictMode remount / API restart: withAutomaticReconnect only helps after a
+    // successful first start, so retry the initial handshake ourselves.
+    // Defer start so React StrictMode's immediate unmount/remount does not abort
+    // an in-flight negotiate (which leaves the badge stuck on "Bağlantı Yok").
+    const startWithRetry = async (attempt = 0) => {
+      if (cancelled) return;
+      try {
+        await connection.start();
+        if (!cancelled) setConnected(true);
+      } catch (error) {
+        if (cancelled) return;
         setConnected(false);
-        console.warn('MES SignalR bağlantısı kurulamadı:', error);
-      });
+        const message = String(error?.message || error);
+        const abortedDuringNegotiate = /stopped during negotiation/i.test(message);
+        if (!abortedDuringNegotiate) {
+          console.warn('MES SignalR bağlantısı kurulamadı:', error);
+        }
+        const delay = Math.min(30000, 1000 * 2 ** Math.min(attempt, 5));
+        retryTimer = window.setTimeout(() => startWithRetry(attempt + 1), delay);
+      }
+    };
+
+    retryTimer = window.setTimeout(() => startWithRetry(0), 0);
 
     return () => {
-      connection.stop().catch(() => undefined);
+      cancelled = true;
+      if (retryTimer != null) window.clearTimeout(retryTimer);
       setConnected(false);
+      connection.stop().catch(() => undefined);
     };
   }, [isAuthenticated]);
 
