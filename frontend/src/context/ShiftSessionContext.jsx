@@ -256,11 +256,11 @@ export const ShiftSessionProvider = ({ children, user, notify, canCreateAlarms }
         (entry) => entry.active && entry.stationId !== stationId,
       ).length;
       const manualScrap = existing.scrapCount || 0;
-      // Prefer MachineMetrics Σ Fire when caller provides it; fall back to manual tally.
+      // Σ Fire KPI is MachineMetrics NOK only — never fall back to sessionStorage scrapCount.
       const metricsNok = Number.isFinite(Number(options.metricsNok))
         ? Math.max(0, Number(options.metricsNok))
-        : null;
-      const displayScrap = metricsNok ?? manualScrap;
+        : 0;
+      const displayScrap = metricsNok;
       ended = {
         stationId,
         mins,
@@ -304,8 +304,8 @@ export const ShiftSessionProvider = ({ children, user, notify, canCreateAlarms }
       setFactorySimActive(false);
     }
     if (!options.silent) {
-      const fireLabel = ended.manualScrapCount > 0 && ended.scrapCount !== ended.manualScrapCount
-        ? `Σ Fire: ${ended.scrapCount} (manuel +${ended.manualScrapCount})`
+      const fireLabel = ended.manualScrapCount > 0
+        ? `Σ Fire: ${ended.scrapCount} (manuel denetim +${ended.manualScrapCount})`
         : `Σ Fire: ${ended.scrapCount}`;
       notify?.(
         ended.auto
@@ -342,8 +342,9 @@ export const ShiftSessionProvider = ({ children, user, notify, canCreateAlarms }
           : 0;
         const manualScrap = existing.scrapCount || 0;
         const rawNok = nokByStation[stationId];
-        const metricsNok = Number.isFinite(Number(rawNok)) ? Math.max(0, Number(rawNok)) : null;
-        const displayScrap = metricsNok ?? manualScrap;
+        // Σ Fire KPI is MachineMetrics NOK only — scrapCount is audit tally, not a fallback.
+        const metricsNok = Number.isFinite(Number(rawNok)) ? Math.max(0, Number(rawNok)) : 0;
+        const displayScrap = metricsNok;
         totalMetricsNok += displayScrap;
         totalManual += manualScrap;
         nextShifts[stationId] = {
@@ -368,8 +369,8 @@ export const ShiftSessionProvider = ({ children, user, notify, canCreateAlarms }
     });
     setFactorySimActive(false);
     if (endedCount > 0) {
-      const firePart = totalManual > 0 && totalMetricsNok !== totalManual
-        ? `Σ Fire (özet): ${totalMetricsNok} (manuel +${totalManual})`
+      const firePart = totalManual > 0
+        ? `Σ Fire (özet): ${totalMetricsNok} (manuel denetim +${totalManual})`
         : `Σ Fire (özet): ${totalMetricsNok}`;
       notify?.(`Tüm hatlar durduruldu (${endedCount} vardiya) · ${firePart}.`, 'info');
     }

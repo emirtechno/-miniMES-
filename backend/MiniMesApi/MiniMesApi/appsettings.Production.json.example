@@ -14,6 +14,7 @@
     ]
   },
   "IdentityBootstrap": {
+    "Enabled": false,
     "AdminUsername": "admin",
     "AdminPassword": "REPLACE_WITH_ENV_AND_REMOVE_AFTER_FIRST_BOOT",
     "AdminDisplayName": "MES Yöneticisi"

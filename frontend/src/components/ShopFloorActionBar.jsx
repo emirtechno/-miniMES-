@@ -283,7 +283,7 @@ const ShopFloorActionBar = ({
               <li><b>İstasyon:</b> {shift.stationId}</li>
               <li><b>Σ Fire (MachineMetrics SSOT):</b> {metricsNok}</li>
               {(shift.scrapCount || 0) > 0 && (
-                <li><b>Manuel (denetim):</b> bu vardiyada +{shift.scrapCount} (Σ içinde)</li>
+                <li><b>Manuel (denetim):</b> bu vardiyada +{shift.scrapCount} (KPI yedeklenmez)</li>
               )}
               {shift.secondaryOperator && (
                 <li><b>İkincil op:</b> {shift.secondaryOperator.name}</li>

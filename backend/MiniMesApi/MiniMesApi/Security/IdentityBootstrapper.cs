@@ -3,6 +3,11 @@ using MiniMesApi.Models;
 
 namespace MiniMesApi.Security;
 
+/// <summary>
+/// Seeds Identity roles always; seed users only in Development (or when explicitly enabled).
+/// Risk: appsettings.Development.json contains known weak PINs (admin/123) — never load that
+/// file / those values into Production. Production ignores Development passwords by default.
+/// </summary>
 public static class IdentityBootstrapper
 {
     public static async Task InitializeAsync(
@@ -21,9 +26,28 @@ public static class IdentityBootstrapper
             }
         }
 
+        // Development: always bootstrap documented local users + sync weak PINs.
+        // Production/Staging: skip unless IdentityBootstrap:Enabled=true (first boot via env vars).
+        // Never auto-apply Development known passwords outside Development.
+        var bootstrapUsers = environment.IsDevelopment()
+            || configuration.GetValue("IdentityBootstrap:Enabled", false);
+        if (!bootstrapUsers)
+        {
+            logger.LogInformation(
+                "IdentityBootstrap kullanıcı seed atlandı (ortam={Environment}). " +
+                "İlk kurulum için IdentityBootstrap:Enabled=true ve güçlü parolaları ortam değişkeninden verin.",
+                environment.EnvironmentName);
+            return;
+        }
+
+        if (!environment.IsDevelopment() && configuration.GetValue("IdentityBootstrap:Enabled", false))
+        {
+            logger.LogWarning(
+                "IdentityBootstrap:Enabled=true outside Development — ensure passwords come from secrets/env, not committed config.");
+        }
+
         var userManager = serviceProvider.GetRequiredService<UserManager<ApplicationUser>>();
-        // Development: keep documented local passwords in sync (create or reset).
-        // Other environments: create only when missing — never overwrite existing hashes.
+        // Only Development rewrites existing hashes to match config (dev UX).
         var syncPasswords = environment.IsDevelopment();
 
         await EnsureSeedUserAsync(

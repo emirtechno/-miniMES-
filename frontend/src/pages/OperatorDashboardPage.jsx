@@ -104,26 +104,32 @@ const OperatorDashboardPage = ({
     }
   };
 
+  /** Flush open pause/setup duration into MachineMetrics before ending (same as resume). */
+  const flushOpenDowntime = async (entry) => {
+    if (!entry || !canIngestTelemetry || typeof ingestDowntimeTick !== 'function') return;
+    const pauseStart = entry.breakStartedAt || entry.setupStartedAt;
+    if (!pauseStart) return;
+    const secs = Math.max(1, Math.floor((Date.now() - new Date(pauseStart).getTime()) / 1000));
+    try {
+      await ingestDowntimeTick({
+        stationId: entry.stationId,
+        downtimeSeconds: secs,
+        reasonCode: entry.breakReason || (entry.inSetup ? 'CHANGEOVER' : 'OTHER'),
+        shiftCode: entry.shiftCode,
+      });
+    } catch (error) {
+      notify?.(getApiErrorMessage(error, 'Duruş süresi metrik olarak yazılamadı.'), 'error');
+    }
+  };
+
   /** On resume, persist pause duration into MachineMetrics (Availability SSOT). */
   const handleResume = async () => {
-    const pauseStart = shift.breakStartedAt || shift.setupStartedAt;
-    if (pauseStart && canIngestTelemetry && typeof ingestDowntimeTick === 'function') {
-      const secs = Math.max(1, Math.floor((Date.now() - new Date(pauseStart).getTime()) / 1000));
-      try {
-        await ingestDowntimeTick({
-          stationId: shift.stationId || stationId,
-          downtimeSeconds: secs,
-          reasonCode: shift.breakReason || (shift.inSetup ? 'CHANGEOVER' : 'OTHER'),
-          shiftCode: shift.shiftCode,
-        });
-      } catch (error) {
-        notify?.(getApiErrorMessage(error, 'Duruş süresi metrik olarak yazılamadı.'), 'error');
-      }
-    }
+    await flushOpenDowntime(shift);
     resumeProduction();
   };
 
-  const handleEndShift = () => {
+  const handleEndShift = async () => {
+    await flushOpenDowntime(shift);
     endShift({ metricsNok: kpi.nok });
   };
 
@@ -480,11 +486,12 @@ const OperatorDashboardPage = ({
               <button
                 type="button"
                 className="mes-btn-danger"
-                onClick={() => {
+                onClick={async () => {
                   setShowStopAll(false);
                   const metricsNokByStation = {};
                   for (const entry of activeShifts) {
                     metricsNokByStation[entry.stationId] = stationKpi?.(entry.stationId)?.nok ?? 0;
+                    await flushOpenDowntime(entry);
                   }
                   endAllShifts({ metricsNokByStation });
                 }}

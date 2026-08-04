@@ -80,4 +80,38 @@ public sealed class LotTelemetrySyncTests
         Assert.Equal(500, batch.ProducedQuantity);
         Assert.Equal(BatchStatuses.Completed, batch.Status);
     }
+
+    [Fact]
+    public async Task ApplyGoodUnits_serializes_concurrent_calls_without_losing_units()
+    {
+        var dbName = $"LotRace-{Guid.NewGuid():N}";
+        await using (var seed = TestDb.CreateContext(dbName))
+        {
+            seed.Batches.Add(new Batch
+            {
+                LotNo = "LOT-K3-RACE",
+                Product = "Kit",
+                Station = StationCatalog.AssemblyLine2,
+                Status = BatchStatuses.Waiting,
+                TargetQuantity = 1000,
+                ProducedQuantity = 0,
+                UpdatedAt = DateTimeOffset.UtcNow
+            });
+            await seed.SaveChangesAsync();
+        }
+
+        await using var dbA = TestDb.CreateContext(dbName);
+        await using var dbB = TestDb.CreateContext(dbName);
+        var syncA = new LotTelemetrySync(dbA);
+        var syncB = new LotTelemetrySync(dbB);
+
+        await Task.WhenAll(
+            syncA.ApplyGoodUnitsAsync(StationCatalog.AssemblyLine2, 40),
+            syncB.ApplyGoodUnitsAsync(StationCatalog.AssemblyLine2, 60));
+
+        await using var verify = TestDb.CreateContext(dbName);
+        var batch = Assert.Single(verify.Batches);
+        Assert.Equal(100, batch.ProducedQuantity);
+        Assert.Equal(BatchStatuses.InProgress, batch.Status);
+    }
 }
