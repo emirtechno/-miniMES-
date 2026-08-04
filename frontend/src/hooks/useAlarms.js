@@ -52,6 +52,7 @@ export function useAlarms({
 }) {
   const [alarms, setAlarms] = useState([]);
   const [alarmLoading, setAlarmLoading] = useState(false);
+  const [busyAlarmId, setBusyAlarmId] = useState(null);
   const [alarmError, setAlarmError] = useState(null);
   const [manualTitle, setManualTitle] = useState('');
   const [manualStation, setManualStation] = useState(DEFAULT_STATION);
@@ -200,6 +201,7 @@ export function useAlarms({
     if (!(await confirm('Bu alarmı Çöz/Kapat olarak işaretlemek istediğinize emin misiniz? Kayıt silinmez.'))) {
       return;
     }
+    setBusyAlarmId(id);
     try {
       await resolveAlarm(id);
       if (!connected) await loadAlarms();
@@ -207,6 +209,8 @@ export function useAlarms({
     } catch (err) {
       notify(getApiErrorMessage(err, 'Alarm çözülemedi.'), 'error');
       console.error(err);
+    } finally {
+      setBusyAlarmId(null);
     }
   }, [canManageAlarms, confirm, connected, loadAlarms, notify]);
 
@@ -215,6 +219,7 @@ export function useAlarms({
       notify('Alarm onaylama yetkiniz bulunmamaktadır.', 'error');
       return;
     }
+    setBusyAlarmId(id);
     try {
       await acknowledgeAlarm(id);
       if (!connected) await loadAlarms();
@@ -222,12 +227,15 @@ export function useAlarms({
     } catch (err) {
       notify(getApiErrorMessage(err, 'Alarm onayı kaydedilirken hata oluştu.'), 'error');
       console.error(err);
+    } finally {
+      setBusyAlarmId(null);
     }
   }, [canManageAlarms, connected, loadAlarms, notify]);
 
   return {
     alarms,
     alarmLoading,
+    busyAlarmId,
     alarmError,
     liveConnected: connected,
     loadAlarms,

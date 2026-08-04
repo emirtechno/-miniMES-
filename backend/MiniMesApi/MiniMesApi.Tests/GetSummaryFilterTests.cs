@@ -73,7 +73,7 @@ public sealed class GetSummaryFilterTests
     private static MachineMetricsController CreateController(MesDbContext db)
     {
         var validator = new InlineValidator<CreateMachineMetricDto>();
-        return new MachineMetricsController(db, validator, new NoopRealtime(), new NoopLotSync());
+        return new MachineMetricsController(db, validator, new NoopRealtime(), new NoopLotSync(), new NoopAudit());
     }
 
     private static MachineMetric Metric(
@@ -112,6 +112,18 @@ public sealed class GetSummaryFilterTests
     private sealed class NoopLotSync : ILotTelemetrySync
     {
         public Task ApplyGoodUnitsAsync(string stationId, int goodUnits, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+    }
+
+    private sealed class NoopAudit : IAuditLogService
+    {
+        public Task WriteAsync(
+            string entityType,
+            string entityId,
+            string action,
+            System.Security.Claims.ClaimsPrincipal? actor,
+            string? details = null,
+            CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
     }
 }

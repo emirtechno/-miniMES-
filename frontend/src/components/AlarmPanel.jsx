@@ -2,7 +2,7 @@ import { AlertTriangle, CheckCircle, CheckCheck } from 'lucide-react';
 import CardHeader from './CardHeader';
 import { getStationDisplayName } from '../constants/stations';
 
-function AlarmPanel({ alarms, onAcknowledge, onResolve }) {
+function AlarmPanel({ alarms, onAcknowledge, onResolve, busyAlarmId = null }) {
   return (
     <section className="mes-surface p-5">
       <CardHeader
@@ -18,6 +18,7 @@ function AlarmPanel({ alarms, onAcknowledge, onResolve }) {
           const isOpen = status === 'Açık';
           const isAcknowledged = status === 'Onaylandı';
           const isResolved = status === 'Çözüldü';
+          const isBusy = busyAlarmId != null && String(busyAlarmId) === String(alarmId);
           const borderTone = isResolved
             ? 'border-l-slate-400'
             : isAcknowledged
@@ -65,10 +66,11 @@ function AlarmPanel({ alarms, onAcknowledge, onResolve }) {
                     type="button"
                     onClick={() => onAcknowledge(alarmId)}
                     className="mes-btn-secondary"
+                    disabled={isBusy}
                     title="Yönetici farkındalığını kaydet"
                   >
                     <CheckCircle size={16} />
-                    Onayla
+                    {isBusy ? 'Onaylanıyor…' : 'Onayla'}
                   </button>
                 )}
                 {!isResolved && onResolve && alarmId != null && (
@@ -76,10 +78,11 @@ function AlarmPanel({ alarms, onAcknowledge, onResolve }) {
                     type="button"
                     onClick={() => onResolve(alarmId)}
                     className="mes-btn-primary"
+                    disabled={isBusy}
                     title="Duruşu kapat / çöz (audit kaydı korunur)"
                   >
                     <CheckCheck size={16} />
-                    Çöz / Kapat
+                    {isBusy ? 'Kapatılıyor…' : 'Çöz / Kapat'}
                   </button>
                 )}
                 {isResolved && (

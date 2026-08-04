@@ -89,7 +89,8 @@ public sealed class LotTelemetrySync(MesDbContext context) : ILotTelemetrySync
         {
             if (remaining <= 0) break;
 
-            // Legacy demo targets (~50–200) fill in one ~120-unit tick — scale before applying.
+            // Write-only legacy scale-up: demo seeds used Target≈50–200; industrial ticks are ~120.
+            // GET /Batch must never rewrite targets — only this ingest/sync path may.
             if (batch.TargetQuantity > 0 && batch.TargetQuantity < 500 && batch.WorkOrderId is null)
             {
                 batch.TargetQuantity = 1000;

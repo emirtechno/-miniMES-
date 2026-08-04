@@ -19,17 +19,20 @@ namespace MiniMesApi.Controllers
         private readonly IValidator<CreateMachineMetricDto> _validator;
         private readonly IMesRealtimePublisher _realtime;
         private readonly ILotTelemetrySync _lotSync;
+        private readonly IAuditLogService _audit;
 
         public MachineMetricsController(
             MesDbContext context,
             IValidator<CreateMachineMetricDto> validator,
             IMesRealtimePublisher realtime,
-            ILotTelemetrySync lotSync)
+            ILotTelemetrySync lotSync,
+            IAuditLogService audit)
         {
             _context = context;
             _validator = validator;
             _realtime = realtime;
             _lotSync = lotSync;
+            _audit = audit;
         }
 
         /// <summary>
@@ -224,6 +227,21 @@ namespace MiniMesApi.Controllers
 
             var oee = OeeCalculator.Calculate(metric);
             await _realtime.OeeUpdatedAsync([oee], cancellationToken);
+
+            // Audit scrap / downtime mutations only — skip high-frequency Live Stream ticks.
+            var isManualScrap = metric.ActualProductionCount > 0 && metric.GoodProductionCount == 0;
+            var isDowntimeEvent = metric.DowntimeSeconds > 0
+                && !string.Equals(metric.DowntimeReasonCode, DowntimeReasonCatalog.None, StringComparison.Ordinal);
+            if (isManualScrap || isDowntimeEvent)
+            {
+                await _audit.WriteAsync(
+                    AuditEntityTypes.MachineMetric,
+                    metric.Id.ToString(),
+                    isManualScrap ? AuditActions.ScrapIngest : AuditActions.DowntimeIngest,
+                    User,
+                    $"station={metric.StationId}; actual={metric.ActualProductionCount}; good={metric.GoodProductionCount}; downtime={metric.DowntimeSeconds}; reason={metric.DowntimeReasonCode}",
+                    cancellationToken);
+            }
 
             return CreatedAtAction(nameof(GetMetrics), new { stationId = metric.StationId }, ToDto(metric));
         }

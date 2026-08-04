@@ -228,9 +228,11 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
                 </h1>
                 <p className="m-0 text-xs text-[color:var(--color-muted)] md:text-sm">
                   {isOperatorPersona ? 'Shop-floor operatör görünümü' : 'Yönetici / Ana Merkez görünümü'}
-                  {liveStreamActive
+                  {liveStreamActive && canIngestTelemetry
                     ? ` · Live Stream (${streamingStationIds.length} hat)`
-                    : ''}
+                    : liveStreamActive
+                      ? ' · Vardiya açık (yazma yetkisi yok)'
+                      : ''}
                 </p>
               </div>
             </div>
@@ -252,10 +254,14 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
                   : `${shift.operatorName || 'Operatör'} · ${getShiftLabel(shift.shiftCode)} · ${elapsedLabel}`}
               </span>
             )}
-            {liveStreamActive ? (
+            {liveStreamActive && canIngestTelemetry ? (
               <span className="mes-pill-warn" title="Vardiya Live Stream → MachineMetrics (çoklu hat)">
                 <Activity size={14} />
                 Live Stream{streamingStationIds.length > 1 ? ` · ${streamingStationIds.length}` : ''}
+              </span>
+            ) : liveStreamActive ? (
+              <span className="mes-pill-neutral" title="Vardiya açık ancak production.write yok — telemetri tick yazılmıyor">
+                Stream (yazma yok)
               </span>
             ) : (
               <span className="mes-pill-neutral" title="Vardiya Başlat ile telemetri akışı açılır">
@@ -348,6 +354,7 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
                   stationKpi={telemetry.stationKpi}
                   batches={workOrders.batches}
                   metricsFeed={telemetry.metrics}
+                  preferSharedFeed={liveStreamActive}
                 />
               )}
             />
@@ -384,6 +391,7 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
                   alarms={{
                     items: alarms.alarms,
                     loading: alarms.alarmLoading,
+                    busyAlarmId: alarms.busyAlarmId,
                     error: alarms.alarmError,
                     onCreateTest: alarms.createTestAlarm,
                     onAcknowledge: alarms.handleAcknowledgeAlarm,

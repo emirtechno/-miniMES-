@@ -68,7 +68,15 @@ export function MesHubProvider({ children }) {
       if (cancelled) return;
       try {
         await connection.start();
-        if (!cancelled) setConnected(true);
+        if (!cancelled) {
+          setConnected(true);
+          // Explicit plant join (server also auto-joins on connect for backward compat).
+          try {
+            await connection.invoke('JoinPlant');
+          } catch {
+            // Older hubs without JoinPlant still receive via OnConnectedAsync plant group.
+          }
+        }
       } catch (error) {
         if (cancelled) return;
         setConnected(false);

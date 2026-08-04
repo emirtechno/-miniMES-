@@ -38,9 +38,18 @@ public static class AuditActions
     public const string SoftDelete = "SoftDelete";
     public const string Restore = "Restore";
     public const string HardDelete = "HardDelete";
+    public const string Create = "Create";
+    public const string Acknowledge = "Acknowledge";
+    public const string Resolve = "Resolve";
+    public const string Advance = "Advance";
+    public const string ScrapIngest = "ScrapIngest";
+    public const string DowntimeIngest = "DowntimeIngest";
 }
 
 public static class AuditEntityTypes
 {
     public const string ProductionRecord = "UretimKayit";
+    public const string Alarm = "Alarm";
+    public const string WorkOrder = "WorkOrder";
+    public const string MachineMetric = "MachineMetric";
 }

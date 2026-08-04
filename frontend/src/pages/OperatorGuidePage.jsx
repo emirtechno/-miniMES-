@@ -24,13 +24,13 @@ const sections = [
     icon: Shield,
     title: 'Kalite Raporları',
     path: '/kalite',
-    body: 'Fire listesi Actual−Good > 0 olan MachineMetrics tick’leridir. Lot progress Σ Good ile senkron.',
+    body: 'Fire listesi Actual−Good > 0 olan MachineMetrics tick’leridir (Σ Fire SSOT). ÜretimKayit NOK barkod izlenebilirliğidir — KPI’ya yazılmaz. Lot progress Σ Good ile senkron.',
   },
   {
     icon: Gauge,
     title: 'Makine Metrikleri',
     path: '/makine-metrikleri',
-    body: 'SSOT hub: trend, tablo, OEE, lot. Live Stream durumu vardiyaya bağlıdır.',
+    body: 'SSOT hub: trend, tablo, OEE, lot. “Live Stream” göstergesi yalnızca production.write ile tick yazılıyorsa aktiftir.',
   },
   {
     icon: Monitor,

@@ -53,7 +53,8 @@ const SystemFlowPage = () => (
           <li>Fabrika / Operatör / İstasyon KPI → <code>GET /MachineMetrics/summary</code></li>
           <li>Trend / tablo → <code>GET /MachineMetrics</code></li>
           <li>OEE / Andon → latest metric + SignalR <code>oeeUpdated</code></li>
-          <li>Lot → BatchController Σ Good sync</li>
+          <li>Lot → BatchController (yazma yolu LotTelemetrySync; GET /Batch yan etkisiz)</li>
+          <li>ÜretimKayit OK/NOK → barkod izlenebilirlik (KPI scrap değil)</li>
         </ul>
       </article>
     </section>

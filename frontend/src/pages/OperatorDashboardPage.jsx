@@ -298,20 +298,22 @@ const OperatorDashboardPage = ({
         />
         <div
           className={`mb-4 rounded-xl border px-4 py-3 text-sm ${
-            liveStreaming || sessionStreaming
+            (liveStreaming || sessionStreaming) && canIngestTelemetry
               ? 'border-emerald-200 bg-emerald-50/80 text-emerald-950'
               : 'border-[color:var(--color-line)] bg-slate-50 text-[color:var(--color-muted)]'
           }`}
         >
           <span className="inline-flex items-center gap-2 font-semibold">
-            <Radio size={16} className={(liveStreaming || sessionStreaming) ? 'animate-pulse' : ''} />
-            {multiStream
-              ? `Live Stream açık — ${streamingStationIds.length} hat paralel tick yazıyor; batch fire (Actual−Good) Σ Fire’a eklenir.`
+            <Radio size={16} className={((liveStreaming || sessionStreaming) && canIngestTelemetry) ? 'animate-pulse' : ''} />
+            {(liveStreaming || sessionStreaming) && canIngestTelemetry
+              ? (multiStream
+                ? `Live Stream açık — ${streamingStationIds.length} hat paralel tick yazıyor; batch fire (Actual−Good) Σ Fire’a eklenir.`
+                : 'Live Stream açık — her tick ~100–140 adet; rastgele batch fire Σ Fire (MachineMetrics) özetine yazılır.')
               : (liveStreaming || sessionStreaming)
-                ? 'Live Stream açık — her tick ~100–140 adet; rastgele batch fire Σ Fire (MachineMetrics) özetine yazılır.'
+                ? 'Vardiya açık ancak production.write yok — Live Stream tick yazılmıyor (yalnızca izleme).'
                 : 'Live Stream kapalı — “Vardiya Başlat” veya “Fabrika Simülasyonu Başlat” ile açın.'}
           </span>
-          {(liveStreaming || sessionStreaming) && (
+          {(liveStreaming || sessionStreaming) && canIngestTelemetry && (
             <Link to={`/makine-metrikleri?stationId=${encodeURIComponent(stationId)}`} className="ml-3 underline">
               Makine Metrikleri
             </Link>

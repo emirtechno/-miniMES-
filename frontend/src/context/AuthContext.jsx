@@ -83,6 +83,8 @@ export const AuthProvider = ({ children }) => {
     const data = await requestLogin(username, password);
     const user = toUser(data);
 
+    // JWT lives in sessionStorage for SPA Bearer auth (SignalR accessTokenFactory).
+    // Deferred: migrate to httpOnly Secure cookie + CSRF for XSS hardening (Phase 3+).
     sessionStorage.setItem('mm_access_token', data.accessToken);
     sessionStorage.setItem('mm_token_expires_at', data.expiresAtUtc);
     sessionStorage.setItem('mm_auth_user', JSON.stringify(user));

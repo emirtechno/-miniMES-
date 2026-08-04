@@ -1,16 +1,12 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Security.Claims;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Mvc;
+using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MiniMesApi.DTOs;
 using MiniMesApi.Infrastructure;
-using MiniMesApi.Security;
 using MiniMesApi.Models;
-
+using MiniMesApi.Security;
 using MiniMesApi.Services;
 
 namespace MiniMesApi.Controllers
@@ -23,15 +19,21 @@ namespace MiniMesApi.Controllers
         private readonly MesDbContext _context;
         private readonly ILogger<AlarmController> _logger;
         private readonly IMesRealtimePublisher _realtime;
+        private readonly IAuditLogService _audit;
+        private readonly IValidator<CreateAlarmDto> _validator;
 
         public AlarmController(
             MesDbContext context,
             ILogger<AlarmController> logger,
-            IMesRealtimePublisher realtime)
+            IMesRealtimePublisher realtime,
+            IAuditLogService audit,
+            IValidator<CreateAlarmDto> validator)
         {
             _context = context;
             _logger = logger;
             _realtime = realtime;
+            _audit = audit;
+            _validator = validator;
         }
 
         [HttpGet]
@@ -90,9 +92,14 @@ namespace MiniMesApi.Controllers
             [FromBody] CreateAlarmDto request,
             CancellationToken cancellationToken)
         {
-            if (!StationCatalog.Contains(request.Station))
+            var validation = await _validator.ValidateAsync(request, cancellationToken);
+            if (!validation.IsValid)
             {
-                return Problem(statusCode: StatusCodes.Status400BadRequest, title: "Geçersiz istasyon kimliği.");
+                return BadRequest(new ValidationProblemDetails(validation.Errors
+                    .GroupBy(error => error.PropertyName)
+                    .ToDictionary(
+                        group => group.Key,
+                        group => group.Select(error => error.ErrorMessage).ToArray())));
             }
 
             var alarm = new Alarm
@@ -111,6 +118,13 @@ namespace MiniMesApi.Controllers
                 await _context.SaveChangesAsync(cancellationToken);
                 var dto = ToDto(alarm);
                 await _realtime.AlarmCreatedAsync(dto, cancellationToken);
+                await _audit.WriteAsync(
+                    AuditEntityTypes.Alarm,
+                    alarm.Id.ToString(),
+                    AuditActions.Create,
+                    User,
+                    $"station={alarm.Station}; severity={alarm.Severity}; title={alarm.Title}",
+                    cancellationToken);
 
                 return CreatedAtAction(nameof(GetAlarms), dto);
             }
@@ -144,6 +158,13 @@ namespace MiniMesApi.Controllers
                 await _context.SaveChangesAsync(cancellationToken);
                 var dto = ToDto(alarm);
                 await _realtime.AlarmUpdatedAsync(dto, cancellationToken);
+                await _audit.WriteAsync(
+                    AuditEntityTypes.Alarm,
+                    alarm.Id.ToString(),
+                    AuditActions.Acknowledge,
+                    User,
+                    $"station={alarm.Station}; by={alarm.AcknowledgedBy}",
+                    cancellationToken);
                 return Ok(dto);
             }
             catch (Exception ex)
@@ -183,6 +204,13 @@ namespace MiniMesApi.Controllers
                 await _context.SaveChangesAsync(cancellationToken);
                 var dto = ToDto(alarm);
                 await _realtime.AlarmUpdatedAsync(dto, cancellationToken);
+                await _audit.WriteAsync(
+                    AuditEntityTypes.Alarm,
+                    alarm.Id.ToString(),
+                    AuditActions.Resolve,
+                    User,
+                    $"station={alarm.Station}; by={alarm.ResolvedBy}",
+                    cancellationToken);
                 return Ok(dto);
             }
             catch (Exception ex)

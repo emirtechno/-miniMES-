@@ -43,6 +43,8 @@ const ShopFloorActionBar = ({
   const [selectedReason, setSelectedReason] = useState('NO_OPERATOR');
   const [scrapQty, setScrapQty] = useState(1);
   const [scrapBusy, setScrapBusy] = useState(false);
+  const [downtimeBusy, setDowntimeBusy] = useState(false);
+  const [emergencyBusy, setEmergencyBusy] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -68,22 +70,32 @@ const ShopFloorActionBar = ({
   };
 
   const submitDowntime = async () => {
-    const reason = reasons.find((item) => item.code === selectedReason);
-    const ok = await onDowntime({
-      reasonCode: selectedReason,
-      reasonName: reason?.name,
-      isPlanned: reason?.isPlanned,
-    });
-    if (ok) setShowDowntime(false);
+    setDowntimeBusy(true);
+    try {
+      const reason = reasons.find((item) => item.code === selectedReason);
+      const ok = await onDowntime({
+        reasonCode: selectedReason,
+        reasonName: reason?.name,
+        isPlanned: reason?.isPlanned,
+      });
+      if (ok) setShowDowntime(false);
+    } finally {
+      setDowntimeBusy(false);
+    }
   };
 
   const submitEmergency = async () => {
-    await onEmergency({
-      reasonCode: 'BREAKDOWN',
-      reasonName: 'Arıza / Acil Durum',
-      isPlanned: false,
-      emergency: true,
-    });
+    setEmergencyBusy(true);
+    try {
+      await onEmergency({
+        reasonCode: 'BREAKDOWN',
+        reasonName: 'Arıza / Acil Durum',
+        isPlanned: false,
+        emergency: true,
+      });
+    } finally {
+      setEmergencyBusy(false);
+    }
   };
 
   const submitScrap = async () => {
@@ -161,10 +173,11 @@ const ShopFloorActionBar = ({
         <button
           type="button"
           className="mes-hmi-btn mes-hmi-danger"
+          disabled={emergencyBusy}
           onClick={() => requireActive(() => submitEmergency())}
         >
           <AlertOctagon size={28} />
-          <span>Arıza Bildir / Emergency</span>
+          <span>{emergencyBusy ? 'Bildiriliyor…' : 'Arıza Bildir / Emergency'}</span>
           <small>Kritik alarm</small>
         </button>
 
@@ -192,16 +205,21 @@ const ShopFloorActionBar = ({
       />
 
       {showDowntime && (
-        <div className="modal-overlay" role="presentation" onClick={() => setShowDowntime(false)}>
+        <div className="modal-overlay" role="presentation" onClick={() => !downtimeBusy && setShowDowntime(false)}>
           <div className="modal-card confirm-dialog" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between">
               <h3 className="m-0">Duruş / Mola Bildir</h3>
-              <button type="button" className="mes-btn-ghost" onClick={() => setShowDowntime(false)}><X size={16} /></button>
+              <button type="button" className="mes-btn-ghost" disabled={downtimeBusy} onClick={() => setShowDowntime(false)}><X size={16} /></button>
             </div>
             <p className="mes-helper mb-0">
               Neden seçin — Live Stream duraklar; üretime dönünce süre MachineMetrics’e yazılır.
             </p>
-            <select className="mes-input" value={selectedReason} onChange={(e) => setSelectedReason(e.target.value)}>
+            <select
+              className="mes-input"
+              value={selectedReason}
+              disabled={downtimeBusy}
+              onChange={(e) => setSelectedReason(e.target.value)}
+            >
               {reasons.map((reason) => (
                 <option key={reason.code} value={reason.code}>
                   {reason.name}{reason.isPlanned ? ' (planlı)' : ''}
@@ -209,8 +227,10 @@ const ShopFloorActionBar = ({
               ))}
             </select>
             <div className="confirm-actions">
-              <button type="button" className="mes-btn-secondary" onClick={() => setShowDowntime(false)}>Vazgeç</button>
-              <button type="button" className="mes-btn-primary" onClick={submitDowntime}>Kaydet</button>
+              <button type="button" className="mes-btn-secondary" disabled={downtimeBusy} onClick={() => setShowDowntime(false)}>Vazgeç</button>
+              <button type="button" className="mes-btn-primary" disabled={downtimeBusy} onClick={submitDowntime}>
+                {downtimeBusy ? 'Kaydediliyor…' : 'Kaydet'}
+              </button>
             </div>
           </div>
         </div>
