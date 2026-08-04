@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   BarChart3,
@@ -32,6 +32,8 @@ import { fetchLatestOee, fetchMachineMetrics } from '../services/api';
 import { useNonOverlappingPolling } from '../hooks/useNonOverlappingPolling';
 import { deriveLiveTelemetry } from '../utils/liveTelemetry';
 
+const DETAIL_FLASH_MS = 1400;
+
 const statusFromMetrics = ({ total, nok, ok, streaming }) => {
   if (streaming && total === 0) return { key: 'run', label: 'Live Stream', pill: 'mes-pill-run', Icon: PlayCircle };
   if (total === 0) return { key: 'idle', label: 'Beklemede', pill: 'mes-pill-neutral', Icon: PauseCircle };
@@ -60,6 +62,8 @@ const StationsPage = ({
   const [oeeByStation, setOeeByStation] = useState({});
   const [metricByStation, setMetricByStation] = useState({});
   const [pulse, setPulse] = useState(0);
+  const [detailFlash, setDetailFlash] = useState(false);
+  const detailFlashTimerRef = useRef(null);
 
   const streamingSet = useMemo(
     () => new Set(activeShiftStationIds || []),
@@ -71,6 +75,10 @@ const StationsPage = ({
     const id = window.setInterval(() => setPulse(Date.now()), 1200);
     return () => window.clearInterval(id);
   }, [liveStreaming]);
+
+  useEffect(() => () => {
+    if (detailFlashTimerRef.current) window.clearTimeout(detailFlashTimerRef.current);
+  }, []);
 
   useNonOverlappingPolling(async (signal) => {
     const oeeEntries = await Promise.all(
@@ -100,6 +108,15 @@ const StationsPage = ({
   const openStationMetrics = (stationId) => {
     onSelectStation?.(stationId);
     navigate(`/makine-metrikleri?stationId=${encodeURIComponent(stationId)}`);
+  };
+
+  const selectStationSummary = (stationId) => {
+    onSelectStation?.(stationId);
+    const panel = document.getElementById('station-detail-panel');
+    panel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setDetailFlash(true);
+    if (detailFlashTimerRef.current) window.clearTimeout(detailFlashTimerRef.current);
+    detailFlashTimerRef.current = window.setTimeout(() => setDetailFlash(false), DETAIL_FLASH_MS);
   };
 
   const catalogStations = useMemo(() => {
@@ -256,8 +273,8 @@ const StationsPage = ({
                   <button
                     type="button"
                     className="mes-btn-secondary"
-                    title="Özet paneli için seç"
-                    onClick={() => onSelectStation?.(station.id)}
+                    title="Özet paneli için seç ve panele kaydır"
+                    onClick={() => selectStationSummary(station.id)}
                   >
                     Özet
                   </button>
@@ -309,6 +326,11 @@ const StationsPage = ({
         onStationChange={onStationChange}
         stationMetrics={stationMetrics}
         recentTicks={recentTicks}
+        className={
+          detailFlash
+            ? 'ring-2 ring-[color:var(--color-vestel)] bg-red-50/30'
+            : ''
+        }
       />
     </div>
   );
