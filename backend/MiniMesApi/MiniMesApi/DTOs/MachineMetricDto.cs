@@ -10,8 +10,12 @@ public sealed class MachineMetricDto
     public string DowntimeReason { get; init; } = string.Empty;
     public string ShiftCode { get; init; } = string.Empty;
     public string ShiftName { get; init; } = string.Empty;
+    public int? ShiftSessionId { get; init; }
     public double IdealCycleTimeSeconds { get; init; }
     public int ActualProductionCount { get; init; }
     public int GoodProductionCount { get; init; }
+    public double? Temperature { get; init; }
+    public double? Rpm { get; init; }
+    public double? Vibration { get; init; }
     public DateTimeOffset RecordedAt { get; init; }
 }

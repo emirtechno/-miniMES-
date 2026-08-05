@@ -14,5 +14,7 @@ public sealed class MesHub : Hub
         public const string AlarmUpdated = "alarmUpdated";
         public const string AlarmDeleted = "alarmDeleted";
         public const string OeeUpdated = "oeeUpdated";
+        public const string TelemetryTick = "telemetryTick";
+        public const string ShiftUpdated = "shiftUpdated";
     }
 }

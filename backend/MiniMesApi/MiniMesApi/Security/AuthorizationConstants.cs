@@ -20,6 +20,7 @@ public static class AppPermissions
     public const string WorkOrderManage = "workorders.manage";
     public const string DeletedRecordsRead = "deleted-records.read";
     public const string UserManage = "users.manage";
+    public const string SimulationControl = "simulation.control";
 
     public static IReadOnlyCollection<string> ForRoles(IEnumerable<string> roles)
     {
@@ -39,7 +40,8 @@ public static class AppPermissions
                     AlarmManage,
                     WorkOrderManage,
                     DeletedRecordsRead,
-                    UserManage
+                    UserManage,
+                    SimulationControl
                 ]);
             }
             else if (role is AppRoles.Operator)
@@ -67,4 +69,5 @@ public static class PolicyNames
     public const string WorkOrderManage = nameof(WorkOrderManage);
     public const string DeletedRecordsRead = nameof(DeletedRecordsRead);
     public const string UserManage = nameof(UserManage);
+    public const string SimulationControl = nameof(SimulationControl);
 }

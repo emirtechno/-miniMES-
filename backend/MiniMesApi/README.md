@@ -76,6 +76,12 @@ Sağlık uçları (anonim):
 - `GET /health/live` — süreç ayakta mı
 - `GET /health/ready` — veritabanı hazır mı
 
+Geliştirme JWT ömrü (`Jwt:AccessTokenMinutes`) shop-floor için ~8 saat (480) tutulabilir;
+üretim örneği daha kısa (30 dk) kalır — tam refresh-token yığını yerine bu tercih edilir.
+Geliştirme şablonu: `appsettings.Development.json.example`.
+
+Yerel çalıştırma: `cd MiniMesApi && dotnet run` (varsayılan profil `http` → http://localhost:5000 + Development). İsteğe bağlı: `dotnet run --launch-profile http`.
+
 Canlı olaylar SignalR üzerinden yayınlanır:
 - Hub: `/hubs/mes` (JWT `access_token` query parametresi ile)
 - Olaylar: `alarmCreated`, `alarmUpdated`, `alarmDeleted`, `oeeUpdated`

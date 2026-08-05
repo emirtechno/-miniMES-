@@ -16,6 +16,7 @@ public sealed class JwtOptions
     [Required]
     public string Audience { get; init; } = string.Empty;
 
-    [Range(5, 60)]
+    // Dev shop-floor sessions use up to 480 minutes (8h); production typically 30.
+    [Range(5, 480)]
     public int AccessTokenMinutes { get; init; } = 30;
 }

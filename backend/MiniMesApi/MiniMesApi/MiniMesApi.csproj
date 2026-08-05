@@ -7,6 +7,17 @@
     <UserSecretsId>MiniMesApi-Identity-Development</UserSecretsId>
   </PropertyGroup>
 
+  <!-- Plain `dotnet run` → http://localhost:5000 + Development (Vite proxy / user-secrets). -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+    <LaunchProfileName>http</LaunchProfileName>
+    <ASPNETCORE_ENVIRONMENT>Development</ASPNETCORE_ENVIRONMENT>
+    <ASPNETCORE_URLS>http://localhost:5000</ASPNETCORE_URLS>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="MiniMesApi.Tests" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="12.1.1" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.10" />

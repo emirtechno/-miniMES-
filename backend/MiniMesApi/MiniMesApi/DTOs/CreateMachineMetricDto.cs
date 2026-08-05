@@ -1,6 +1,6 @@
 namespace MiniMesApi.DTOs;
 
-/// <summary>PLC / Live Stream ingest payload for a machine telemetry tick.</summary>
+/// <summary>PLC / simulation ingest payload for a machine telemetry tick.</summary>
 public sealed class CreateMachineMetricDto
 {
     public string StationId { get; set; } = string.Empty;
@@ -11,5 +11,8 @@ public sealed class CreateMachineMetricDto
     public double IdealCycleTimeSeconds { get; set; } = 2;
     public int ActualProductionCount { get; set; }
     public int GoodProductionCount { get; set; }
+    public double? Temperature { get; set; }
+    public double? Rpm { get; set; }
+    public double? Vibration { get; set; }
     public DateTimeOffset? RecordedAt { get; set; }
 }

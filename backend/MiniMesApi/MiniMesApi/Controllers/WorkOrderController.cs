@@ -5,6 +5,7 @@ using MiniMesApi.DTOs;
 using MiniMesApi.Infrastructure;
 using MiniMesApi.Models;
 using MiniMesApi.Security;
+using MiniMesApi.Services;
 
 namespace MiniMesApi.Controllers
 {
@@ -32,7 +33,9 @@ namespace MiniMesApi.Controllers
                 return Problem(statusCode: StatusCodes.Status400BadRequest, title: "Geçersiz sayfalama imleci.");
             }
 
-            var query = _context.WorkOrders.AsNoTracking();
+            IQueryable<WorkOrder> query = _context.WorkOrders
+                .AsNoTracking()
+                .Include(order => order.Lots);
             if (!string.IsNullOrWhiteSpace(cursor))
             {
                 query = query.Where(order => order.Id < cursorId);
@@ -60,6 +63,7 @@ namespace MiniMesApi.Controllers
         {
             var workOrder = await _context.WorkOrders
                 .AsNoTracking()
+                .Include(order => order.Lots)
                 .FirstOrDefaultAsync(order => order.Id == id, cancellationToken);
             return workOrder is null ? NotFound() : Ok(ToDto(workOrder));
         }
@@ -84,15 +88,38 @@ namespace MiniMesApi.Controllers
                     title: "İş emri numarası zaten kullanılıyor.");
             }
 
+            var productId = await ProductCatalogResolver.ResolveProductIdAsync(
+                _context,
+                request.Product,
+                cancellationToken);
+
             var workOrder = new WorkOrder
             {
                 OrderNo = request.OrderNo,
                 Product = request.Product,
+                ProductId = productId,
                 Station = request.Station,
                 Quantity = request.Quantity,
+                CompletedQuantity = 0,
                 Status = WorkOrderStatuses.Waiting
             };
             _context.WorkOrders.Add(workOrder);
+
+            if (request.CreateInitialLot)
+            {
+                var lotTarget = request.LotTargetQuantity ?? Math.Max(request.Quantity, 500);
+                workOrder.Lots.Add(new Batch
+                {
+                    LotNo = $"LOT-{request.OrderNo}",
+                    Product = request.Product,
+                    ProductId = productId,
+                    Station = request.Station,
+                    Status = BatchStatuses.Waiting,
+                    TargetQuantity = lotTarget,
+                    ProducedQuantity = 0,
+                    UpdatedAt = DateTimeOffset.UtcNow
+                });
+            }
 
             try
             {
@@ -105,6 +132,7 @@ namespace MiniMesApi.Controllers
                     title: "İş emri numarası zaten kullanılıyor.");
             }
 
+            await _context.Entry(workOrder).Collection(order => order.Lots).LoadAsync(cancellationToken);
             return CreatedAtAction(nameof(GetWorkOrder), new { id = workOrder.Id }, ToDto(workOrder));
         }
 
@@ -159,6 +187,8 @@ namespace MiniMesApi.Controllers
 
         private static WorkOrderDto ToDto(WorkOrder order)
         {
+            var completed = Math.Clamp(order.CompletedQuantity, 0, Math.Max(order.Quantity, 0));
+            var target = Math.Max(order.Quantity, 1);
             return new WorkOrderDto
             {
                 Id = order.Id,
@@ -166,8 +196,21 @@ namespace MiniMesApi.Controllers
                 Product = order.Product,
                 Station = order.Station,
                 Quantity = order.Quantity,
+                CompletedQuantity = completed,
+                ProgressPercent = Math.Round(Math.Min(100d, completed * 100d / target), 1),
                 Status = order.Status,
-                RowVersion = Convert.ToBase64String(order.RowVersion)
+                RowVersion = Convert.ToBase64String(order.RowVersion),
+                Lots = (order.Lots ?? [])
+                    .OrderBy(lot => lot.Id)
+                    .Select(lot => new WorkOrderLotSummaryDto
+                    {
+                        Id = lot.Id,
+                        LotNo = lot.LotNo,
+                        Status = lot.Status,
+                        TargetQuantity = lot.TargetQuantity,
+                        ProducedQuantity = lot.ProducedQuantity
+                    })
+                    .ToArray()
             };
         }
     }
