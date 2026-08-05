@@ -30,6 +30,21 @@ public sealed class CreateMachineMetricDtoValidator : AbstractValidator<CreateMa
             .LessThanOrEqualTo(x => x.ActualProductionCount)
             .WithMessage("Sağlam adet gerçekleşen adetten büyük olamaz.");
 
+        RuleFor(x => x.Temperature)
+            .InclusiveBetween(0, 200)
+            .When(x => x.Temperature.HasValue)
+            .WithMessage("Sıcaklık 0–200 °C aralığında olmalıdır.");
+
+        RuleFor(x => x.Rpm)
+            .GreaterThanOrEqualTo(0)
+            .When(x => x.Rpm.HasValue)
+            .WithMessage("RPM negatif olamaz.");
+
+        RuleFor(x => x.Vibration)
+            .GreaterThanOrEqualTo(0)
+            .When(x => x.Vibration.HasValue)
+            .WithMessage("Titreşim negatif olamaz.");
+
         RuleFor(x => x.DowntimeReasonCode)
             .Must(code => string.IsNullOrWhiteSpace(code) || DowntimeReasonCatalog.Contains(code))
             .WithMessage("Geçersiz duruş nedeni.");
