@@ -136,6 +136,7 @@ export const resolveAlarm = async (id) => {
   return response.data;
 };
 
+/** Soft-resolve via DELETE (backend maps DELETE → resolve; never hard-deletes). */
 export const deleteAlarm = async (id) => {
   const response = await apiClient.delete(`/Alarm/${id}`);
   return response.data;
@@ -170,12 +171,21 @@ export const updateBatchProgress = async (id, payload) => {
   return response.data;
 };
 
-export const fetchMachineMetrics = async ({ stationId, cursor, limit = 50, signal } = {}) => {
+export const fetchMachineMetrics = async ({
+  stationId,
+  cursor,
+  limit = 50,
+  from,
+  to,
+  signal,
+} = {}) => {
   const response = await apiClient.get('/MachineMetrics', {
     params: {
       stationId: stationId && stationId !== 'Tümü' ? stationId : undefined,
       cursor: cursor || undefined,
       limit,
+      from: from || undefined,
+      to: to || undefined,
     },
     signal,
   });
@@ -193,9 +203,69 @@ export const fetchTelemetrySummary = async ({ stationId, signal } = {}) => {
   return response.data || [];
 };
 
-/** Live Stream / PLC ingest — batch Actual/Good/Downtime tick. */
+/** PLC / external ingest — batch Actual/Good/Downtime tick (frontend no longer posts ticks). */
 export const createMachineMetric = async (payload, { signal } = {}) => {
   const response = await apiClient.post('/MachineMetrics', payload, { signal });
+  return response.data;
+};
+
+/** Operator scrap — ScrapLog + NOK MachineMetrics tick. */
+export const logMachineScrap = async (payload, { signal } = {}) => {
+  const response = await apiClient.post('/MachineMetrics/scrap', payload, { signal });
+  return response.data;
+};
+
+export const fetchActiveShiftSession = async ({ stationId, signal } = {}) => {
+  const response = await apiClient.get('/ShiftSession/active', {
+    params: { stationId: stationId || undefined },
+    signal,
+  });
+  return response.data || null;
+};
+
+export const startShiftSession = async (payload, { signal } = {}) => {
+  const response = await apiClient.post('/ShiftSession/start', payload, { signal });
+  return response.data;
+};
+
+export const startShiftDowntime = async (id, payload, { signal } = {}) => {
+  const response = await apiClient.post(`/ShiftSession/${id}/downtime`, payload, { signal });
+  return response.data;
+};
+
+export const startShiftSetup = async (id, { signal } = {}) => {
+  const response = await apiClient.post(`/ShiftSession/${id}/setup`, {}, { signal });
+  return response.data;
+};
+
+export const resumeShiftSession = async (id, { signal } = {}) => {
+  const response = await apiClient.post(`/ShiftSession/${id}/resume`, {}, { signal });
+  return response.data;
+};
+
+export const endShiftSession = async (id, { signal } = {}) => {
+  const response = await apiClient.post(`/ShiftSession/${id}/end`, {}, { signal });
+  return response.data;
+};
+
+/** Recent ShiftSessions for the current user (includes live/persisted summary). */
+export const fetchShiftSessionHistory = async ({ limit = 20, stationId, signal } = {}) => {
+  const response = await apiClient.get('/ShiftSession/history', {
+    params: {
+      limit,
+      stationId: stationId || undefined,
+    },
+    signal,
+  });
+  return response.data || [];
+};
+
+/** Session detail with summary + optional recent MachineMetrics ticks. */
+export const fetchShiftSessionDetail = async (id, { tickLimit = 12, signal } = {}) => {
+  const response = await apiClient.get(`/ShiftSession/${id}`, {
+    params: { tickLimit },
+    signal,
+  });
   return response.data;
 };
 
@@ -214,15 +284,41 @@ export const fetchLatestOee = async (stationId, { signal } = {}) => {
   return response.data;
 };
 
-/** Bulk latest OEE for all stations — preferred by Andon (avoids N+1). */
+/** Bulk latest OEE for all stations (single-tick scope). */
 export const fetchLatestOeeAll = async ({ signal } = {}) => {
   const response = await apiClient.get('/Oee/latest', { signal });
+  return Array.isArray(response.data) ? response.data : [];
+};
+
+/** Current shift-window OEE for one station (catalog shift window). */
+export const fetchShiftCurrentOee = async (stationId, { signal } = {}) => {
+  const response = await apiClient.get(
+    `/Oee/shift-current/${encodeURIComponent(stationId)}`,
+    { signal },
+  );
+  return response.data;
+};
+
+/** Current shift-window OEE aggregates — preferred by Andon / plant overview. */
+export const fetchShiftCurrentOeeAll = async ({ signal } = {}) => {
+  const response = await apiClient.get('/Oee/shift-current', { signal });
   return Array.isArray(response.data) ? response.data : [];
 };
 
 export const fetchOeeStations = async ({ signal } = {}) => {
   const response = await apiClient.get('/Oee/stations', { signal });
   return response.data || [];
+};
+
+/** Runtime factory simulation gate (independent of operator shift). */
+export const fetchSimulationStatus = async ({ signal } = {}) => {
+  const response = await apiClient.get('/Simulation/status', { signal });
+  return response.data;
+};
+
+export const setSimulationEnabled = async (payload, { signal } = {}) => {
+  const response = await apiClient.put('/Simulation/enabled', payload, { signal });
+  return response.data;
 };
 
 export const fetchUsers = async () => {

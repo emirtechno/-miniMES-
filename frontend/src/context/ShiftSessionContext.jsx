@@ -1,14 +1,79 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { createAlarm } from '../services/api';
+import {
+  endShiftSession,
+  fetchActiveShiftSession,
+  getApiErrorMessage,
+  logMachineScrap,
+  resumeShiftSession,
+  startShiftSession,
+  startShiftSetup,
+  startShiftDowntime,
+} from '../services/api';
+import { useMesHub } from './MesHubContext';
 import { DEFAULT_STATION } from '../constants/stations';
 import { SHIFT_SCHEDULES } from '../constants/shifts';
 
-const storageKey = (userId) => `mm_operator_shift_${userId || 'anon'}`;
+const mapSummary = (session) => {
+  if (!session?.summary) return null;
+  return {
+    operatorName: session.operatorName,
+    shiftCode: session.shiftCode,
+    stationId: session.stationId,
+    durationMinutes: session.summary.durationMinutes ?? 0,
+    scrapCount: session.summary.scrapLogQuantity ?? session.summary.nokCount ?? 0,
+    goodCount: session.summary.goodCount ?? 0,
+    actualCount: session.summary.actualCount ?? 0,
+    nokCount: session.summary.nokCount ?? 0,
+    downtimeSeconds: session.summary.downtimeSeconds ?? 0,
+    oeePercent: typeof session.summary.oeePercent === 'number' ? session.summary.oeePercent : null,
+    endedAt: session.endedAt || null,
+  };
+};
+
+const mapSessionToShift = (session, fallbackStationId = DEFAULT_STATION) => {
+  if (!session || session.status === 'Ended') {
+    return {
+      ...createDefaultShift(fallbackStationId),
+      summary: mapSummary(session),
+    };
+  }
+
+  return {
+    active: true,
+    onBreak: session.status === 'OnBreak',
+    inSetup: session.status === 'InSetup',
+    id: session.id,
+    stationId: session.stationId || fallbackStationId,
+    shiftCode: session.shiftCode || SHIFT_SCHEDULES[0].code,
+    operatorName: session.operatorName || '',
+    operatorId: session.userId || '',
+    secondaryOperator: null,
+    startedAt: session.startedAt,
+    breakReason: session.breakReason || null,
+    breakStartedAt:
+      session.status === 'OnBreak'
+        ? session.breakStartedAt || session.updatedAt || session.startedAt
+        : null,
+    setupStartedAt:
+      session.status === 'InSetup'
+        ? session.setupStartedAt || session.updatedAt || session.startedAt
+        : null,
+    activeWorkOrderId: session.activeWorkOrderId ?? null,
+    scrapCount: session.summary?.scrapLogQuantity ?? 0,
+    secondaryOperator: session.secondaryOperatorName || null,
+    // Live session aggregate (Good/NOK/OEE) from GET /active or SignalR.
+    summary: mapSummary(session),
+    runtimeMode: session.runtimeMode || null,
+    pauseReason: session.pauseReason || null,
+    hasBlockingAlarms: Boolean(session.hasBlockingAlarms),
+  };
+};
 
 export const createDefaultShift = (stationId = DEFAULT_STATION) => ({
   active: false,
   onBreak: false,
   inSetup: false,
+  id: null,
   stationId: stationId || DEFAULT_STATION,
   shiftCode: SHIFT_SCHEDULES[0].code,
   operatorName: '',
@@ -19,37 +84,75 @@ export const createDefaultShift = (stationId = DEFAULT_STATION) => ({
   breakStartedAt: null,
   setupStartedAt: null,
   scrapCount: 0,
+  activeWorkOrderId: null,
   summary: null,
+  runtimeMode: null,
+  pauseReason: null,
+  hasBlockingAlarms: false,
 });
 
 const ShiftSessionContext = createContext(null);
 
-export const ShiftSessionProvider = ({ children, user, notify, canCreateAlarms }) => {
-  const [shift, setShift] = useState(() => {
-    try {
-      const raw = sessionStorage.getItem(storageKey(user?.id));
-      if (raw) {
-        return { ...createDefaultShift(), ...JSON.parse(raw), summary: null };
-      }
-    } catch {
-      // fall through
-    }
-    return createDefaultShift();
-  });
-
+export const ShiftSessionProvider = ({ children, user, notify }) => {
+  const [shift, setShift] = useState(() => createDefaultShift());
   const [nowTick, setNowTick] = useState(0);
+  const [hydrated, setHydrated] = useState(false);
+
+  const applySession = useCallback((session) => {
+    setShift((current) => {
+      const next = mapSessionToShift(session, current.stationId);
+      // Keep last ended summary when active fetch returns null (e.g. after end / reload race).
+      if (!session && !next.active && current.summary && !next.summary) {
+        return { ...next, summary: current.summary };
+      }
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
-    const { summary: _summary, ...persistable } = shift;
-    void _summary;
-    sessionStorage.setItem(storageKey(user?.id), JSON.stringify(persistable));
-  }, [shift, user?.id]);
+    if (!user?.id) {
+      setShift(createDefaultShift());
+      setHydrated(true);
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    setHydrated(false);
+    // Domain shift state is backend-owned; clear legacy sessionStorage keys.
+    try {
+      sessionStorage.removeItem(`mm_operator_shift_${user.id}`);
+      sessionStorage.removeItem('mm_operator_shift_anon');
+    } catch {
+      // ignore
+    }
+    fetchActiveShiftSession({ signal: controller.signal })
+      .then((session) => {
+        applySession(session);
+      })
+      .catch((error) => {
+        if (error.name === 'CanceledError' || error.name === 'AbortError') return;
+        console.warn('Aktif vardiya yüklenemedi:', error);
+        setShift(createDefaultShift());
+      })
+      .finally(() => setHydrated(true));
+
+    return () => controller.abort();
+  }, [applySession, user?.id]);
 
   useEffect(() => {
     setNowTick(Date.now());
     const timer = window.setInterval(() => setNowTick(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useMesHub({
+    onShiftUpdated: (session) => {
+      if (!session) return;
+      const sameUser = !session.userId || session.userId === user?.id;
+      if (!sameUser) return;
+      applySession(session);
+    },
+  });
 
   const elapsedLabel = useMemo(() => {
     if (!shift.active || !shift.startedAt) return '—';
@@ -69,51 +172,46 @@ export const ShiftSessionProvider = ({ children, user, notify, canCreateAlarms }
     return mins > 0 ? `${mins}dk ${s}sn` : `${s}sn`;
   }, [shift.inSetup, shift.setupStartedAt, nowTick]);
 
-  const startShift = useCallback((payload) => {
-    setShift((current) => ({
-      ...current,
-      active: true,
-      onBreak: false,
-      inSetup: false,
-      stationId: payload.stationId || current.stationId,
-      shiftCode: payload.shiftCode || current.shiftCode,
-      operatorName: payload.operatorName || user?.name || user?.username || 'Operatör',
-      operatorId: payload.operatorId || user?.username || user?.id || '',
-      startedAt: new Date().toISOString(),
-      breakReason: null,
-      breakStartedAt: null,
-      setupStartedAt: null,
-      scrapCount: 0,
-      secondaryOperator: null,
-      summary: null,
-    }));
-    notify?.('Vardiya başlatıldı — Live Stream (makine telemetrisi) açıldı.', 'success');
-  }, [notify, user]);
+  const startShift = useCallback(async (payload) => {
+    try {
+      const session = await startShiftSession({
+        stationId: payload.stationId || shift.stationId,
+        shiftCode: payload.shiftCode || shift.shiftCode,
+        operatorName: payload.operatorName || user?.name || user?.username || 'Operatör',
+      });
+      applySession(session);
+      if (session?.hasBlockingAlarms || (session?.runtimeMode && session.runtimeMode !== 'Running')) {
+        notify?.(
+          'Vardiya açıldı ama istasyon durakladı — açık engelleyici alarmları Andon’dan çözün veya Üretime Dön deneyin.',
+          'error',
+        );
+      } else {
+        notify?.('Vardiya başlatıldı — simülasyon Running.', 'success');
+      }
+      return true;
+    } catch (error) {
+      notify?.(getApiErrorMessage(error, 'Vardiya başlatılamadı.'), 'error');
+      return false;
+    }
+  }, [applySession, notify, shift.shiftCode, shift.stationId, user]);
 
-  const endShift = useCallback(() => {
-    setShift((current) => {
-      const mins = current.startedAt
-        ? Math.max(0, Math.floor((Date.now() - new Date(current.startedAt).getTime()) / 60000))
-        : 0;
-      const summary = {
-        operatorName: current.operatorName,
-        shiftCode: current.shiftCode,
-        stationId: current.stationId,
-        durationMinutes: mins,
-        scrapCount: current.scrapCount,
-        endedAt: new Date().toISOString(),
-      };
+  const endShift = useCallback(async () => {
+    if (!shift.id) {
+      setShift((current) => createDefaultShift(current.stationId));
+      return;
+    }
+    try {
+      const session = await endShiftSession(shift.id);
+      applySession(session);
+      const scrap = session?.summary?.scrapLogQuantity ?? session?.summary?.nokCount ?? 0;
       notify?.(
-        `Vardiya bitti · Live Stream durduruldu · ${mins} dk · Fire: ${current.scrapCount}`,
+        `Vardiya bitti · ${session?.summary?.durationMinutes ?? 0} dk · Fire(NOK): ${scrap}`,
         'info',
       );
-      return {
-        ...createDefaultShift(current.stationId),
-        stationId: current.stationId,
-        summary,
-      };
-    });
-  }, [notify]);
+    } catch (error) {
+      notify?.(getApiErrorMessage(error, 'Vardiya bitirilemedi.'), 'error');
+    }
+  }, [applySession, notify, shift.id]);
 
   const setStationId = useCallback((stationId) => {
     setShift((current) => {
@@ -123,83 +221,95 @@ export const ShiftSessionProvider = ({ children, user, notify, canCreateAlarms }
   }, []);
 
   const reportDowntime = useCallback(async ({ reasonCode, reasonName, isPlanned, emergency = false }) => {
+    if (!shift.active || !shift.id) {
+      notify?.('Önce vardiyayı başlatın.', 'error');
+      return false;
+    }
+    try {
+      const session = await startShiftDowntime(shift.id, {
+        reasonCode,
+        reasonName,
+        isPlanned,
+        emergency,
+      });
+      applySession(session);
+      notify?.(emergency ? 'Acil arıza alarmı oluşturuldu.' : 'Duruş / mola kaydı alındı.', emergency ? 'error' : 'success');
+      return true;
+    } catch (error) {
+      notify?.(getApiErrorMessage(error, 'Duruş kaydı oluşturulamadı.'), 'error');
+      return false;
+    }
+  }, [applySession, notify, shift.active, shift.id]);
+
+  const resumeProduction = useCallback(async () => {
+    if (!shift.id) return false;
+    try {
+      const session = await resumeShiftSession(shift.id);
+      applySession(session);
+      if (session?.hasBlockingAlarms || (session?.runtimeMode && session.runtimeMode !== 'Running')) {
+        notify?.(
+          'Vardiya Active ama simülasyon hâlâ durakladı — açık engelleyici alarmları Andon’dan Çözüldü yapın.',
+          'error',
+        );
+        return false;
+      }
+      notify?.('Üretime geri dönüldü — StationRuntime Running.', 'success');
+      return true;
+    } catch (error) {
+      notify?.(getApiErrorMessage(error, 'Üretime dönülemedi. Engelleyici alarmları Andon’dan çözün.'), 'error');
+      return false;
+    }
+  }, [applySession, notify, shift.id]);
+
+  /** Refresh shift + runtimeMode from backend (heals FE desync after sim tick). */
+  const refreshShift = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      const session = await fetchActiveShiftSession();
+      applySession(session);
+    } catch {
+      // ignore background refresh errors
+    }
+  }, [applySession, user?.id]);
+
+  const startSetup = useCallback(async () => {
+    if (!shift.active || !shift.id) {
+      notify?.('Önce vardiyayı başlatın.', 'error');
+      return;
+    }
+    try {
+      const session = await startShiftSetup(shift.id);
+      applySession(session);
+      notify?.('Setup / model değişimi zamanlayıcısı başladı.', 'info');
+    } catch (error) {
+      notify?.(getApiErrorMessage(error, 'Setup başlatılamadı.'), 'error');
+    }
+  }, [applySession, notify, shift.active, shift.id]);
+
+  const logScrap = useCallback(async (count) => {
+    const amount = Math.max(1, Number(count) || 1);
     if (!shift.active) {
       notify?.('Önce vardiyayı başlatın.', 'error');
       return false;
     }
     try {
-      if (canCreateAlarms) {
-        await createAlarm({
-          title: emergency
-            ? `ARIZA / ACİL — ${reasonName || reasonCode}`
-            : `Duruş Bildirimi — ${reasonName || reasonCode}`,
-          station: shift.stationId,
-          severity: emergency ? 'Kritik' : (isPlanned ? 'Uyarı' : 'Yüksek'),
-          description: `Operatör ${shift.operatorName || user?.name || ''} (${shift.operatorId || ''}) duruş kaydı oluşturdu.`,
-        });
-      }
+      await logMachineScrap({
+        stationId: shift.stationId,
+        quantity: amount,
+        reasonCode: 'OPERATOR_SCRAP',
+        shiftSessionId: shift.id || undefined,
+      });
       setShift((current) => ({
         ...current,
-        onBreak: true,
-        inSetup: false,
-        breakReason: reasonCode,
-        breakStartedAt: new Date().toISOString(),
+        scrapCount: (current.scrapCount || 0) + amount,
       }));
-      notify?.(emergency ? 'Acil arıza alarmı oluşturuldu.' : 'Duruş / mola kaydı alındı.', emergency ? 'error' : 'success');
+      notify?.(`${amount} adet fire ScrapLogs + MachineMetrics’e yazıldı.`, 'info');
       return true;
     } catch (error) {
-      notify?.(error?.message || 'Duruş kaydı oluşturulamadı.', 'error');
+      notify?.(getApiErrorMessage(error, 'Fire kaydı oluşturulamadı.'), 'error');
       return false;
     }
-  }, [canCreateAlarms, notify, shift.active, shift.operatorId, shift.operatorName, shift.stationId, user]);
-
-  const resumeProduction = useCallback(() => {
-    setShift((current) => ({
-      ...current,
-      onBreak: false,
-      inSetup: false,
-      breakReason: null,
-      breakStartedAt: null,
-      setupStartedAt: null,
-    }));
-    notify?.('Üretime geri dönüldü.', 'success');
-  }, [notify]);
-
-  const startSetup = useCallback(async () => {
-    if (!shift.active) {
-      notify?.('Önce vardiyayı başlatın.', 'error');
-      return;
-    }
-    if (canCreateAlarms) {
-      try {
-        await createAlarm({
-          title: 'Model Değişimi / Setup',
-          station: shift.stationId,
-          severity: 'Uyarı',
-          description: `Setup timer başlatıldı — ${shift.operatorName || 'Operatör'}`,
-        });
-      } catch {
-        // local setup still starts
-      }
-    }
-    setShift((current) => ({
-      ...current,
-      inSetup: true,
-      onBreak: false,
-      setupStartedAt: new Date().toISOString(),
-      breakReason: 'CHANGEOVER',
-    }));
-    notify?.('Setup / model değişimi zamanlayıcısı başladı.', 'info');
-  }, [canCreateAlarms, notify, shift.active, shift.operatorName, shift.stationId]);
-
-  const logScrap = useCallback((count) => {
-    const amount = Math.max(1, Number(count) || 1);
-    setShift((current) => ({
-      ...current,
-      scrapCount: (current.scrapCount || 0) + amount,
-    }));
-    notify?.(`${amount} adet fire kaydedildi.`, 'info');
-  }, [notify]);
+  }, [notify, shift.active, shift.id, shift.stationId]);
 
   const loginSecondaryOperator = useCallback((pin, nameHint) => {
     setShift((current) => ({
@@ -213,8 +323,19 @@ export const ShiftSessionProvider = ({ children, user, notify, canCreateAlarms }
     notify?.('İkincil operatör giriş yaptı.', 'success');
   }, [notify]);
 
+  useEffect(() => {
+    if (!shift.active || !user?.id) return undefined;
+    const timer = window.setInterval(() => {
+      fetchActiveShiftSession()
+        .then((session) => applySession(session))
+        .catch(() => {});
+    }, 15000);
+    return () => window.clearInterval(timer);
+  }, [applySession, shift.active, user?.id]);
+
   const value = useMemo(() => ({
     shift,
+    hydrated,
     elapsedLabel,
     setupElapsedLabel,
     startShift,
@@ -222,11 +343,13 @@ export const ShiftSessionProvider = ({ children, user, notify, canCreateAlarms }
     setStationId,
     reportDowntime,
     resumeProduction,
+    refreshShift,
     startSetup,
     logScrap,
     loginSecondaryOperator,
   }), [
     shift,
+    hydrated,
     elapsedLabel,
     setupElapsedLabel,
     startShift,
@@ -234,6 +357,7 @@ export const ShiftSessionProvider = ({ children, user, notify, canCreateAlarms }
     setStationId,
     reportDowntime,
     resumeProduction,
+    refreshShift,
     startSetup,
     logScrap,
     loginSecondaryOperator,

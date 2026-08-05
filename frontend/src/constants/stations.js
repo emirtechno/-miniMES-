@@ -12,22 +12,6 @@ export const STATION_DEFINITIONS = [
     description: 'Panel / gövde ana montaj hattı. Operatör üretim kaydı girer.',
   },
   {
-    id: 'Montaj_Hatti_02',
-    displayName: 'Montaj Hattı 2',
-    line: 'Montaj Hattı',
-    lineCode: 'MONTAJ',
-    area: 'Ana Montaj',
-    description: 'İkinci paralel montaj hattı; kapasite dengeleme için kullanılır.',
-  },
-  {
-    id: 'Montaj_Hatti_03',
-    displayName: 'Montaj Hattı 3',
-    line: 'Montaj Hattı',
-    lineCode: 'MONTAJ',
-    area: 'Ana Montaj',
-    description: 'Üçüncü montaj hattı; yüksek talep dönemlerinde devreye alınır.',
-  },
-  {
     id: 'Elektronik_Kart_Montaj',
     displayName: 'Elektronik Kart Montaj',
     line: 'Elektronik',

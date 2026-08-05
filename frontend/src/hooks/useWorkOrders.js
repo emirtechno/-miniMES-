@@ -60,7 +60,9 @@ export function useWorkOrders({
   }, [isAuthenticated, loadBatches, loadWorkOrders]);
 
   useNonOverlappingPolling(
-    (signal) => loadBatches(signal),
+    async (signal) => {
+      await Promise.all([loadBatches(signal), loadWorkOrders(signal)]);
+    },
     {
       enabled: isAuthenticated,
       intervalMs: 8000,
