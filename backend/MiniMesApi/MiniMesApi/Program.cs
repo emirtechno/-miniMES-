@@ -180,7 +180,8 @@ builder.Services.AddAuthorizationBuilder()
     .AddPolicy(PolicyNames.AlarmManage, policy => policy.RequireClaim("permission", AppPermissions.AlarmManage))
     .AddPolicy(PolicyNames.WorkOrderManage, policy => policy.RequireClaim("permission", AppPermissions.WorkOrderManage))
     .AddPolicy(PolicyNames.DeletedRecordsRead, policy => policy.RequireClaim("permission", AppPermissions.DeletedRecordsRead))
-    .AddPolicy(PolicyNames.UserManage, policy => policy.RequireClaim("permission", AppPermissions.UserManage));
+    .AddPolicy(PolicyNames.UserManage, policy => policy.RequireClaim("permission", AppPermissions.UserManage))
+    .AddPolicy(PolicyNames.SimulationControl, policy => policy.RequireClaim("permission", AppPermissions.SimulationControl));
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -208,14 +209,18 @@ builder.Services.AddRateLimiter(options =>
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IAuditLogService, AuditLogService>();
-builder.Services.AddScoped<ILotTelemetrySync, LotTelemetrySync>();
+builder.Services.AddScoped<IDowntimeEventService, DowntimeEventService>();
+builder.Services.AddScoped<IProductionProgressSync, ProductionProgressSync>();
+builder.Services.AddScoped<IStationRuntimeService, StationRuntimeService>();
+builder.Services.AddScoped<IFactorySimulationControl, FactorySimulationControlService>();
+builder.Services.AddScoped<ITelemetryAnomalyService, TelemetryAnomalyService>();
+builder.Services.AddScoped<IMetricIngestService, MetricIngestService>();
 builder.Services.AddSingleton<IMesRealtimePublisher, MesRealtimePublisher>();
 builder.Services.AddSignalR();
 
 builder.Services.AddEndpointsApiExplorer();
 
-if (builder.Environment.IsDevelopment() &&
-    builder.Configuration.GetValue<bool>($"{OeeSimulationOptions.SectionName}:Enabled"))
+if (builder.Configuration.GetValue<bool>($"{OeeSimulationOptions.SectionName}:Enabled"))
 {
     builder.Services.AddHostedService<OeeSimulationService>();
 }
@@ -263,6 +268,10 @@ if (!isTesting)
         var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("DatabaseInitialization");
         await db.Database.MigrateAsync();
         await IdentityBootstrapper.InitializeAsync(scope.ServiceProvider, builder.Configuration, logger);
+        var runtimeService = scope.ServiceProvider.GetRequiredService<IStationRuntimeService>();
+        await runtimeService.EnsureSeededAsync();
+        var simulationControl = scope.ServiceProvider.GetRequiredService<IFactorySimulationControl>();
+        await simulationControl.EnsureSeededAsync();
 
         if (app.Environment.IsDevelopment())
         {
@@ -270,15 +279,16 @@ if (!isTesting)
             {
                 if (!await db.Alarms.AnyAsync())
                 {
+                    // Do not seed open Kritik/blocking alarms — SyncWithOpenAlarms would pause the station.
                     db.Alarms.AddRange(
                         new Alarm
                         {
                             Title = "Hız Sensörü Arızası",
-                            Station = "Montaj_Hatti_02",
+                            Station = StationCatalog.AssemblyLine1,
                             Severity = "Kritik",
                             Time = DateTimeOffset.UtcNow.AddMinutes(-22),
-                            Status = "Açık",
-                            Description = "Üretim hızı beklenen değerlerin altında."
+                            Status = AlarmStatuses.Resolved,
+                            Description = "Üretim hızı beklenen değerlerin altında (örnek — çözülmüş)."
                         },
                         new Alarm
                         {
@@ -293,7 +303,97 @@ if (!isTesting)
                     await db.SaveChangesAsync();
                 }
 
-                if (!await db.Batches.AnyAsync())
+                if (!await db.WorkOrders.AnyAsync() && !await db.Batches.AnyAsync())
+                {
+                    var wo1 = new WorkOrder
+                    {
+                        OrderNo = "WO-2026-001",
+                        Product = "Montaj Kiti A",
+                        Station = StationCatalog.AssemblyLine1,
+                        Quantity = 1000,
+                        CompletedQuantity = 0,
+                        Status = WorkOrderStatuses.InProgress
+                    };
+                    var wo2 = new WorkOrder
+                    {
+                        OrderNo = "WO-2026-002",
+                        Product = "Elektronik Kart B",
+                        Station = StationCatalog.ElectronicsBoardAssembly,
+                        Quantity = 1000,
+                        CompletedQuantity = 0,
+                        Status = WorkOrderStatuses.InProgress
+                    };
+                    var wo3 = new WorkOrder
+                    {
+                        OrderNo = "WO-2026-003",
+                        Product = "Paketleme Ünitesi C",
+                        Station = StationCatalog.PackagingLine1,
+                        Quantity = 800,
+                        CompletedQuantity = 0,
+                        Status = WorkOrderStatuses.Waiting
+                    };
+                    var wo4 = new WorkOrder
+                    {
+                        OrderNo = "WO-2026-004",
+                        Product = "Final Kontrol Lotu D",
+                        Station = StationCatalog.FinalInspection,
+                        Quantity = 500,
+                        CompletedQuantity = 0,
+                        Status = WorkOrderStatuses.Waiting
+                    };
+                    db.WorkOrders.AddRange(wo1, wo2, wo3, wo4);
+                    await db.SaveChangesAsync();
+
+                    db.Batches.AddRange(
+                        new Batch
+                        {
+                            LotNo = "LOT-2026-001",
+                            Product = "Montaj Kiti A",
+                            Station = StationCatalog.AssemblyLine1,
+                            Status = BatchStatuses.InProgress,
+                            TargetQuantity = 1000,
+                            ProducedQuantity = 0,
+                            WorkOrderId = wo1.Id,
+                            UpdatedAt = DateTimeOffset.UtcNow.AddHours(-1)
+                        },
+                        new Batch
+                        {
+                            LotNo = "LOT-2026-002",
+                            Product = "Elektronik Kart B",
+                            Station = StationCatalog.ElectronicsBoardAssembly,
+                            Status = BatchStatuses.InProgress,
+                            TargetQuantity = 1000,
+                            ProducedQuantity = 0,
+                            WorkOrderId = wo2.Id,
+                            UpdatedAt = DateTimeOffset.UtcNow.AddHours(-2)
+                        },
+                        new Batch
+                        {
+                            LotNo = "LOT-2026-003",
+                            Product = "Paketleme Ünitesi C",
+                            Station = StationCatalog.PackagingLine1,
+                            Status = BatchStatuses.Waiting,
+                            TargetQuantity = 800,
+                            ProducedQuantity = 0,
+                            WorkOrderId = wo3.Id,
+                            UpdatedAt = DateTimeOffset.UtcNow.AddMinutes(-45)
+                        },
+                        new Batch
+                        {
+                            LotNo = "LOT-2026-004",
+                            Product = "Final Kontrol Lotu D",
+                            Station = StationCatalog.FinalInspection,
+                            Status = BatchStatuses.Waiting,
+                            TargetQuantity = 500,
+                            ProducedQuantity = 0,
+                            WorkOrderId = wo4.Id,
+                            UpdatedAt = DateTimeOffset.UtcNow.AddHours(-1)
+                        }
+                    );
+                    await db.SaveChangesAsync();
+                    logger.LogInformation("İş emri ve parti/lot örnek verileri eklendi.");
+                }
+                else if (!await db.Batches.AnyAsync())
                 {
                     db.Batches.AddRange(
                         new Batch
@@ -315,36 +415,6 @@ if (!isTesting)
                             TargetQuantity = 1000,
                             ProducedQuantity = 0,
                             UpdatedAt = DateTimeOffset.UtcNow.AddHours(-2)
-                        },
-                        new Batch
-                        {
-                            LotNo = "LOT-2026-003",
-                            Product = "Paketleme Ünitesi C",
-                            Station = StationCatalog.PackagingLine1,
-                            Status = BatchStatuses.Waiting,
-                            TargetQuantity = 800,
-                            ProducedQuantity = 0,
-                            UpdatedAt = DateTimeOffset.UtcNow.AddMinutes(-45)
-                        },
-                        new Batch
-                        {
-                            LotNo = "LOT-2026-004",
-                            Product = "Final Kontrol Lotu D",
-                            Station = StationCatalog.FinalInspection,
-                            Status = BatchStatuses.Waiting,
-                            TargetQuantity = 500,
-                            ProducedQuantity = 0,
-                            UpdatedAt = DateTimeOffset.UtcNow.AddHours(-1)
-                        },
-                        new Batch
-                        {
-                            LotNo = "LOT-2026-005",
-                            Product = "Montaj Kiti A",
-                            Station = StationCatalog.AssemblyLine3,
-                            Status = BatchStatuses.InProgress,
-                            TargetQuantity = 1000,
-                            ProducedQuantity = 0,
-                            UpdatedAt = DateTimeOffset.UtcNow.AddMinutes(-20)
                         }
                     );
                     await db.SaveChangesAsync();
@@ -356,6 +426,8 @@ if (!isTesting)
                 logger.LogError(ex, "Alarm başlangıç verileri eklenemedi.");
             }
         }
+
+        await runtimeService.SyncWithOpenAlarmsAsync();
     }
 }
 

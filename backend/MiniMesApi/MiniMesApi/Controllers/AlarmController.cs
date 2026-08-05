@@ -23,15 +23,24 @@ namespace MiniMesApi.Controllers
         private readonly MesDbContext _context;
         private readonly ILogger<AlarmController> _logger;
         private readonly IMesRealtimePublisher _realtime;
+        private readonly IStationRuntimeService _runtime;
+        private readonly IDowntimeEventService _downtimeEvents;
+        private readonly IAuditLogService _auditLog;
 
         public AlarmController(
             MesDbContext context,
             ILogger<AlarmController> logger,
-            IMesRealtimePublisher realtime)
+            IMesRealtimePublisher realtime,
+            IStationRuntimeService runtime,
+            IDowntimeEventService downtimeEvents,
+            IAuditLogService auditLog)
         {
             _context = context;
             _logger = logger;
             _realtime = realtime;
+            _runtime = runtime;
+            _downtimeEvents = downtimeEvents;
+            _auditLog = auditLog;
         }
 
         [HttpGet]
@@ -51,10 +60,10 @@ namespace MiniMesApi.Controllers
             var query = _context.Alarms.AsNoTracking();
             if (openOnly)
             {
+                // Onaylandı stays open until Çözüldü/Kapalı — acknowledge is awareness only.
                 query = query.Where(alarm =>
-                    alarm.Status != "Onaylandı"
-                    && alarm.Status != "Çözüldü"
-                    && alarm.Status != "Kapalı");
+                    alarm.Status != AlarmStatuses.Resolved
+                    && alarm.Status != AlarmStatuses.ClosedLegacy);
             }
             else if (!string.IsNullOrWhiteSpace(status))
             {
@@ -84,6 +93,19 @@ namespace MiniMesApi.Controllers
             });
         }
 
+        [HttpGet("{id:int}")]
+        public async Task<ActionResult<AlarmDto>> GetAlarmById(int id, CancellationToken cancellationToken)
+        {
+            var alarm = await _context.Alarms.AsNoTracking()
+                .FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
+            if (alarm is null)
+            {
+                return Problem(statusCode: StatusCodes.Status404NotFound, title: "Alarm bulunamadı.");
+            }
+
+            return Ok(ToDto(alarm));
+        }
+
         [HttpPost]
         [Authorize(Policy = PolicyNames.AlarmWrite)]
         public async Task<ActionResult<AlarmDto>> CreateAlarm(
@@ -109,10 +131,11 @@ namespace MiniMesApi.Controllers
             {
                 _context.Alarms.Add(alarm);
                 await _context.SaveChangesAsync(cancellationToken);
+                await _runtime.PauseForAlarmAsync(alarm.Station, alarm.Title, alarm.Severity, cancellationToken);
                 var dto = ToDto(alarm);
                 await _realtime.AlarmCreatedAsync(dto, cancellationToken);
 
-                return CreatedAtAction(nameof(GetAlarms), dto);
+                return CreatedAtAction(nameof(GetAlarmById), new { id = alarm.Id }, dto);
             }
             catch (Exception ex)
             {
@@ -120,6 +143,14 @@ namespace MiniMesApi.Controllers
                 return Problem(statusCode: StatusCodes.Status500InternalServerError, title: "Alarm oluşturulamadı.");
             }
         }
+
+        /// <summary>
+        /// Soft-resolve (product model): never hard-delete downtime records. DELETE maps to resolve.
+        /// </summary>
+        [HttpDelete("{id:int}")]
+        [Authorize(Policy = PolicyNames.AlarmManage)]
+        public Task<ActionResult<AlarmDto>> DeleteAlarm(int id, CancellationToken cancellationToken) =>
+            ResolveAlarm(id, cancellationToken);
 
         [HttpPut("acknowledge/{id}")]
         [Authorize(Policy = PolicyNames.AlarmManage)]
@@ -181,6 +212,21 @@ namespace MiniMesApi.Controllers
                 alarm.ResolvedAt = DateTimeOffset.UtcNow;
                 alarm.ResolvedBy = ResolveActor();
                 await _context.SaveChangesAsync(cancellationToken);
+                await _downtimeEvents.CloseOpenForAlarmAsync(alarm.Id, alarm.ResolvedAt.Value, cancellationToken);
+                await _runtime.RefreshAfterAlarmResolvedAsync(alarm.Station, cancellationToken);
+
+                await _auditLog.WriteAsync(
+                    AuditEntityTypes.Alarm,
+                    alarm.Id.ToString(),
+                    AuditActions.Resolve,
+                    User,
+                    details: $"Station={alarm.Station};Title={alarm.Title}",
+                    cancellationToken: cancellationToken);
+
+                _logger.LogInformation(
+                    "Alarm resolved. AlarmId={AlarmId} Station={Station} Title={Title} ResolvedBy={ResolvedBy}",
+                    alarm.Id, alarm.Station, alarm.Title, alarm.ResolvedBy);
+
                 var dto = ToDto(alarm);
                 await _realtime.AlarmUpdatedAsync(dto, cancellationToken);
                 return Ok(dto);
@@ -215,7 +261,8 @@ namespace MiniMesApi.Controllers
                 AcknowledgedAt = alarm.AcknowledgedAt,
                 AcknowledgedBy = alarm.AcknowledgedBy,
                 ResolvedAt = alarm.ResolvedAt,
-                ResolvedBy = alarm.ResolvedBy
+                ResolvedBy = alarm.ResolvedBy,
+                ShiftSessionId = alarm.ShiftSessionId
             };
         }
     }

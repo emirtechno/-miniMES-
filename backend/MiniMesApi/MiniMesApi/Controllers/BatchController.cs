@@ -32,7 +32,9 @@ public class BatchController : ControllerBase
             return Problem(statusCode: StatusCodes.Status400BadRequest, title: "Geçersiz sayfalama imleci.");
         }
 
-        var query = _context.Batches.AsQueryable();
+        IQueryable<Batch> query = _context.Batches
+            .AsNoTracking()
+            .Include(batch => batch.WorkOrder);
         if (!string.IsNullOrWhiteSpace(cursor))
         {
             query = query.Where(batch => batch.Id < cursorId);
@@ -44,8 +46,6 @@ public class BatchController : ControllerBase
             .ToListAsync(cancellationToken);
 
         var pageBatches = batches.Take(limit).ToList();
-        await SyncProducedFromTelemetryAsync(pageBatches, cancellationToken);
-
         var items = pageBatches.Select(ToDto).ToArray();
         return Ok(new CursorPage<BatchDto>
         {
@@ -56,61 +56,18 @@ public class BatchController : ControllerBase
         });
     }
 
-    /// <summary>
-    /// Normalize lot status from stored ProducedQuantity (advanced by Live Stream ticks).
-    /// Scales small demo targets so ~100–140 unit PLC ticks show meaningful progress.
-    /// </summary>
-    private async Task SyncProducedFromTelemetryAsync(List<Batch> batches, CancellationToken cancellationToken)
-    {
-        if (batches.Count == 0) return;
-
-        var dirty = false;
-        foreach (var batch in batches)
-        {
-            // Legacy seeds used Target≈50–200; industrial ticks are ~120 — raise target for open lots.
-            if (batch.Status != BatchStatuses.Completed && batch.TargetQuantity > 0 && batch.TargetQuantity < 500)
-            {
-                batch.TargetQuantity = 1000;
-                dirty = true;
-            }
-
-            var produced = Math.Clamp(batch.ProducedQuantity, 0, Math.Max(batch.TargetQuantity, 0));
-            var nextStatus = produced <= 0
-                ? BatchStatuses.Waiting
-                : produced >= batch.TargetQuantity
-                    ? BatchStatuses.Completed
-                    : BatchStatuses.InProgress;
-
-            if (batch.ProducedQuantity != produced || batch.Status != nextStatus)
-            {
-                batch.ProducedQuantity = produced;
-                batch.Status = nextStatus;
-                batch.UpdatedAt = DateTimeOffset.UtcNow;
-                dirty = true;
-            }
-            else if (dirty)
-            {
-                batch.UpdatedAt = DateTimeOffset.UtcNow;
-            }
-        }
-
-        if (dirty)
-        {
-            await _context.SaveChangesAsync(cancellationToken);
-        }
-    }
-
     [HttpPost("{id:int}/advance")]
     [Authorize(Policy = PolicyNames.WorkOrderManage)]
     public async Task<ActionResult<BatchDto>> AdvanceBatch(int id, CancellationToken cancellationToken)
     {
-        var batch = await _context.Batches.FindAsync([id], cancellationToken);
+        var batch = await _context.Batches
+            .Include(item => item.WorkOrder)
+            .FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
         if (batch is null)
         {
             return NotFound();
         }
 
-        await SyncProducedFromTelemetryAsync([batch], cancellationToken);
         return Ok(ToDto(batch));
     }
 
@@ -118,13 +75,22 @@ public class BatchController : ControllerBase
     [Authorize(Policy = PolicyNames.WorkOrderManage)]
     public async Task<ActionResult<BatchDto>> ReopenBatch(int id, CancellationToken cancellationToken)
     {
-        var batch = await _context.Batches.FindAsync([id], cancellationToken);
+        var batch = await _context.Batches
+            .Include(item => item.WorkOrder)
+            .FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
         if (batch is null)
         {
             return NotFound();
         }
 
-        await SyncProducedFromTelemetryAsync([batch], cancellationToken);
+        if (!BatchStatuses.TryReopen(batch.Status, out var nextStatus, out var error))
+        {
+            return Problem(statusCode: StatusCodes.Status409Conflict, title: error);
+        }
+
+        batch.Status = nextStatus;
+        batch.UpdatedAt = DateTimeOffset.UtcNow;
+        await _context.SaveChangesAsync(cancellationToken);
         return Ok(ToDto(batch));
     }
 
@@ -135,7 +101,9 @@ public class BatchController : ControllerBase
         [FromBody] UpdateBatchProgressDto request,
         CancellationToken cancellationToken)
     {
-        var batch = await _context.Batches.FindAsync([id], cancellationToken);
+        var batch = await _context.Batches
+            .Include(item => item.WorkOrder)
+            .FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
         if (batch is null)
         {
             return NotFound();
@@ -149,7 +117,6 @@ public class BatchController : ControllerBase
             await _context.SaveChangesAsync(cancellationToken);
         }
 
-        await SyncProducedFromTelemetryAsync([batch], cancellationToken);
         return Ok(ToDto(batch));
     }
 
@@ -167,6 +134,8 @@ public class BatchController : ControllerBase
             TargetQuantity = batch.TargetQuantity,
             ProducedQuantity = batch.ProducedQuantity,
             ProgressPercent = Math.Round(Math.Min(100d, produced * 100d / target), 1),
+            WorkOrderId = batch.WorkOrderId,
+            WorkOrderNo = batch.WorkOrder?.OrderNo,
             UpdatedAt = batch.UpdatedAt
         };
     }

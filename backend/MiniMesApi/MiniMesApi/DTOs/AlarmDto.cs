@@ -33,4 +33,5 @@ public sealed class AlarmDto
     public string? AcknowledgedBy { get; init; }
     public DateTimeOffset? ResolvedAt { get; init; }
     public string? ResolvedBy { get; init; }
+    public int? ShiftSessionId { get; init; }
 }

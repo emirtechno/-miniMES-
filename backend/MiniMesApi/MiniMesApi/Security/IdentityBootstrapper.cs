@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Hosting;
 using MiniMesApi.Models;
 
 namespace MiniMesApi.Security;
@@ -24,6 +25,15 @@ public static class IdentityBootstrapper
         var password = configuration["IdentityBootstrap:AdminPassword"];
         if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
         {
+            var environment = serviceProvider.GetRequiredService<IHostEnvironment>();
+            if (environment.IsDevelopment())
+            {
+                throw new InvalidOperationException(
+                    "Development requires IdentityBootstrap:AdminUsername and IdentityBootstrap:AdminPassword. " +
+                    "Copy appsettings.Development.json.example → appsettings.Development.json (or set env vars) " +
+                    "and provide Jwt:Key (≥32 chars). See AGENTS.md / backend README.");
+            }
+
             logger.LogInformation("Identity bootstrap yöneticisi yapılandırılmadı.");
             return;
         }

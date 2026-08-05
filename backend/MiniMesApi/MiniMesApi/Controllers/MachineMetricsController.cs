@@ -1,4 +1,4 @@
-using FluentValidation;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -16,20 +16,20 @@ namespace MiniMesApi.Controllers
     public class MachineMetricsController : ControllerBase
     {
         private readonly MesDbContext _context;
-        private readonly IValidator<CreateMachineMetricDto> _validator;
-        private readonly IMesRealtimePublisher _realtime;
-        private readonly ILotTelemetrySync _lotSync;
+        private readonly IMetricIngestService _ingest;
+        private readonly IAuditLogService _auditLog;
+        private readonly ILogger<MachineMetricsController> _logger;
 
         public MachineMetricsController(
             MesDbContext context,
-            IValidator<CreateMachineMetricDto> validator,
-            IMesRealtimePublisher realtime,
-            ILotTelemetrySync lotSync)
+            IMetricIngestService ingest,
+            IAuditLogService auditLog,
+            ILogger<MachineMetricsController> logger)
         {
             _context = context;
-            _validator = validator;
-            _realtime = realtime;
-            _lotSync = lotSync;
+            _ingest = ingest;
+            _auditLog = auditLog;
+            _logger = logger;
         }
 
         /// <summary>
@@ -77,6 +77,8 @@ namespace MiniMesApi.Controllers
             [FromQuery] int limit = 50,
             [FromQuery] string? cursor = null,
             [FromQuery] string? stationId = null,
+            [FromQuery] DateTimeOffset? from = null,
+            [FromQuery] DateTimeOffset? to = null,
             CancellationToken cancellationToken = default)
         {
             limit = Math.Clamp(limit, 1, 200);
@@ -88,11 +90,23 @@ namespace MiniMesApi.Controllers
             {
                 return Problem(statusCode: StatusCodes.Status400BadRequest, title: "Geçersiz istasyon kimliği.");
             }
+            if (from is not null && to is not null && from > to)
+            {
+                return Problem(statusCode: StatusCodes.Status400BadRequest, title: "Geçersiz zaman aralığı (from > to).");
+            }
 
             var query = _context.MachineMetrics.AsNoTracking();
             if (!string.IsNullOrWhiteSpace(stationId))
             {
                 query = query.Where(metric => metric.StationId == stationId);
+            }
+            if (from is not null)
+            {
+                query = query.Where(metric => metric.RecordedAt >= from);
+            }
+            if (to is not null)
+            {
+                query = query.Where(metric => metric.RecordedAt <= to);
             }
             if (!string.IsNullOrWhiteSpace(cursor))
             {
@@ -107,7 +121,7 @@ namespace MiniMesApi.Controllers
                 .Take(limit + 1)
                 .ToListAsync(cancellationToken);
 
-            var items = metrics.Take(limit).Select(ToDto).ToArray();
+            var items = metrics.Take(limit).Select(MetricIngestService.ToDto).ToArray();
 
             return Ok(new CursorPage<MachineMetricDto>
             {
@@ -119,7 +133,7 @@ namespace MiniMesApi.Controllers
         }
 
         /// <summary>
-        /// Live Stream / PLC ingest — append-only MachineMetrics row (application SSOT write path).
+        /// PLC ingest — append-only MachineMetrics row (application SSOT write path).
         /// </summary>
         [HttpPost]
         [Authorize(Policy = PolicyNames.ProductionWrite)]
@@ -127,60 +141,141 @@ namespace MiniMesApi.Controllers
             [FromBody] CreateMachineMetricDto dto,
             CancellationToken cancellationToken)
         {
-            var validation = await _validator.ValidateAsync(dto, cancellationToken);
-            if (!validation.IsValid)
+            try
             {
-                return BadRequest(new ValidationProblemDetails(validation.Errors
-                    .GroupBy(error => error.PropertyName)
-                    .ToDictionary(
-                        group => group.Key,
-                        group => group.Select(error => error.ErrorMessage).ToArray())));
+                var result = await _ingest.IngestAsync(dto, cancellationToken);
+                return CreatedAtAction(nameof(GetMetrics), new { stationId = result.StationId }, result);
             }
-
-            var recordedAt = dto.RecordedAt ?? DateTimeOffset.UtcNow;
-            var metric = new MachineMetric
+            catch (MetricIngestValidationException ex)
             {
-                StationId = dto.StationId,
-                PlannedProductionSeconds = dto.PlannedProductionSeconds,
-                DowntimeSeconds = dto.DowntimeSeconds,
-                DowntimeReasonCode = string.IsNullOrWhiteSpace(dto.DowntimeReasonCode)
-                    ? DowntimeReasonCatalog.None
-                    : dto.DowntimeReasonCode,
-                ShiftCode = string.IsNullOrWhiteSpace(dto.ShiftCode)
-                    ? ShiftCatalog.ResolveForUtc(recordedAt)
-                    : dto.ShiftCode,
-                IdealCycleTimeSeconds = dto.IdealCycleTimeSeconds,
-                ActualProductionCount = dto.ActualProductionCount,
-                GoodProductionCount = dto.GoodProductionCount,
-                RecordedAt = recordedAt
-            };
-            MachineMetricInvariants.Normalize(metric);
-
-            _context.MachineMetrics.Add(metric);
-            await _context.SaveChangesAsync(cancellationToken);
-
-            await _lotSync.ApplyGoodUnitsAsync(metric.StationId, metric.GoodProductionCount, cancellationToken);
-
-            var oee = OeeCalculator.Calculate(metric);
-            await _realtime.OeeUpdatedAsync([oee], cancellationToken);
-
-            return CreatedAtAction(nameof(GetMetrics), new { stationId = metric.StationId }, ToDto(metric));
+                return BadRequest(new ValidationProblemDetails(ex.Errors));
+            }
         }
 
-        private static MachineMetricDto ToDto(MachineMetric metric) => new()
+        /// <summary>
+        /// Operator scrap — ScrapLog + MachineMetrics tick (Actual=qty, Good=0). Does not advance WO/lot good.
+        /// </summary>
+        [HttpPost("scrap")]
+        [Authorize(Policy = PolicyNames.ProductionWrite)]
+        public async Task<ActionResult<ScrapLogDto>> LogScrap(
+            [FromBody] CreateScrapDto request,
+            CancellationToken cancellationToken)
         {
-            Id = metric.Id,
-            StationId = metric.StationId,
-            PlannedProductionSeconds = metric.PlannedProductionSeconds,
-            DowntimeSeconds = metric.DowntimeSeconds,
-            DowntimeReasonCode = metric.DowntimeReasonCode,
-            DowntimeReason = DowntimeReasonCatalog.DisplayName(metric.DowntimeReasonCode),
-            ShiftCode = metric.ShiftCode,
-            ShiftName = ShiftCatalog.DisplayName(metric.ShiftCode),
-            IdealCycleTimeSeconds = metric.IdealCycleTimeSeconds,
-            ActualProductionCount = metric.ActualProductionCount,
-            GoodProductionCount = metric.GoodProductionCount,
-            RecordedAt = metric.RecordedAt
-        };
+            if (request.Quantity <= 0)
+            {
+                return Problem(statusCode: StatusCodes.Status400BadRequest, title: "Fire miktarı 0'dan büyük olmalıdır.");
+            }
+
+            if (!StationCatalog.Contains(request.StationId))
+            {
+                return Problem(statusCode: StatusCodes.Status400BadRequest, title: "Geçersiz istasyon kimliği.");
+            }
+
+            if (request.WorkOrderId is int workOrderId)
+            {
+                var woExists = await _context.WorkOrders.AsNoTracking()
+                    .AnyAsync(order => order.Id == workOrderId, cancellationToken);
+                if (!woExists)
+                {
+                    return Problem(statusCode: StatusCodes.Status400BadRequest, title: "Geçersiz iş emri.");
+                }
+            }
+
+            if (request.BatchId is int batchId)
+            {
+                var batchExists = await _context.Batches.AsNoTracking()
+                    .AnyAsync(batch => batch.Id == batchId, cancellationToken);
+                if (!batchExists)
+                {
+                    return Problem(statusCode: StatusCodes.Status400BadRequest, title: "Geçersiz lot.");
+                }
+            }
+
+            var operatorId = User.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? User.Identity?.Name
+                ?? "unknown";
+
+            var shiftSessionId = request.ShiftSessionId;
+            if (shiftSessionId is null)
+            {
+                shiftSessionId = await _context.ShiftSessions.AsNoTracking()
+                    .Where(session => session.StationId == request.StationId
+                        && session.Status != ShiftSessionStatuses.Ended)
+                    .OrderByDescending(session => session.StartedAt)
+                    .Select(session => (int?)session.Id)
+                    .FirstOrDefaultAsync(cancellationToken);
+            }
+
+            MachineMetricDto metricDto;
+            try
+            {
+                metricDto = await _ingest.IngestAsync(new CreateMachineMetricDto
+                {
+                    StationId = request.StationId,
+                    PlannedProductionSeconds = 60,
+                    DowntimeSeconds = 0,
+                    DowntimeReasonCode = DowntimeReasonCatalog.None,
+                    IdealCycleTimeSeconds = 2,
+                    ActualProductionCount = request.Quantity,
+                    GoodProductionCount = 0,
+                    RecordedAt = DateTimeOffset.UtcNow
+                }, cancellationToken);
+            }
+            catch (MetricIngestValidationException ex)
+            {
+                return BadRequest(new ValidationProblemDetails(ex.Errors));
+            }
+
+            // Prefer ingest-resolved session id when client omitted it.
+            shiftSessionId ??= metricDto.ShiftSessionId;
+
+            var scrap = new ScrapLog
+            {
+                StationId = request.StationId,
+                Quantity = request.Quantity,
+                ReasonCode = string.IsNullOrWhiteSpace(request.ReasonCode) ? null : request.ReasonCode.Trim(),
+                WorkOrderId = request.WorkOrderId,
+                BatchId = request.BatchId,
+                ShiftSessionId = shiftSessionId,
+                OperatorUserId = operatorId,
+                RecordedAt = DateTimeOffset.UtcNow,
+                MachineMetricId = metricDto.Id
+            };
+
+            _context.ScrapLogs.Add(scrap);
+            await _context.SaveChangesAsync(cancellationToken);
+
+            await _auditLog.WriteAsync(
+                AuditEntityTypes.ScrapLog,
+                scrap.Id.ToString(),
+                AuditActions.ScrapIngest,
+                User,
+                details: $"Station={scrap.StationId};Qty={scrap.Quantity};Reason={scrap.ReasonCode};Session={scrap.ShiftSessionId}",
+                cancellationToken: cancellationToken);
+
+            _logger.LogInformation(
+                "Scrap ingested. ScrapLogId={ScrapLogId} StationId={StationId} Quantity={Quantity} ReasonCode={ReasonCode} OperatorUserId={OperatorUserId} WorkOrderId={WorkOrderId}",
+                scrap.Id,
+                scrap.StationId,
+                scrap.Quantity,
+                scrap.ReasonCode,
+                scrap.OperatorUserId,
+                scrap.WorkOrderId);
+
+            return CreatedAtAction(nameof(GetMetrics), new { stationId = scrap.StationId }, new ScrapLogDto
+            {
+                Id = scrap.Id,
+                StationId = scrap.StationId,
+                Quantity = scrap.Quantity,
+                ReasonCode = scrap.ReasonCode,
+                WorkOrderId = scrap.WorkOrderId,
+                BatchId = scrap.BatchId,
+                ShiftSessionId = scrap.ShiftSessionId,
+                OperatorUserId = scrap.OperatorUserId,
+                RecordedAt = scrap.RecordedAt,
+                MachineMetricId = scrap.MachineMetricId,
+                Metric = metricDto
+            });
+        }
     }
 }

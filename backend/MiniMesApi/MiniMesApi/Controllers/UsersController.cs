@@ -12,7 +12,9 @@ namespace MiniMesApi.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize(Policy = PolicyNames.UserManage)]
-public sealed class UsersController(UserManager<ApplicationUser> userManager) : ControllerBase
+public sealed class UsersController(
+    UserManager<ApplicationUser> userManager,
+    MesDbContext dbContext) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<CursorPage<IdentityUserDto>>> GetUsers(
@@ -38,12 +40,13 @@ public sealed class UsersController(UserManager<ApplicationUser> userManager) : 
             .Take(limit + 1)
             .ToListAsync(cancellationToken);
         var pageUsers = users.Take(limit).ToArray();
-        var responses = new List<IdentityUserDto>(pageUsers.Length);
+        var rolesByUserId = await LoadRolesByUserIdAsync(
+            pageUsers.Select(user => user.Id).ToArray(),
+            cancellationToken);
 
-        foreach (var user in pageUsers)
-        {
-            responses.Add(await ToDtoAsync(user));
-        }
+        var responses = pageUsers
+            .Select(user => ToDto(user, rolesByUserId.GetValueOrDefault(user.Id, [])))
+            .ToList();
 
         return Ok(new CursorPage<IdentityUserDto>
         {
@@ -203,19 +206,50 @@ public sealed class UsersController(UserManager<ApplicationUser> userManager) : 
         return NoContent();
     }
 
+    private async Task<Dictionary<string, string[]>> LoadRolesByUserIdAsync(
+        IReadOnlyCollection<string> userIds,
+        CancellationToken cancellationToken)
+    {
+        if (userIds.Count == 0)
+        {
+            return new Dictionary<string, string[]>(StringComparer.Ordinal);
+        }
+
+        var rows = await (
+            from userRole in dbContext.UserRoles.AsNoTracking()
+            join role in dbContext.Roles.AsNoTracking() on userRole.RoleId equals role.Id
+            where userIds.Contains(userRole.UserId)
+            select new { userRole.UserId, RoleName = role.Name }
+        ).ToListAsync(cancellationToken);
+
+        return rows
+            .GroupBy(row => row.UserId, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .Select(row => row.RoleName)
+                    .Where(name => !string.IsNullOrWhiteSpace(name))
+                    .Cast<string>()
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray(),
+                StringComparer.Ordinal);
+    }
+
     private async Task<IdentityUserDto> ToDtoAsync(ApplicationUser user)
     {
         var roles = await userManager.GetRolesAsync(user);
-        return new IdentityUserDto
-        {
-            Id = user.Id,
-            Username = user.UserName ?? string.Empty,
-            DisplayName = user.DisplayName,
-            IsActive = user.IsActive,
-            Roles = roles.ToArray(),
-            Permissions = AppPermissions.ForRoles(roles)
-        };
+        return ToDto(user, roles.ToArray());
     }
+
+    private static IdentityUserDto ToDto(ApplicationUser user, IReadOnlyList<string> roles) => new()
+    {
+        Id = user.Id,
+        Username = user.UserName ?? string.Empty,
+        DisplayName = user.DisplayName,
+        IsActive = user.IsActive,
+        Roles = roles.ToArray(),
+        Permissions = AppPermissions.ForRoles(roles)
+    };
 
     private ActionResult IdentityValidationProblem(IdentityResult result)
     {

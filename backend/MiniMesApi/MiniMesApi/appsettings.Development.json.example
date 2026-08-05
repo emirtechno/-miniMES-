@@ -1,0 +1,17 @@
+{
+  "Jwt": {
+    "Key": "REPLACE_WITH_LOCAL_DEV_KEY_AT_LEAST_32_CHARS",
+    "AccessTokenMinutes": 480
+  },
+  "IdentityBootstrap": {
+    "AdminUsername": "admin",
+    "AdminPassword": "REPLACE_WITH_LOCAL_DEV_PASSWORD",
+    "AdminDisplayName": "MES Yöneticisi"
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  }
+}
