@@ -16,6 +16,21 @@ public static class MachineMetricInvariants
             0,
             metric.ActualProductionCount);
 
+        if (metric.Temperature.HasValue)
+        {
+            metric.Temperature = Math.Clamp(metric.Temperature.Value, 0, 200);
+        }
+
+        if (metric.Rpm.HasValue)
+        {
+            metric.Rpm = Math.Max(metric.Rpm.Value, 0);
+        }
+
+        if (metric.Vibration.HasValue)
+        {
+            metric.Vibration = Math.Max(metric.Vibration.Value, 0);
+        }
+
         if (metric.DowntimeSeconds <= 0)
         {
             metric.DowntimeReasonCode = Models.DowntimeReasonCatalog.None;

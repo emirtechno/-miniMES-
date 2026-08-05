@@ -10,6 +10,8 @@ public interface IMesRealtimePublisher
     Task AlarmUpdatedAsync(AlarmDto alarm, CancellationToken cancellationToken = default);
     Task AlarmDeletedAsync(int alarmId, CancellationToken cancellationToken = default);
     Task OeeUpdatedAsync(IReadOnlyCollection<OeeMetricDto> metrics, CancellationToken cancellationToken = default);
+    Task TelemetryTickAsync(MachineMetricDto metric, CancellationToken cancellationToken = default);
+    Task ShiftUpdatedAsync(ShiftSessionDto session, CancellationToken cancellationToken = default);
 }
 
 public sealed class MesRealtimePublisher(IHubContext<MesHub> hubContext) : IMesRealtimePublisher
@@ -25,4 +27,10 @@ public sealed class MesRealtimePublisher(IHubContext<MesHub> hubContext) : IMesR
 
     public Task OeeUpdatedAsync(IReadOnlyCollection<OeeMetricDto> metrics, CancellationToken cancellationToken = default) =>
         hubContext.Clients.All.SendAsync(MesHub.Events.OeeUpdated, metrics, cancellationToken);
+
+    public Task TelemetryTickAsync(MachineMetricDto metric, CancellationToken cancellationToken = default) =>
+        hubContext.Clients.All.SendAsync(MesHub.Events.TelemetryTick, metric, cancellationToken);
+
+    public Task ShiftUpdatedAsync(ShiftSessionDto session, CancellationToken cancellationToken = default) =>
+        hubContext.Clients.All.SendAsync(MesHub.Events.ShiftUpdated, session, cancellationToken);
 }
