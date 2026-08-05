@@ -1,13 +1,13 @@
-import { AlertTriangle, BellPlus, XCircle } from 'lucide-react';
+import { XCircle } from 'lucide-react';
 import AlarmPanel from '../components/AlarmPanel';
 import TraceabilityPanel from '../components/TraceabilityPanel';
-import UserRolePanel from '../components/UserRolePanel';
 import WorkOrderBoard from '../components/WorkOrderBoard';
 import CardHeader from '../components/CardHeader';
-import { ACTIVE_STATION_DEFINITIONS, getStationDisplayName } from '../constants/stations';
+import { getStationDisplayName } from '../constants/stations';
 
 /**
  * Quality / lot / alarms — scrap derived from MachineMetrics (Actual − Good), not 1-by-1 barcodes.
+ * User admin and manual alarm create live on /yonetim.
  */
 const QualityPage = ({
   workOrders,
@@ -16,7 +16,6 @@ const QualityPage = ({
   scrapTicks = [],
   plantKpi = { good: 0, nok: 0, actual: 0, yield: 0 },
   permissions,
-  alarmForm,
   workOrderForm,
 }) => (
   <div className="flex flex-col gap-5">
@@ -49,47 +48,16 @@ const QualityPage = ({
       </div>
     </section>
 
-    {permissions.canCreateAlarms && (
-      <section className="mes-surface p-5">
-        <CardHeader
-          icon={BellPlus}
-          title="Alarm Oluşturma"
-          subtitle="Test veya manuel shop-floor alarmı (Live Stream anomali alarmları Andon’a düşer)"
-          actions={(
-            <button type="button" className="mes-btn-primary" onClick={alarms.onCreateTest} disabled={alarms.loading}>
-              <AlertTriangle size={16} />
-              {alarms.loading ? 'Oluşturuluyor...' : 'Test Alarmı Oluştur'}
-            </button>
-          )}
-        />
-        <form onSubmit={alarmForm.onSubmit} className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
-          <input placeholder="Başlık (≥3)" value={alarmForm.title} onChange={alarmForm.onTitleChange} className="mes-input" minLength={3} required />
-          <select value={alarmForm.station} onChange={alarmForm.onStationChange} className="mes-input">
-            {ACTIVE_STATION_DEFINITIONS.map((station) => (
-              <option key={station.id} value={station.id}>{station.displayName}</option>
-            ))}
-          </select>
-          <select value={alarmForm.severity} onChange={alarmForm.onSeverityChange} className="mes-input">
-            <option>Uyarı</option><option>Düşük</option><option>Yüksek</option><option>Kritik</option>
-          </select>
-          <input placeholder="Açıklama" value={alarmForm.description} onChange={alarmForm.onDescriptionChange} className="mes-input" />
-          <button type="submit" className="mes-btn-primary" disabled={alarms.loading}>
-            Manuel Alarm Ekle
-          </button>
-        </form>
-        {alarms.error && <p className="mt-2 text-sm text-[color:var(--color-nok)]">{alarms.error}</p>}
-      </section>
-    )}
-
     <AlarmPanel
       alarms={alarms.items}
       onAcknowledge={permissions.canManageAlarms ? alarms.onAcknowledge : undefined}
       onResolve={permissions.canManageAlarms ? alarms.onResolve : undefined}
     />
 
-    <TraceabilityPanel batches={batches} />
-
-    {permissions.canManageUsers && <UserRolePanel />}
+    <TraceabilityPanel
+      batches={batches}
+      subtitle="Kalite ana ekranı — tüm lotlar; üretilen miktar telemetri Good delta’larından"
+    />
 
     <section className="mes-surface p-5">
       <CardHeader

@@ -1,8 +1,7 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import MachineMetricsPanel from './components/MachineMetricsPanel';
 import {
-  Factory,
   Activity,
   Cpu,
   RefreshCw,
@@ -15,18 +14,26 @@ import {
   X,
   Building2,
   HardHat,
+  Settings,
 } from 'lucide-react';
 
 import './App.css';
 import { useAuth } from './context/AuthContext';
 import { useNotify } from './context/NotificationContext';
-import { PersonaProvider, usePersona } from './context/PersonaContext';
+import {
+  PERSONA_ALLOWED_PATHS,
+  PersonaProvider,
+  usePersona,
+} from './context/PersonaContext';
 import { ShiftSessionProvider, useShiftSession } from './context/ShiftSessionContext';
 
 import AppNavLinks from './components/AppNavLinks';
 import PersonaSwitcher from './components/PersonaSwitcher';
+import FactorySimulationToggle from './components/FactorySimulationToggle';
+import VestelMark from './components/VestelMark';
 import LoginPage from './pages/LoginPage';
 import QualityPage from './pages/QualityPage';
+import AdminPage from './pages/AdminPage';
 import StationsPage from './pages/StationsPage';
 import AndonPage from './pages/AndonPage';
 import OperatorGuidePage from './pages/OperatorGuidePage';
@@ -41,8 +48,6 @@ import {
   DEFAULT_STATION,
 } from './constants/stations';
 import { getShiftLabel } from './constants/shifts';
-import { emptyStationKpi } from './utils/telemetryAggregate';
-
 function MainLayout() {
   const { currentUser, logout, isAuthenticated } = useAuth();
   const { notify, confirm } = useNotify();
@@ -60,7 +65,6 @@ function MainLayout() {
       <ShiftSessionProvider
         user={currentUser}
         notify={notify}
-        canCreateAlarms={currentUser?.status === 'Aktif' && currentUser.permissions.includes('alarms.write')}
       >
         <MainLayoutShell
           currentUser={currentUser}
@@ -75,7 +79,15 @@ function MainLayout() {
 
 function MainLayoutShell({ currentUser, logout, notify, confirm }) {
   const location = useLocation();
-  const { persona, setPersona, isOperatorPersona, isExecutivePersona, allowedPersonas } = usePersona();
+  const {
+    persona,
+    setPersona,
+    isOperatorPersona,
+    isExecutivePersona,
+    allowedPersonas,
+    isPathAllowed,
+    homePath,
+  } = usePersona();
   const { shift, elapsedLabel } = useShiftSession();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [selectedStationDetail, setSelectedStationDetail] = useState(DEFAULT_STATION);
@@ -84,12 +96,12 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
   const isCurrentUserActive = currentUser?.status === 'Aktif';
   const hasPermission = (permission) => isCurrentUserActive && currentUser.permissions.includes(permission);
 
-  const canIngestTelemetry = hasPermission('production.write');
   const canManageWorkOrders = hasPermission('workorders.manage');
   const canCreateAlarms = hasPermission('alarms.write');
   const canManageAlarms = hasPermission('alarms.manage');
   const canManageUsers = hasPermission('users.manage');
 
+  // Shift-active indicator (not FE ingest). Backend OeeSimulation owns MachineMetrics writes.
   const liveStreamActive = Boolean(shift.active && !shift.onBreak && !shift.inSetup);
   const streamStationId = shift.active ? shift.stationId : null;
 
@@ -101,19 +113,10 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
     confirm,
   });
 
-  const { raiseTelemetryAlarms } = alarms;
-  const onSimulatedAnomalies = useCallback(async (stationId, anomalies) => {
-    await raiseTelemetryAlarms(stationId, anomalies);
-  }, [raiseTelemetryAlarms]);
-
   const telemetry = useTelemetry({
     isAuthenticated: true,
-    canIngestTelemetry,
     autoRefresh,
     liveStreamActive,
-    streamStationId,
-    shiftCode: shift.active ? shift.shiftCode : undefined,
-    onSimulatedAnomalies: canCreateAlarms ? onSimulatedAnomalies : undefined,
     notify,
   });
 
@@ -128,39 +131,37 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
     [],
   );
 
-  const detailKpi = telemetry.stationKpi(selectedStationDetail) || emptyStationKpi(selectedStationDetail);
-  const stationMetrics = {
-    total: detailKpi.actual,
-    ok: detailKpi.good,
-    nok: detailKpi.nok,
-    yield: detailKpi.yield,
-  };
-
   const recentTicksForStation = useMemo(
     () => telemetry.recentTicks.filter((tick) => tick.stationId === selectedStationDetail).slice(0, 6),
     [telemetry.recentTicks, selectedStationDetail],
   );
 
-  const homePath = isOperatorPersona ? '/operator' : '/fabrika';
-
-  const navItems = [
-    ...(isExecutivePersona ? [{ to: '/fabrika', label: 'Fabrika Genel Bakış', icon: Building2, match: (path) => path === '/fabrika' }] : []),
+  const allNavItems = [
+    { to: '/fabrika', label: 'Fabrika Genel Bakış', icon: Building2, match: (path) => path === '/fabrika' },
     { to: '/operator', label: 'Operatör Paneli', icon: HardHat, match: (path) => path === '/operator' },
     { to: '/istasyonlar', label: 'İstasyonlar', icon: Cpu, match: (path) => path === '/istasyonlar' },
     { to: '/kalite', label: 'Kalite Raporları', icon: Activity, match: (path) => path === '/kalite' },
     { to: '/makine-metrikleri', label: 'Makine Metrikleri', icon: GaugeNavIcon, match: (path) => path === '/makine-metrikleri' },
     { to: '/andon', label: 'Andon Ekranı', icon: Monitor, match: (path) => path === '/andon' },
+    { to: '/yonetim', label: 'Yönetim', icon: Settings, match: (path) => path === '/yonetim' },
     { to: '/kilavuz', label: 'Kullanım Kılavuzu', icon: BookOpen, match: (path) => path === '/kilavuz' },
     { to: '/sistem', label: 'Sistem Akışı', icon: Network, match: (path) => path === '/sistem' },
   ];
 
-  const pageTitle = navItems.find((item) => item.match(location.pathname))?.label || 'VESTEL MES';
+  const allowedPaths = PERSONA_ALLOWED_PATHS[persona] || [];
+  const navItems = allNavItems.filter((item) => allowedPaths.includes(item.to));
+
+  const pageTitle = allNavItems.find((item) => item.match(location.pathname))?.label || 'VESTEL MES';
+
+  if (!isPathAllowed(location.pathname)) {
+    return <Navigate to={homePath} replace />;
+  }
 
   return (
     <div className="mes-shell">
       <aside className="mes-sidebar">
         <div className="mes-brand">
-          <Factory className="text-[color:var(--color-vestel)]" size={28} />
+          <VestelMark className="text-[color:var(--color-vestel)]" size={28} />
           <span>VESTEL MES</span>
         </div>
         <AppNavLinks items={navItems} />
@@ -175,7 +176,7 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
           <aside className="relative z-10 flex h-full w-72 flex-col gap-4 bg-slate-950 p-4 text-slate-200">
             <div className="flex items-center justify-between">
               <div className="mes-brand text-base">
-                <Factory className="text-[color:var(--color-vestel)]" size={22} />
+                <VestelMark className="text-[color:var(--color-vestel)]" size={22} />
                 VESTEL MES
               </div>
               <button type="button" className="mes-btn-secondary border-slate-700 bg-slate-900 text-white" onClick={() => setMobileNavOpen(false)}>
@@ -189,78 +190,94 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
 
       <main className="mes-main">
         <header className="mes-topbar">
-          <div className="flex min-w-0 flex-1 flex-col gap-2">
-            <div className="flex min-w-0 items-center gap-3">
-              <button type="button" className="mes-btn-secondary md:hidden" onClick={() => setMobileNavOpen(true)} aria-label="Menüyü aç">
-                <Menu size={16} />
-              </button>
-              <div className="min-w-0">
-                <h1 className="font-display m-0 truncate text-xl font-semibold tracking-wide text-[color:var(--color-ink)]">
-                  {pageTitle}
-                </h1>
-                <p className="m-0 text-xs text-[color:var(--color-muted)] md:text-sm">
-                  {isOperatorPersona ? 'Shop-floor operatör görünümü' : 'Yönetici / Ana Merkez görünümü'}
-                  {liveStreamActive ? ' · Live Stream (MachineMetrics)' : ''}
-                </p>
-              </div>
+          <div className="mes-topbar-brand">
+            <button type="button" className="mes-btn-compact mes-btn-secondary shrink-0 md:hidden" onClick={() => setMobileNavOpen(true)} aria-label="Menüyü aç">
+              <Menu size={16} />
+            </button>
+            <div className="mes-topbar-titles">
+              <h1>{pageTitle}</h1>
+              <p title={isOperatorPersona
+                ? 'Shop-floor operatör görünümü'
+                : persona === 'it-admin'
+                  ? 'IT Yönetici görünümü'
+                  : 'Yönetici / Ana Merkez görünümü'}
+              >
+                {isOperatorPersona
+                  ? 'Shop-floor operatör görünümü'
+                  : persona === 'it-admin'
+                    ? 'IT Yönetici görünümü'
+                    : 'Yönetici / Ana Merkez görünümü'}
+              </p>
             </div>
+          </div>
+
+          <div className="mes-topbar-persona">
             <PersonaSwitcher persona={persona} onSelect={setPersona} allowedPersonas={allowedPersonas} />
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="mes-topbar-actions">
             <span
               title={alarms.liveConnected ? 'SignalR bağlı' : 'SignalR yeniden bağlanıyor'}
               className={alarms.liveConnected ? 'mes-pill-ok' : 'mes-pill-warn'}
             >
-              <Radio size={14} />
-              {alarms.liveConnected ? 'Canlı' : 'Bağlantı Yok'}
+              <Radio size={12} />
+              {alarms.liveConnected ? 'Canlı' : 'Yok'}
             </span>
-            {shift.active && (
-              <span className="mes-pill-ok" title="Aktif vardiya">
-                {shift.operatorName || 'Operatör'} · {getShiftLabel(shift.shiftCode)} · {elapsedLabel}
-              </span>
-            )}
-            {liveStreamActive ? (
-              <span className="mes-pill-warn" title="Vardiya Live Stream → MachineMetrics">
-                <Activity size={14} />
-                Live Stream
+            <FactorySimulationToggle compact />
+            {shift.active ? (
+              <span
+                className="mes-pill-ok mes-topbar-shift"
+                title={`${shift.operatorName || 'Operatör'} · ${getShiftLabel(shift.shiftCode)} · ${elapsedLabel}`}
+              >
+                {getShiftLabel(shift.shiftCode)} · {elapsedLabel}
               </span>
             ) : (
-              <span className="mes-pill-neutral" title="Vardiya Başlat ile telemetri akışı açılır">
-                Stream Kapalı
+              <span className="mes-pill-neutral" title="Vardiya Başlat ile operatör oturumu açılır">
+                Kapalı
+              </span>
+            )}
+            {liveStreamActive && (
+              <span
+                className="mes-pill-warn mes-topbar-telem"
+                title="Fabrika telemetrisi (backend) aktif"
+                aria-label="Fabrika telemetrisi aktif"
+              >
+                <Activity size={12} />
+                <span className="mes-topbar-telem-label">Telemetri</span>
               </span>
             )}
             <button
               type="button"
               onClick={() => setAutoRefresh((prev) => !prev)}
-              className={autoRefresh ? 'mes-btn-primary' : 'mes-btn-secondary'}
+              className={`mes-btn-compact ${autoRefresh ? 'mes-btn-primary' : 'mes-btn-secondary'}`}
+              title={autoRefresh ? 'Otomatik yenileme açık' : 'Otomatik yenileme kapalı'}
             >
-              <RefreshCw size={14} />
-              {autoRefresh ? 'Oto Yenileme' : 'Yenileme Kapalı'}
+              <RefreshCw size={13} />
+              <span className="mes-topbar-btn-label">{autoRefresh ? 'Oto' : 'Manuel'}</span>
             </button>
-            <button type="button" onClick={() => telemetry.refresh()} className="mes-btn-secondary">
-              <RefreshCw size={14} />
-              Yenile
+            <button
+              type="button"
+              onClick={() => telemetry.refresh()}
+              className="mes-btn-compact mes-btn-secondary"
+              title="Şimdi yenile"
+            >
+              <RefreshCw size={13} />
+              <span className="mes-topbar-btn-label">Yenile</span>
             </button>
-            <div className="hidden items-center gap-2 rounded-lg border border-[color:var(--color-line)] bg-slate-50 px-3 py-1.5 sm:flex">
-              <span className={`h-2.5 w-2.5 rounded-full ${isCurrentUserActive ? 'bg-emerald-500' : 'bg-red-500'}`} />
-              <div className="leading-tight">
-                <div className="text-sm font-semibold">
-                  {isOperatorPersona
-                    ? (shift.operatorName || 'Operatör')
-                    : currentUser.name}
-                </div>
-                <div className="text-xs text-[color:var(--color-muted)]">
-                  {isOperatorPersona
-                    ? `Operatör paneli · ${currentUser.status}`
-                    : `${(currentUser.roles || []).join(' · ') || currentUser.role} · Yönetici paneli · ${currentUser.status}`}
-                </div>
-              </div>
+            <div className="mes-topbar-user">
+              <span className={`mes-topbar-user-dot ${isCurrentUserActive ? 'is-active' : ''}`} />
+              <span className="mes-topbar-user-name" title={isOperatorPersona
+                ? (shift.operatorName || 'Operatör')
+                : `${currentUser.name} · ${(currentUser.roles || []).join(', ') || currentUser.role}`}>
+                {isOperatorPersona
+                  ? (shift.operatorName || 'Operatör')
+                  : currentUser.name}
+              </span>
+              <button type="button" onClick={logout} className="mes-btn-compact mes-btn-danger" title="Oturumu Kapat">
+                <LogOut size={13} />
+                <span className="mes-topbar-btn-label">Çıkış</span>
+              </button>
             </div>
-            <button type="button" onClick={logout} className="mes-btn-danger" title="Oturumu Kapat">
-              <LogOut size={14} />
-              Çıkış
-            </button>
           </div>
         </header>
 
@@ -270,9 +287,6 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
               path="/fabrika"
               element={(
                 <PlantOverviewPage
-                  stationChartData={telemetry.stationChartData}
-                  plantKpi={telemetry.plantKpi}
-                  byStation={telemetry.byStation}
                   workOrders={workOrders.workOrders}
                   liveStreaming={liveStreamActive}
                 />
@@ -285,7 +299,6 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
                 <OperatorDashboardPage
                   currentUser={currentUser}
                   notify={notify}
-                  stationKpi={telemetry.stationKpi}
                   recentTicks={telemetry.recentTicks}
                   workOrders={workOrders.workOrders}
                   batches={workOrders.batches}
@@ -303,8 +316,6 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
                   isFactorySimulationActive={liveStreamActive}
                   shiftStationId={shift.stationId}
                   shiftActive={shift.active}
-                  stationKpi={telemetry.stationKpi}
-                  batches={workOrders.batches}
                   metricsFeed={telemetry.metrics}
                 />
               )}
@@ -314,15 +325,12 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
               path="/istasyonlar"
               element={(
                 <StationsPage
-                  stationChartData={telemetry.stationChartData}
                   stationDetailOptions={stationsList}
                   selectedStation={selectedStationDetail}
                   onStationChange={(event) => setSelectedStationDetail(event.target.value)}
                   onSelectStation={(stationId) => setSelectedStationDetail(stationId)}
-                  stationMetrics={stationMetrics}
                   recentTicks={recentTicksForStation}
                   stations={stationsList}
-                  byStation={telemetry.byStation}
                   liveStreaming={liveStreamActive}
                   activeShiftStationId={streamStationId}
                 />
@@ -343,7 +351,6 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
                     items: alarms.alarms,
                     loading: alarms.alarmLoading,
                     error: alarms.alarmError,
-                    onCreateTest: alarms.createTestAlarm,
                     onAcknowledge: alarms.handleAcknowledgeAlarm,
                     onResolve: alarms.handleResolveAlarm,
                   }}
@@ -352,12 +359,27 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
                   plantKpi={telemetry.plantKpi}
                   permissions={{
                     canManageWorkOrders: canManageWorkOrders && isExecutivePersona,
-                    canCreateAlarms,
                     canManageAlarms: canManageAlarms && isExecutivePersona,
+                  }}
+                  workOrderForm={workOrders.workOrderForm}
+                />
+              )}
+            />
+
+            <Route
+              path="/yonetim"
+              element={(
+                <AdminPage
+                  permissions={{
                     canManageUsers: canManageUsers && isExecutivePersona,
+                    canCreateAlarms: canCreateAlarms && isExecutivePersona,
+                  }}
+                  alarms={{
+                    loading: alarms.alarmLoading,
+                    error: alarms.alarmError,
+                    onCreateTest: alarms.createTestAlarm,
                   }}
                   alarmForm={alarms.alarmForm}
-                  workOrderForm={workOrders.workOrderForm}
                 />
               )}
             />

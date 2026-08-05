@@ -123,12 +123,13 @@ const UserRolePanel = () => {
         <input
           className="mes-input"
           type="password"
-          placeholder="Parola (en az 6 karakter, 1 rakam)"
+          placeholder="Parola"
           autoComplete="new-password"
           value={form.password}
           onChange={(event) => setForm({ ...form, password: event.target.value })}
           minLength={6}
           required
+          aria-describedby="user-password-rules"
           title="Parola en az 6 karakter ve en az bir rakam içermelidir."
         />
         <select
@@ -155,7 +156,7 @@ const UserRolePanel = () => {
         </div>
       )}
 
-      <p className="mes-helper mb-3">
+      <p id="user-password-rules" className="mes-helper mb-3">
         Parola kuralları (saha operatörü): en az 6 karakter ve en az bir rakam. Büyük/küçük harf veya özel karakter zorunlu değildir.
       </p>
 
