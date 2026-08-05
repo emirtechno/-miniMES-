@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getApiErrorMessage } from '../services/api';
-import { Factory, LogIn } from 'lucide-react';
+import { LogIn } from 'lucide-react';
+import VestelMark from '../components/VestelMark';
 
 const homeForUser = (user) => {
   const roles = user?.roles || [];
@@ -53,7 +54,7 @@ function LoginPage() {
       <div className="relative w-full max-w-md rounded-2xl border border-white/10 bg-white p-8 shadow-2xl shadow-black/30">
         <div className="mb-7 text-center">
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-[color:var(--color-vestel)] text-white">
-            <Factory size={34} />
+            <VestelMark size={34} />
           </div>
           <h1 className="font-display m-0 text-3xl font-semibold tracking-wide text-[color:var(--color-ink)]">VESTEL MES</h1>
           <p className="mt-2 text-sm text-[color:var(--color-muted)]">Üretim Takip ve Kontrol Sistemi</p>
