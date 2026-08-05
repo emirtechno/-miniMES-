@@ -10,7 +10,9 @@ namespace MiniMesApi.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public sealed class SimulationController(IFactorySimulationControl simulationControl) : ControllerBase
+public sealed class SimulationController(
+    IFactorySimulationControl simulationControl,
+    IShopFloorResetService shopFloorReset) : ControllerBase
 {
     /// <summary>Runtime factory-simulation gate (independent of operator shift).</summary>
     [HttpGet("status")]
@@ -31,6 +33,30 @@ public sealed class SimulationController(IFactorySimulationControl simulationCon
             ResolveDisplayName(),
             cancellationToken);
         return Ok(updated);
+    }
+
+    /// <summary>
+    /// Clears shop-floor telemetry, sessions, alarms, and WO/lot progress counters.
+    /// Does not delete Identity users or product/station catalog. Confirm with "SIFIRLA".
+    /// </summary>
+    [HttpPost("reset-shop-floor")]
+    [Authorize(Policy = PolicyNames.SimulationControl)]
+    public async Task<ActionResult<ShopFloorResetResultDto>> ResetShopFloor(
+        [FromBody] ResetShopFloorDto request,
+        CancellationToken cancellationToken)
+    {
+        if (!string.Equals(
+                request.Confirmation?.Trim(),
+                ShopFloorResetService.ConfirmationPhrase,
+                StringComparison.Ordinal))
+        {
+            return Problem(
+                statusCode: StatusCodes.Status400BadRequest,
+                title: $"Onay metni hatalı. Devam etmek için \"{ShopFloorResetService.ConfirmationPhrase}\" yazın.");
+        }
+
+        var result = await shopFloorReset.ResetAsync(ResolveDisplayName(), cancellationToken);
+        return Ok(result);
     }
 
     private string ResolveDisplayName() =>

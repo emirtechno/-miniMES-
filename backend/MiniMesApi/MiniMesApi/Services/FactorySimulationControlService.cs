@@ -22,16 +22,17 @@ public sealed class FactorySimulationControlService(MesDbContext db) : IFactoryS
 {
     public async Task EnsureSeededAsync(CancellationToken cancellationToken = default)
     {
-        var exists = await db.SimulationControls
+        // Never overwrite an existing row — site toggle state must survive restarts.
+        var existing = await db.SimulationControls
             .AsNoTracking()
-            .AnyAsync(row => row.Id == SimulationControl.SingletonId, cancellationToken);
-        if (exists)
+            .FirstOrDefaultAsync(row => row.Id == SimulationControl.SingletonId, cancellationToken);
+        if (existing is not null)
             return;
 
         db.SimulationControls.Add(new SimulationControl
         {
             Id = SimulationControl.SingletonId,
-            Enabled = true,
+            Enabled = true, // first-install default only
             UpdatedAt = DateTimeOffset.UtcNow,
             UpdatedBy = "system"
         });

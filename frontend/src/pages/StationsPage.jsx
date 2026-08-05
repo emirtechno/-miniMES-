@@ -25,7 +25,6 @@ import CardHeader from '../components/CardHeader';
 import InfoTip from '../components/InfoTip';
 import {
   ACTIVE_STATION_DEFINITIONS,
-  getStationDisplayName,
   getStationMeta,
 } from '../constants/stations';
 import { fetchMachineMetrics, fetchShiftCurrentOeeAll } from '../services/api';

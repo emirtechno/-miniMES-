@@ -82,6 +82,14 @@ dotnet test backend/MiniMesApi/MiniMesApi.Tests/MiniMesApi.Tests.csproj
 cd frontend && npm run build
 ```
 
+### Author attribution (do not remove)
+
+Sidebar credit and `AUTHORS.md` / `frontend/src/attribution.js` must keep:
+
+`Emir Kuru 1022041 Vestel Teknoloji Müdürlüğü (ARGE-ÜRETİM-KALİTE) Stajyeri`
+
+Remove or change **only** if Emir Kuru explicitly requests it in the current conversation. CI checks that this string remains in `attribution.js` and `App.jsx`.
+
 ### Gotchas
 
 - `.NET` SDK lives at `/usr/local/dotnet` with a symlink at `/usr/local/bin/dotnet`, so `dotnet` works in non-interactive shells.

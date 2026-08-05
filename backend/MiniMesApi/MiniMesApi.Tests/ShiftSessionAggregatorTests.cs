@@ -154,4 +154,71 @@ public sealed class ShiftSessionAggregatorTests
         Assert.Equal(72.5, restored.OeePercent);
         Assert.False(string.IsNullOrWhiteSpace(session.SummaryJson));
     }
+
+    [Fact]
+    public async Task BuildBoardAsync_includes_open_sessions_and_excludes_ended()
+    {
+        await using var db = CreateContext();
+        var started = DateTimeOffset.UtcNow.AddMinutes(-30);
+
+        db.ShiftSessions.AddRange(
+            new ShiftSession
+            {
+                UserId = "op1",
+                StationId = StationCatalog.AssemblyLine1,
+                ShiftCode = ShiftCatalog.ShiftA,
+                OperatorName = "Ali",
+                StartedAt = started,
+                Status = ShiftSessionStatuses.Active
+            },
+            new ShiftSession
+            {
+                UserId = "op2",
+                StationId = StationCatalog.PackagingLine1,
+                ShiftCode = ShiftCatalog.ShiftB,
+                OperatorName = "Ayşe",
+                StartedAt = started.AddMinutes(-10),
+                EndedAt = DateTimeOffset.UtcNow,
+                Status = ShiftSessionStatuses.Ended
+            },
+            new ShiftSession
+            {
+                UserId = "op3",
+                StationId = StationCatalog.AssemblyLine1,
+                ShiftCode = ShiftCatalog.ShiftA,
+                OperatorName = "Eski",
+                StartedAt = started.AddMinutes(-60),
+                Status = ShiftSessionStatuses.OnBreak
+            });
+        await db.SaveChangesAsync();
+
+        var openAli = await db.ShiftSessions.SingleAsync(s => s.OperatorName == "Ali");
+        db.MachineMetrics.Add(new MachineMetric
+        {
+            StationId = StationCatalog.AssemblyLine1,
+            PlannedProductionSeconds = 60,
+            DowntimeSeconds = 0,
+            DowntimeReasonCode = DowntimeReasonCatalog.None,
+            ShiftCode = ShiftCatalog.ShiftA,
+            ShiftSessionId = openAli.Id,
+            IdealCycleTimeSeconds = 2,
+            ActualProductionCount = 20,
+            GoodProductionCount = 18,
+            RecordedAt = started.AddMinutes(5)
+        });
+        await db.SaveChangesAsync();
+
+        var board = await ShiftSessionAggregator.BuildBoardAsync(db);
+
+        Assert.Single(board);
+        var item = board[0];
+        Assert.Equal(StationCatalog.AssemblyLine1, item.StationId);
+        Assert.Equal("Ali", item.OperatorName);
+        Assert.Equal(openAli.Id, item.SessionId);
+        Assert.NotNull(item.Oee);
+        Assert.Equal(20, item.Oee!.TotalProduction);
+        Assert.Equal(18, item.Oee.GoodProduction);
+        Assert.Equal(2, item.Oee.ScrapProduction);
+        Assert.DoesNotContain(board, row => row.OperatorName == "Ayşe" || row.OperatorName == "Eski");
+    }
 }

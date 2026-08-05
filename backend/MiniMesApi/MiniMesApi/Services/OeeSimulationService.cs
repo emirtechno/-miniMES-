@@ -7,17 +7,20 @@ namespace MiniMesApi.Services
 {
     public class OeeSimulationService : BackgroundService
     {
-        private static readonly IReadOnlyCollection<string> Stations = StationCatalog.All;
+        private static readonly IReadOnlyCollection<string> Stations = StationCatalog.Active;
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly ILogger<OeeSimulationService> _logger;
         private readonly TimeSpan _interval;
         private readonly int _intervalSeconds;
 
-        /// <summary>Ideal cycle so ~5–12 pieces fit a typical 15s tick window.</summary>
+        /// <summary>Ideal cycle so ~6–7 pieces fit a typical 15s tick near capacity.</summary>
         internal const double IdealCycleTimeSeconds = 2;
 
         /// <summary>Chance of a brief micro-stop inside a Running tick.</summary>
-        internal const double MicroDowntimeProbability = 0.08;
+        internal const double MicroDowntimeProbability = 0.03;
+
+        /// <summary>Chance a running tick includes one scrap unit.</summary>
+        internal const double ScrapProbability = 0.04;
 
         /// <summary>Running-tick chance of a critical temperature excursion (≥85 °C).</summary>
         internal const double ExtremeTemperatureProbability = 0.004;
@@ -28,8 +31,11 @@ namespace MiniMesApi.Services
         /// <summary>Running-tick chance of a critical vibration excursion (≥2.8 mm/s).</summary>
         internal const double ExtremeVibrationProbability = 0.004;
 
-        /// <summary>Upper bound for a single resume catch-up downtime metric (8h).</summary>
-        internal const int MaxCatchUpSeconds = 8 * 3600;
+        /// <summary>
+        /// Cap resume catch-up so long Idle/no-shift gaps do not dominate catalog OEE.
+        /// Operator break downtime still registers; multi-hour demo pauses no longer zero Availability.
+        /// </summary>
+        internal const int MaxCatchUpSeconds = 120;
 
         public OeeSimulationService(
             IServiceScopeFactory scopeFactory,
@@ -218,12 +224,12 @@ namespace MiniMesApi.Services
 
             if (isRunning)
             {
-                // ~5–12 pieces per 15s at IdealCycleTimeSeconds=2 (capacity ≈ planned/2).
+                // Near capacity: IdealCycleTimeSeconds=2 → ~7 pcs / 15s planned window.
                 var maxByCycle = Math.Max(1, (int)Math.Floor(planned / IdealCycleTimeSeconds));
-                var minCount = Math.Max(1, Math.Min(5, maxByCycle));
-                var maxCount = Math.Max(minCount, Math.Min(12, maxByCycle + 2));
+                var minCount = Math.Max(1, maxByCycle - 1);
+                var maxCount = maxByCycle;
                 totalProduced = Random.Shared.Next(minCount, maxCount + 1);
-                scrapCount = Random.Shared.NextDouble() < 0.15 ? 1 : 0;
+                scrapCount = Random.Shared.NextDouble() < ScrapProbability ? 1 : 0;
                 if (scrapCount > totalProduced) scrapCount = totalProduced;
 
                 // Usually clean; rare brief stop (0–3s) within the tick.

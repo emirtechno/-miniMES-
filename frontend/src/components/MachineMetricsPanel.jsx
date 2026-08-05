@@ -169,8 +169,13 @@ const MachineMetricsPanel = ({
     setMetrics(rows.slice(0, selectedRange.limit));
   }, [metricsFeed, selectedStation, selectedRange]);
 
+  const [chartWindowMs, setChartWindowMs] = useState(() => Date.now());
+  useEffect(() => {
+    setChartWindowMs(Date.now());
+  }, [metrics, selectedRange]);
+
   const chartData = useMemo(() => {
-    const fromMs = Date.now() - selectedRange.ms;
+    const fromMs = chartWindowMs - selectedRange.ms;
     return [...metrics]
       .filter((item) => {
         const t = item.recordedAt ? new Date(item.recordedAt).getTime() : 0;
@@ -188,7 +193,7 @@ const MachineMetricsPanel = ({
           id: item.id ?? `${ms}-${index}`,
         };
       });
-  }, [metrics, selectedRange]);
+  }, [metrics, selectedRange, chartWindowMs]);
 
   const stationLabel = selectedStation === 'Tümü' ? 'Tüm İstasyonlar' : getStationDisplayName(selectedStation);
 

@@ -63,6 +63,17 @@ public class FactorySimulationControlTests
         Assert.True(await service.IsEnabledAsync());
     }
 
+    [Fact]
+    public async Task EnsureSeeded_DoesNotClobberPersistedDisabledState()
+    {
+        await using var db = CreateDb();
+        var service = new FactorySimulationControlService(db);
+        await service.SetEnabledAsync(false, "admin");
+        await service.EnsureSeededAsync();
+        await service.EnsureSeededAsync();
+        Assert.False(await service.IsEnabledAsync());
+    }
+
     private static MesDbContext CreateDb(string? name = null)
     {
         var options = new DbContextOptionsBuilder<MesDbContext>()

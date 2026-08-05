@@ -9,6 +9,13 @@ import {
 import { DEFAULT_STATION, ACTIVE_STATION_DEFINITIONS, getStationDisplayName } from '../constants/stations';
 import { useMesHub } from './useMesHub';
 
+const ACTIVE_STATION_IDS = new Set(ACTIVE_STATION_DEFINITIONS.map((s) => s.id));
+
+const isActiveStationAlarm = (alarm) => {
+  const station = alarm?.station || alarm?.Station;
+  return Boolean(station && ACTIVE_STATION_IDS.has(station));
+};
+
 const TEST_ALARM_TEMPLATES = [
   {
     title: 'Aşırı Isınma Uyarısı - Motor #2',
@@ -63,7 +70,7 @@ export function useAlarms({
       setAlarmLoading(true);
       // Prefer open alarms for shop-floor lists; closed/resolved stay in DB for audit.
       const page = await fetchAlarms({ signal, openOnly: true, limit: 50 });
-      setAlarms(page.items);
+      setAlarms((page.items || []).filter(isActiveStationAlarm));
       setAlarmError(null);
     } catch (err) {
       if (err.name === 'CanceledError' || err.name === 'AbortError') return;
@@ -83,6 +90,7 @@ export function useAlarms({
 
   const { connected } = useMesHub({
     onAlarmCreated: (alarm) => {
+      if (!isActiveStationAlarm(alarm)) return;
       setAlarms((current) => upsertAlarm(current, alarm));
       const title = alarm.title || alarm.Title || 'Alarm';
       const stationId = alarm.station || alarm.Station || '';
@@ -97,8 +105,8 @@ export function useAlarms({
       const status = (alarm.status || alarm.Status || '').toLowerCase();
       // Onaylandı remains open (needs Çöz); only resolved/closed leave the live list.
       const closed = status === 'çözüldü' || status === 'kapalı' || status === 'resolved';
-      if (closed) {
-        const id = alarm.id ?? alarm.Id;
+      const id = alarm.id ?? alarm.Id;
+      if (closed || !isActiveStationAlarm(alarm)) {
         setAlarms((current) => current.filter((item) => (item.id ?? item.Id) !== id));
         return;
       }
