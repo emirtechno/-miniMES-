@@ -601,3 +601,20 @@ public class ShiftSessionController(
         ShiftSessionId = alarm.ShiftSessionId
     };
 }
+
+/// <summary>
+/// Andon board reads (MetricsRead only — not AND'd with ProductionWrite on <see cref="ShiftSessionController"/>).
+/// </summary>
+[Route("api/ShiftSession")]
+[ApiController]
+[Authorize(Policy = PolicyNames.MetricsRead)]
+public class ShiftSessionBoardController(MesDbContext context) : ControllerBase
+{
+    [HttpGet("board")]
+    public async Task<ActionResult<IReadOnlyList<ShiftSessionBoardItemDto>>> GetBoard(
+        CancellationToken cancellationToken = default)
+    {
+        var board = await ShiftSessionAggregator.BuildBoardAsync(context, cancellationToken);
+        return Ok(board);
+    }
+}

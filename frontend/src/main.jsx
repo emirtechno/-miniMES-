@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext.jsx';
 import { NotificationProvider } from './context/NotificationContext.jsx';
 import { MesHubProvider } from './context/MesHubContext.jsx';
+import { SimulationStatusProvider } from './context/SimulationStatusContext.jsx';
 import GlobalErrorBoundary from './components/GlobalErrorBoundary.jsx';
 import App from './App.jsx';
 import './index.css';
@@ -14,9 +15,11 @@ createRoot(document.getElementById('root')).render(
       <BrowserRouter>
         <NotificationProvider>
           <AuthProvider>
-            <MesHubProvider>
-              <App />
-            </MesHubProvider>
+            <SimulationStatusProvider>
+              <MesHubProvider>
+                <App />
+              </MesHubProvider>
+            </SimulationStatusProvider>
           </AuthProvider>
         </NotificationProvider>
       </BrowserRouter>

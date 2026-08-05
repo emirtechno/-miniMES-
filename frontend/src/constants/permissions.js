@@ -9,7 +9,7 @@ export const PERMISSION_LABELS = {
   'workorders.manage': 'İş Emri Yönetimi',
   'deleted-records.read': 'Silinen Kayıtlar (kullanım dışı)',
   'users.manage': 'Kullanıcı Yönetimi',
-  'simulation.control': 'Fabrika Simülasyon Kontrolü',
+  'simulation.control': 'Fabrika Simülasyon / Shop-floor Sıfırlama',
 };
 
 export const PERMISSION_HINTS = {
@@ -22,7 +22,7 @@ export const PERMISSION_HINTS = {
   'workorders.manage': 'İş emri oluşturup ilerletebilir.',
   'deleted-records.read': 'Eski yetki — çöp kutusu kaldırıldı.',
   'users.manage': 'Kullanıcı ve roller yönetebilir.',
-  'simulation.control': 'Backend Fabrika Telemetrisi motorunu açıp kapatabilir.',
+  'simulation.control': 'Simülasyon motorunu aç/kapa ve shop-floor telemetri verisini sıfırlayabilir.',
 };
 
 export function getPermissionLabel(code) {

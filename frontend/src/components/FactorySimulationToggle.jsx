@@ -1,70 +1,34 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Power } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
 import { useNotify } from '../context/NotificationContext';
-import {
-  fetchSimulationStatus,
-  getApiErrorMessage,
-  setSimulationEnabled,
-} from '../services/api';
+import { useSimulationStatus } from '../context/SimulationStatusContext';
+import { getApiErrorMessage } from '../services/api';
 
 /**
- * Runtime toggle for backend OeeSimulation (independent of operator shift).
- * Admins with simulation.control can flip; others with metrics.read see status only.
+ * Toggle for backend SimulationControls (persisted in DB across restarts).
  */
 const FactorySimulationToggle = ({ compact = false, className = '' }) => {
-  const { currentUser } = useAuth();
   const { notify, confirm } = useNotify();
-  const [enabled, setEnabled] = useState(null);
+  const { enabled, canRead, canControl, setEnabledRemote, updatedBy } = useSimulationStatus();
   const [busy, setBusy] = useState(false);
-
-  const canControl = Boolean(currentUser?.permissions?.includes('simulation.control'));
-  const canRead = Boolean(
-    currentUser?.permissions?.includes('metrics.read')
-    || currentUser?.permissions?.includes('simulation.control'),
-  );
-
-  const loadStatus = useCallback(async (signal) => {
-    if (!canRead) return;
-    try {
-      const status = await fetchSimulationStatus({ signal });
-      setEnabled(Boolean(status?.enabled));
-    } catch (error) {
-      if (error.name !== 'CanceledError' && error.name !== 'AbortError') {
-        console.error(error);
-      }
-    }
-  }, [canRead]);
-
-  useEffect(() => {
-    if (!canRead) return undefined;
-    const controller = new AbortController();
-    loadStatus(controller.signal);
-    const timer = window.setInterval(() => loadStatus(controller.signal), 15000);
-    return () => {
-      controller.abort();
-      window.clearInterval(timer);
-    };
-  }, [canRead, loadStatus]);
 
   const handleToggle = async () => {
     if (!canControl || busy || enabled == null) return;
     const next = !enabled;
     if (!next) {
       const ok = await confirm(
-        'Fabrika simülasyonunu kapatmak istediğinize emin misiniz? Backend telemetri motoru tick yazmayı durdurur; Andon SİM KAPALI gösterir. Vardiya oturumu etkilenmez.',
+        'Fabrika simülasyonunu kapatmak istediğinize emin misiniz? Durum veritabanına yazılır; yeniden başlatınca kapalı kalır.',
       );
       if (!ok) return;
     }
 
     setBusy(true);
     try {
-      const status = await setSimulationEnabled({ enabled: next });
-      setEnabled(Boolean(status?.enabled));
+      await setEnabledRemote(next);
       notify(
         next
-          ? 'Fabrika simülasyonu açıldı — backend telemetri yazacak.'
-          : 'Fabrika simülasyonu kapandı — yeni tick yok.',
+          ? 'Fabrika simülasyonu açıldı — durum kaydedildi, yeniden başlatınca açık kalır.'
+          : 'Fabrika simülasyonu kapandı — durum kaydedildi, yeniden başlatınca kapalı kalır.',
         'success',
       );
     } catch (error) {
@@ -82,8 +46,8 @@ const FactorySimulationToggle = ({ compact = false, className = '' }) => {
         type="button"
         className={`${enabled ? 'mes-pill-ok' : 'mes-pill-neutral'} ${canControl ? 'cursor-pointer' : 'cursor-default'} ${className}`}
         title={canControl
-          ? 'Fabrika simülasyonunu aç/kapa (vardiyadan bağımsız)'
-          : 'Fabrika simülasyonu durumu (salt okunur)'}
+          ? `Fabrika simülasyonu (DB’de kalıcı)${updatedBy ? ` · son: ${updatedBy}` : ''}`
+          : 'Fabrika simülasyonu durumu (salt okunur, DB’de kalıcı)'}
         disabled={!canControl || busy}
         onClick={canControl ? handleToggle : undefined}
       >
@@ -111,8 +75,8 @@ const FactorySimulationToggle = ({ compact = false, className = '' }) => {
             </span>
           </div>
           <p className="mes-helper mb-0 mt-1">
-            Vardiya oturumundan bağımsız; backend telemetri motoru.
-            {!enabled && ' Andon SİM KAPALI gösterir; vardiya toplamları donar.'}
+            Durum veritabanında saklanır — sayfa yenilense / API yeniden başlasa son seçim korunur.
+            {!enabled && ' Andon SİM KAPALI gösterir; yeni tick yazılmaz.'}
           </p>
         </div>
         {canControl ? (

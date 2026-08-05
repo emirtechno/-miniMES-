@@ -1,0 +1,22 @@
+---
+description: Never remove Emir Kuru author credit without explicit user request
+alwaysApply: true
+---
+
+# Author attribution (protected)
+
+The following credit must remain in the project unless **Emir Kuru** explicitly asks to change or remove it in the current user message:
+
+`Emir Kuru 1022041 Vestel Teknoloji Müdürlüğü (ARGE-ÜRETİM-KALİTE) Stajyeri`
+
+Protected locations:
+- `frontend/src/attribution.js` (`AUTHOR_CREDIT`)
+- Sidebar footer in `frontend/src/App.jsx` (must render `AUTHOR_CREDIT`)
+- `AUTHORS.md`
+
+Do **not**:
+- Delete, blank out, or “clean up” these credits during refactors
+- Move them out of the visible sidebar without an explicit request
+- Suggest removing attribution as part of polish/docs cleanup
+
+If a task conflicts with this credit, keep the credit and ask the user.
