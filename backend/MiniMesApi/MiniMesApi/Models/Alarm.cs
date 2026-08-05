@@ -38,5 +38,10 @@ namespace MiniMesApi.Models
 
         [StringLength(100)]
         public string? ResolvedBy { get; set; }
+
+        /// <summary>Operator shift session that created this hold alarm (nullable for Andon/manual).</summary>
+        public int? ShiftSessionId { get; set; }
+
+        public ShiftSession? ShiftSession { get; set; }
     }
 }

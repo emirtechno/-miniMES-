@@ -38,9 +38,16 @@ public static class AuditActions
     public const string SoftDelete = "SoftDelete";
     public const string Restore = "Restore";
     public const string HardDelete = "HardDelete";
+    public const string Start = "Start";
+    public const string End = "End";
+    public const string Resolve = "Resolve";
+    public const string ScrapIngest = "ScrapIngest";
 }
 
 public static class AuditEntityTypes
 {
     public const string ProductionRecord = "UretimKayit";
+    public const string ShiftSession = "ShiftSession";
+    public const string Alarm = "Alarm";
+    public const string ScrapLog = "ScrapLog";
 }

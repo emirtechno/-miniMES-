@@ -1,6 +1,8 @@
 using System.ComponentModel.DataAnnotations;
 using MiniMesApi.Models;
 
+/// <summary>Legacy traceability cycle log — table dropped; unused by shop-floor MES path.</summary>
+[Obsolete("Legacy TraceabilityLogs table removed.")]
 public class TraceabilityLog
 {
     public int Id { get; set; }

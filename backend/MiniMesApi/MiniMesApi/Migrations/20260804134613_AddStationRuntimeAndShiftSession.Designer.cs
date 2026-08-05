@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using MiniMesApi.Models;
 
@@ -11,9 +12,11 @@ using MiniMesApi.Models;
 namespace MiniMesApi.Migrations
 {
     [DbContext(typeof(MesDbContext))]
-    partial class MesDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260804134613_AddStationRuntimeAndShiftSession")]
+    partial class AddStationRuntimeAndShiftSession
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -187,9 +190,6 @@ namespace MiniMesApi.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
-                    b.Property<int?>("ShiftSessionId")
-                        .HasColumnType("int");
-
                     b.Property<string>("Station")
                         .IsRequired()
                         .HasMaxLength(80)
@@ -209,8 +209,6 @@ namespace MiniMesApi.Migrations
                         .HasColumnType("nvarchar(100)");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("ShiftSessionId");
 
                     b.HasIndex("Time", "Id")
                         .IsDescending();
@@ -401,76 +399,6 @@ namespace MiniMesApi.Migrations
                         });
                 });
 
-            modelBuilder.Entity("MiniMesApi.Models.DowntimeEvent", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<int?>("AlarmId")
-                        .HasColumnType("int");
-
-                    b.Property<int?>("DurationSeconds")
-                        .HasColumnType("int");
-
-                    b.Property<DateTimeOffset?>("EndedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<bool>("IsEmergency")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("IsPlanned")
-                        .HasColumnType("bit");
-
-                    b.Property<int?>("MachineMetricId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("ReasonCode")
-                        .IsRequired()
-                        .HasMaxLength(80)
-                        .HasColumnType("nvarchar(80)");
-
-                    b.Property<string>("ReasonName")
-                        .HasMaxLength(120)
-                        .HasColumnType("nvarchar(120)");
-
-                    b.Property<int?>("ShiftSessionId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Source")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<DateTimeOffset>("StartedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<string>("StationId")
-                        .IsRequired()
-                        .HasMaxLength(80)
-                        .HasColumnType("nvarchar(80)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AlarmId");
-
-                    b.HasIndex("MachineMetricId");
-
-                    b.HasIndex("ShiftSessionId");
-
-                    b.HasIndex("StationId", "StartedAt", "Id")
-                        .IsDescending(false, true, true);
-
-                    b.ToTable("DowntimeEvents", t =>
-                        {
-                            t.HasCheckConstraint("CK_DowntimeEvents_Duration", "[DurationSeconds] IS NULL OR [DurationSeconds] >= 0");
-
-                            t.HasCheckConstraint("CK_DowntimeEvents_Source", "[Source] IN (N'Operator', N'Simulation', N'Alarm')");
-                        });
-                });
-
             modelBuilder.Entity("MiniMesApi.Models.MachineMetric", b =>
                 {
                     b.Property<int>("Id")
@@ -510,9 +438,6 @@ namespace MiniMesApi.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
-                    b.Property<int?>("ShiftSessionId")
-                        .HasColumnType("int");
-
                     b.Property<string>("StationId")
                         .IsRequired()
                         .HasMaxLength(80)
@@ -527,8 +452,6 @@ namespace MiniMesApi.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("DowntimeReasonCode");
-
-                    b.HasIndex("ShiftSessionId");
 
                     b.HasIndex("RecordedAt", "Id")
                         .IsDescending();
@@ -655,56 +578,21 @@ namespace MiniMesApi.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<int?>("ActiveBatchId")
-                        .HasColumnType("int");
-
-                    b.Property<int?>("ActiveWorkOrderId")
-                        .HasColumnType("int");
-
                     b.Property<string>("BreakReason")
                         .HasMaxLength(80)
                         .HasColumnType("nvarchar(80)");
-
-                    b.Property<DateTimeOffset?>("BreakStartedAt")
-                        .HasColumnType("datetimeoffset");
 
                     b.Property<string>("CreatedBy")
                         .HasMaxLength(120)
                         .HasColumnType("nvarchar(120)");
 
-                    b.Property<double?>("DowntimeSeconds")
-                        .HasColumnType("float");
-
                     b.Property<DateTimeOffset?>("EndedAt")
                         .HasColumnType("datetimeoffset");
-
-                    b.Property<int?>("GoodCount")
-                        .HasColumnType("int");
-
-                    b.Property<int?>("NokCount")
-                        .HasColumnType("int");
-
-                    b.Property<double?>("OeePercent")
-                        .HasColumnType("float");
 
                     b.Property<string>("OperatorName")
                         .IsRequired()
                         .HasMaxLength(120)
                         .HasColumnType("nvarchar(120)");
-
-                    b.Property<int?>("ScrapEntered")
-                        .HasColumnType("int");
-
-                    b.Property<string>("SecondaryOperatorName")
-                        .HasMaxLength(120)
-                        .HasColumnType("nvarchar(120)");
-
-                    b.Property<string>("SecondaryOperatorUserId")
-                        .HasMaxLength(120)
-                        .HasColumnType("nvarchar(120)");
-
-                    b.Property<DateTimeOffset?>("SetupStartedAt")
-                        .HasColumnType("datetimeoffset");
 
                     b.Property<string>("ShiftCode")
                         .IsRequired()
@@ -724,10 +612,6 @@ namespace MiniMesApi.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
-                    b.Property<string>("SummaryJson")
-                        .HasMaxLength(4000)
-                        .HasColumnType("nvarchar(4000)");
-
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -742,15 +626,6 @@ namespace MiniMesApi.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ActiveBatchId");
-
-                    b.HasIndex("ActiveWorkOrderId");
-
-                    b.HasIndex("UserId")
-                        .IsUnique()
-                        .HasDatabaseName("IX_ShiftSessions_UserId_Open")
-                        .HasFilter("[Status] <> N'Ended'");
-
                     b.HasIndex("StationId", "Status");
 
                     b.HasIndex("UserId", "Status", "StartedAt");
@@ -758,87 +633,6 @@ namespace MiniMesApi.Migrations
                     b.ToTable("ShiftSessions", t =>
                         {
                             t.HasCheckConstraint("CK_ShiftSessions_Status", "[Status] IN (N'Active', N'OnBreak', N'InSetup', N'Ended')");
-                        });
-                });
-
-            modelBuilder.Entity("MiniMesApi.Models.ShiftSessionEvent", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("ActorUserId")
-                        .HasMaxLength(120)
-                        .HasColumnType("nvarchar(120)");
-
-                    b.Property<string>("FromStatus")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<string>("Notes")
-                        .HasMaxLength(400)
-                        .HasColumnType("nvarchar(400)");
-
-                    b.Property<DateTimeOffset>("OccurredAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<string>("ReasonCode")
-                        .HasMaxLength(80)
-                        .HasColumnType("nvarchar(80)");
-
-                    b.Property<int>("ShiftSessionId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("ToStatus")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ShiftSessionId", "OccurredAt", "Id")
-                        .IsDescending(false, true, true);
-
-                    b.ToTable("ShiftSessionEvents", t =>
-                        {
-                            t.HasCheckConstraint("CK_ShiftSessionEvents_FromStatus", "[FromStatus] IN (N'', N'Active', N'OnBreak', N'InSetup', N'Ended')");
-
-                            t.HasCheckConstraint("CK_ShiftSessionEvents_ToStatus", "[ToStatus] IN (N'Active', N'OnBreak', N'InSetup', N'Ended')");
-                        });
-                });
-
-            modelBuilder.Entity("MiniMesApi.Models.SimulationControl", b =>
-                {
-                    b.Property<int>("Id")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("Enabled")
-                        .HasColumnType("bit");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<string>("UpdatedBy")
-                        .HasMaxLength(120)
-                        .HasColumnType("nvarchar(120)");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("SimulationControls", t =>
-                        {
-                            t.HasCheckConstraint("CK_SimulationControls_Singleton", "[Id] = 1");
-                        });
-
-                    b.HasData(
-                        new
-                        {
-                            Id = 1,
-                            Enabled = true,
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 8, 5, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            UpdatedBy = "system"
                         });
                 });
 
@@ -852,9 +646,6 @@ namespace MiniMesApi.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
-
-                    b.Property<DateTimeOffset?>("NextAnomalyAllowedAt")
-                        .HasColumnType("datetimeoffset");
 
                     b.Property<string>("PauseReason")
                         .HasMaxLength(200)
@@ -954,9 +745,6 @@ namespace MiniMesApi.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
-                    b.Property<int?>("ProductId")
-                        .HasColumnType("int");
-
                     b.Property<int>("Quantity")
                         .HasColumnType("int");
 
@@ -981,8 +769,6 @@ namespace MiniMesApi.Migrations
                     b.HasIndex("OrderNo")
                         .IsUnique();
 
-                    b.HasIndex("ProductId");
-
                     b.ToTable("WorkOrders", t =>
                         {
                             t.HasCheckConstraint("CK_WorkOrders_CompletedQuantity", "[CompletedQuantity] >= 0 AND [CompletedQuantity] <= [Quantity]");
@@ -991,6 +777,114 @@ namespace MiniMesApi.Migrations
 
                             t.HasCheckConstraint("CK_WorkOrders_Status", "[Status] IN (N'Bekliyor', N'Devam Ediyor', N'Tamamlandı')");
                         });
+                });
+
+            modelBuilder.Entity("Station", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("StationCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("StationName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StationCode")
+                        .IsUnique();
+
+                    b.ToTable("Stations");
+                });
+
+            modelBuilder.Entity("TraceabilityLog", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("BatchId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CycleNotes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTimeOffset>("EntryTime")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("ExitTime")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("StationId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BatchId");
+
+                    b.HasIndex("StationId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("TraceabilityLogs");
+                });
+
+            modelBuilder.Entity("User", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("Shift")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Username")
+                        .IsUnique();
+
+                    b.ToTable("Users", (string)null);
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
@@ -1044,63 +938,18 @@ namespace MiniMesApi.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("MiniMesApi.Models.Alarm", b =>
-                {
-                    b.HasOne("MiniMesApi.Models.ShiftSession", "ShiftSession")
-                        .WithMany()
-                        .HasForeignKey("ShiftSessionId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("ShiftSession");
-                });
-
             modelBuilder.Entity("MiniMesApi.Models.Batch", b =>
                 {
-                    b.HasOne("MiniMesApi.Models.Product", "ProductRef")
+                    b.HasOne("MiniMesApi.Models.Product", null)
                         .WithMany("Batches")
-                        .HasForeignKey("ProductId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .HasForeignKey("ProductId");
 
                     b.HasOne("MiniMesApi.Models.WorkOrder", "WorkOrder")
                         .WithMany("Lots")
                         .HasForeignKey("WorkOrderId")
                         .OnDelete(DeleteBehavior.SetNull);
 
-                    b.Navigation("ProductRef");
-
                     b.Navigation("WorkOrder");
-                });
-
-            modelBuilder.Entity("MiniMesApi.Models.DowntimeEvent", b =>
-                {
-                    b.HasOne("MiniMesApi.Models.Alarm", "Alarm")
-                        .WithMany()
-                        .HasForeignKey("AlarmId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("MiniMesApi.Models.MachineMetric", "MachineMetric")
-                        .WithMany()
-                        .HasForeignKey("MachineMetricId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("MiniMesApi.Models.ShiftSession", "ShiftSession")
-                        .WithMany("DowntimeEvents")
-                        .HasForeignKey("ShiftSessionId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("Alarm");
-
-                    b.Navigation("MachineMetric");
-
-                    b.Navigation("ShiftSession");
-                });
-
-            modelBuilder.Entity("MiniMesApi.Models.MachineMetric", b =>
-                {
-                    b.HasOne("MiniMesApi.Models.ShiftSession", null)
-                        .WithMany()
-                        .HasForeignKey("ShiftSessionId")
-                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
             modelBuilder.Entity("MiniMesApi.Models.ScrapLog", b =>
@@ -1115,11 +964,6 @@ namespace MiniMesApi.Migrations
                         .HasForeignKey("MachineMetricId")
                         .OnDelete(DeleteBehavior.SetNull);
 
-                    b.HasOne("MiniMesApi.Models.ShiftSession", "ShiftSession")
-                        .WithMany()
-                        .HasForeignKey("ShiftSessionId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.HasOne("MiniMesApi.Models.WorkOrder", "WorkOrder")
                         .WithMany()
                         .HasForeignKey("WorkOrderId")
@@ -1129,66 +973,49 @@ namespace MiniMesApi.Migrations
 
                     b.Navigation("MachineMetric");
 
-                    b.Navigation("ShiftSession");
-
                     b.Navigation("WorkOrder");
                 });
 
-            modelBuilder.Entity("MiniMesApi.Models.ShiftSession", b =>
+            modelBuilder.Entity("TraceabilityLog", b =>
                 {
-                    b.HasOne("MiniMesApi.Models.Batch", "ActiveBatch")
+                    b.HasOne("MiniMesApi.Models.Batch", "Batch")
                         .WithMany()
-                        .HasForeignKey("ActiveBatchId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("MiniMesApi.Models.WorkOrder", "ActiveWorkOrder")
-                        .WithMany()
-                        .HasForeignKey("ActiveWorkOrderId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("ActiveBatch");
-
-                    b.Navigation("ActiveWorkOrder");
-                });
-
-            modelBuilder.Entity("MiniMesApi.Models.ShiftSessionEvent", b =>
-                {
-                    b.HasOne("MiniMesApi.Models.ShiftSession", "ShiftSession")
-                        .WithMany("Events")
-                        .HasForeignKey("ShiftSessionId")
+                        .HasForeignKey("BatchId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("ShiftSession");
-                });
+                    b.HasOne("Station", "Station")
+                        .WithMany("TraceabilityLogs")
+                        .HasForeignKey("StationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-            modelBuilder.Entity("MiniMesApi.Models.WorkOrder", b =>
-                {
-                    b.HasOne("MiniMesApi.Models.Product", "ProductRef")
-                        .WithMany("WorkOrders")
-                        .HasForeignKey("ProductId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                    b.HasOne("User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
-                    b.Navigation("ProductRef");
+                    b.Navigation("Batch");
+
+                    b.Navigation("Station");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("MiniMesApi.Models.Product", b =>
                 {
                     b.Navigation("Batches");
-
-                    b.Navigation("WorkOrders");
-                });
-
-            modelBuilder.Entity("MiniMesApi.Models.ShiftSession", b =>
-                {
-                    b.Navigation("DowntimeEvents");
-
-                    b.Navigation("Events");
                 });
 
             modelBuilder.Entity("MiniMesApi.Models.WorkOrder", b =>
                 {
                     b.Navigation("Lots");
+                });
+
+            modelBuilder.Entity("Station", b =>
+                {
+                    b.Navigation("TraceabilityLogs");
                 });
 #pragma warning restore 612, 618
         }

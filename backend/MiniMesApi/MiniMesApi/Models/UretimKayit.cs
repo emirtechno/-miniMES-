@@ -3,6 +3,10 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace MiniMesApi.Models
 {
+    /// <summary>
+    /// Optional barcode / unit-level production record path (API exists).
+    /// Shop-floor OEE and shift KPIs use MachineMetrics + ScrapLogs, not this table.
+    /// </summary>
     [Table("UretimKayitlari")]
     public class UretimKayit
     {

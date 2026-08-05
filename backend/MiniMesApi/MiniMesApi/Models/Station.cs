@@ -1,5 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 
+/// <summary>Legacy traceability station table — dropped; use <see cref="MiniMesApi.Models.StationCatalog"/>.</summary>
+[Obsolete("Legacy Traceability Stations table removed. Use StationCatalog string ids.")]
 public class Station
 {
     public int Id { get; set; }
