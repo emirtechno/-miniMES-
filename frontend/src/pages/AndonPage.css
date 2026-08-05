@@ -284,14 +284,21 @@
     inset 0 -10px 24px rgba(0, 0, 0, 0.45),
     0 0 0 1px rgba(0, 0, 0, 0.35),
     0 8px 20px rgba(0, 0, 0, 0.35);
-  --oee-gauge-accent: #2DFF8A;
+  /* Idle default — never hardcode green; tone classes set accent */
+  --oee-gauge-accent: #5B7A8A;
   /* Keep glow/needle tips; avoid clipping the shaft at the edges */
   overflow: visible;
   text-align: center;
 }
 
+/* Match .andon-shell .oee-gauge specificity so --bad/--good/--warn are not overridden */
+.andon-shell .oee-gauge--good,
 .oee-gauge--good { --oee-gauge-accent: #2DFF8A; }
+.andon-shell .oee-gauge--warn,
+.oee-gauge--warn { --oee-gauge-accent: #FFE566; }
+.andon-shell .oee-gauge--bad,
 .oee-gauge--bad { --oee-gauge-accent: #FF4D6D; }
+.andon-shell .oee-gauge--idle,
 .oee-gauge--idle { --oee-gauge-accent: #5B7A8A; }
 
 .oee-gauge--good {
@@ -300,6 +307,15 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.05),
     inset 0 -10px 24px rgba(0, 0, 0, 0.45),
     0 0 16px rgba(45, 255, 138, 0.1),
+    0 8px 20px rgba(0, 0, 0, 0.35);
+}
+
+.oee-gauge--warn {
+  border-color: rgba(255, 229, 102, 0.28);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    inset 0 -10px 24px rgba(0, 0, 0, 0.45),
+    0 0 18px rgba(255, 229, 102, 0.14),
     0 8px 20px rgba(0, 0, 0, 0.35);
 }
 

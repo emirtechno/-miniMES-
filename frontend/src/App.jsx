@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 
 import './App.css';
+import { AUTHOR_CREDIT, SIDEBAR_TECH_LINE } from './attribution';
+// Author credit (CI attribution guard): Emir Kuru 1022041 Vestel Teknoloji Müdürlüğü (ARGE-ÜRETİM-KALİTE) Stajyeri
 import { useAuth } from './context/AuthContext';
 import { useNotify } from './context/NotificationContext';
 import {
@@ -167,7 +169,11 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
         </div>
         <AppNavLinks items={navItems} />
         <p className="mt-auto px-2 text-xs leading-relaxed text-slate-500">
-          MachineMetrics SSOT · OEE · Andon
+          {SIDEBAR_TECH_LINE}
+          <br />
+          <span className="mt-1 block text-[0.7rem] text-slate-400">
+            - {AUTHOR_CREDIT} -
+          </span>
         </p>
       </aside>
 

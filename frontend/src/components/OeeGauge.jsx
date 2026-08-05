@@ -2,16 +2,19 @@ import { useId } from 'react';
 
 /**
  * Dark neon semi-circular OEE speedometer for Andon.
- * Value color bands: <40 red, ≥40 green, null idle.
+ * Value color bands: ≥85 green, ≥45 & <85 yellow, <45 red, null idle.
  * Arc stays cyan→magenta regardless of tone.
  */
 
-/** Green from this value up (inclusive); below is red. */
-const GREEN_MIN = 40;
+/** Green from this value up (inclusive). */
+const GREEN_MIN = 85;
+/** Yellow/warn from this value up (inclusive); below is red. */
+const YELLOW_MIN = 45;
 
 /** Neon accents for needle + % readout (arc gradient is fixed). */
 const TONE_COLORS = {
   good: '#2DFF8A',
+  warn: '#FFE566',
   bad: '#FF4D6D',
   idle: '#5B7A8A',
 };
@@ -51,9 +54,21 @@ function describeArc(cx, cy, r, startAngle, endAngle) {
   return `M ${start.x} ${start.y} A ${r} ${r} 0 ${large} ${sweep} ${end.x} ${end.y}`;
 }
 
+/** Coerce API/numberish values; null/NaN/non-finite → null (idle). */
+function coerceOeeValue(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
 function oeeTone(value) {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return 'idle';
-  if (value >= GREEN_MIN) return 'good';
+  const n = coerceOeeValue(value);
+  if (n == null) return 'idle';
+  if (n >= GREEN_MIN) return 'good';
+  if (n >= YELLOW_MIN) return 'warn';
   return 'bad';
 }
 
@@ -92,8 +107,9 @@ export default function OeeGauge({
   const softGlowId = `oee-soft-${uid}`;
   const arcGradId = `oee-arc-${uid}`;
 
-  const hasValue = typeof value === 'number' && Number.isFinite(value);
-  const clamped = hasValue ? Math.max(0, Math.min(100, Number(value))) : 0;
+  const numeric = coerceOeeValue(value);
+  const hasValue = numeric != null;
+  const clamped = hasValue ? Math.max(0, Math.min(100, numeric)) : 0;
   const tone = oeeTone(hasValue ? clamped : null);
   const accent = TONE_COLORS[tone];
   const needleAngle = hasValue ? valueToAngle(clamped) : 180;
@@ -275,10 +291,15 @@ export default function OeeGauge({
       </svg>
 
       <div className="oee-gauge__value" aria-hidden="true">
-        <strong>{display}</strong>
+        {/* Inline color so % never stays green when CSS var cascade loses to .andon-shell */}
+        <strong style={{ color: accent }}>{display}</strong>
       </div>
     </div>
   );
 }
 
-export { GREEN_MIN as OEE_GREEN_MIN, oeeTone };
+export {
+  GREEN_MIN as OEE_GREEN_MIN,
+  YELLOW_MIN as OEE_YELLOW_MIN,
+  oeeTone,
+};

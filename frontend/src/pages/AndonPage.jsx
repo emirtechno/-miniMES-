@@ -211,9 +211,11 @@ const AndonPage = () => {
     for (const alarm of alarms) {
       const station = alarm.station || alarm.Station;
       if (!station) continue;
-      const entry = map[station] || { count: 0, isDown: false };
+      const entry = map[station] || { count: 0, isDown: false, titles: [] };
       entry.count += 1;
       if (isDownAlarm(alarm)) entry.isDown = true;
+      const title = (alarm.title || alarm.Title || '').trim();
+      if (title && !entry.titles.includes(title)) entry.titles.push(title);
       map[station] = entry;
     }
     return map;
@@ -376,6 +378,20 @@ const AndonPage = () => {
           const catalogOeeLabel = catalog?.oee == null ? '—' : `%${Number(catalog.oee).toFixed(1)}`;
           const catalogOk = catalog?.goodProduction ?? '—';
           const catalogNok = catalog?.scrapProduction ?? '—';
+          // Open blocking alarms pause the line but may not yet appear on the last metric tick.
+          const metricDowntime = primary?.downtimeReason || catalog?.downtimeReason;
+          const downtimeLabel = (() => {
+            if (stationAlarmCount > 0) {
+              const titles = alarmMeta.titles || [];
+              if (titles.length === 1) return `Alarm · ${titles[0]}`;
+              if (titles.length > 1) return `Alarm · ${titles[0]} (+${titles.length - 1})`;
+              return `Açık alarm (${stationAlarmCount})`;
+            }
+            if (metricDowntime && hasActiveDowntime({ downtimeReason: metricDowntime })) {
+              return metricDowntime;
+            }
+            return 'Yok';
+          })();
           return (
             <article key={stationId} className={`andon-station ${tone}`}>
               <header>
@@ -419,7 +435,7 @@ const AndonPage = () => {
                   <dt>Σ Sağlam / Fire</dt>
                   <dd>{primary?.goodProduction ?? '—'} / {primary?.scrapProduction ?? '—'}</dd>
                 </div>
-                <div><dt>Duruş</dt><dd>{primary?.downtimeReason || catalog?.downtimeReason || 'Yok'}</dd></div>
+                <div><dt>Duruş</dt><dd>{downtimeLabel}</dd></div>
               </dl>
               {(paused || stationAlarmCount > 0) && (
                 <p className="andon-resume-hint">
