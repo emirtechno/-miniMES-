@@ -213,6 +213,7 @@ builder.Services.AddScoped<IDowntimeEventService, DowntimeEventService>();
 builder.Services.AddScoped<IProductionProgressSync, ProductionProgressSync>();
 builder.Services.AddScoped<IStationRuntimeService, StationRuntimeService>();
 builder.Services.AddScoped<IFactorySimulationControl, FactorySimulationControlService>();
+builder.Services.AddScoped<IShopFloorResetService, ShopFloorResetService>();
 builder.Services.AddScoped<ITelemetryAnomalyService, TelemetryAnomalyService>();
 builder.Services.AddScoped<IMetricIngestService, MetricIngestService>();
 builder.Services.AddSingleton<IMesRealtimePublisher, MesRealtimePublisher>();
@@ -272,6 +273,12 @@ if (!isTesting)
         await runtimeService.EnsureSeededAsync();
         var simulationControl = scope.ServiceProvider.GetRequiredService<IFactorySimulationControl>();
         await simulationControl.EnsureSeededAsync();
+        var simStatus = await simulationControl.GetStatusAsync();
+        logger.LogInformation(
+            "Fabrika simülasyonu durumu (kalıcı): {Enabled} · güncelleyen={UpdatedBy} · {UpdatedAt:o}",
+            simStatus.Enabled ? "AÇIK" : "KAPALI",
+            simStatus.UpdatedBy ?? "—",
+            simStatus.UpdatedAt);
 
         if (app.Environment.IsDevelopment())
         {
@@ -293,7 +300,7 @@ if (!isTesting)
                         new Alarm
                         {
                             Title = "Yüksek Basınç",
-                            Station = "Test_Ve_Paketleme_Istasyonu",
+                            Station = StationCatalog.TestAndQuality,
                             Severity = "Uyarı",
                             Time = DateTimeOffset.UtcNow.AddMinutes(-8),
                             Status = "Onaylandı",

@@ -125,6 +125,14 @@
   font-size: clamp(1.8rem, 4vw, 2.6rem);
 }
 
+.andon-summary-sub {
+  display: block;
+  margin-top: 6px;
+  color: #94a3b8;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
 .andon-summary .alert strong {
   color: #f87171;
 }
@@ -140,20 +148,34 @@
 }
 
 .andon-station {
+  display: flex;
+  flex-direction: column;
   padding: 16px;
-  min-height: 200px;
+  min-height: 0;
+}
+
+.andon-station > header {
+  align-items: flex-start;
+  flex-shrink: 0;
+  min-height: 3.25rem;
 }
 
 .andon-station h2 {
   font-size: clamp(1rem, 1.6vw, 1.25rem);
   margin: 0;
+  line-height: 1.25;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .andon-station-badges {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
+  align-content: flex-start;
   gap: 6px;
+  max-width: 62%;
+  min-height: 1.5rem;
 }
 
 .andon-badge {
@@ -170,6 +192,11 @@
 .andon-badge.shift {
   background: rgba(148, 163, 184, 0.12);
   color: #cbd5e1;
+}
+
+.andon-badge.session {
+  background: rgba(56, 189, 248, 0.18);
+  color: #7dd3fc;
 }
 
 .andon-badge.paused {
@@ -226,10 +253,138 @@
 
 .andon-oee {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 10px;
-  margin: 18px 0;
-  font-size: clamp(2rem, 5vw, 3rem);
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 100%;
+  min-height: 180px;
+  margin: 12px 0 8px;
+}
+
+/* Neon dark OEE speedometer (OeeGauge.jsx) — matches Andon dark cards */
+.andon-shell .oee-gauge,
+.oee-gauge {
+  position: relative;
+  width: min(100%, 236px);
+  aspect-ratio: 200 / 148;
+  height: auto;
+  margin: 0 auto;
+  flex-shrink: 0;
+  padding: 6px 4px 2px;
+  box-sizing: border-box;
+  border-radius: 18px;
+  border: 1px solid rgba(0, 242, 255, 0.12);
+  background:
+    radial-gradient(ellipse 55% 40% at 18% 92%, rgba(0, 180, 255, 0.06), transparent 65%),
+    radial-gradient(ellipse 55% 40% at 82% 92%, rgba(255, 43, 214, 0.05), transparent 65%),
+    linear-gradient(165deg, #1a222c 0%, #0c1118 48%, #080b10 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    inset 0 -10px 24px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(0, 0, 0, 0.35),
+    0 8px 20px rgba(0, 0, 0, 0.35);
+  --oee-gauge-accent: #2DFF8A;
+  /* Keep glow/needle tips; avoid clipping the shaft at the edges */
+  overflow: visible;
+  text-align: center;
+}
+
+.oee-gauge--good { --oee-gauge-accent: #2DFF8A; }
+.oee-gauge--bad { --oee-gauge-accent: #FF4D6D; }
+.oee-gauge--idle { --oee-gauge-accent: #5B7A8A; }
+
+.oee-gauge--good {
+  border-color: rgba(45, 255, 138, 0.22);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    inset 0 -10px 24px rgba(0, 0, 0, 0.45),
+    0 0 16px rgba(45, 255, 138, 0.1),
+    0 8px 20px rgba(0, 0, 0, 0.35);
+}
+
+.oee-gauge--bad {
+  border-color: rgba(255, 77, 109, 0.28);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    inset 0 -10px 24px rgba(0, 0, 0, 0.45),
+    0 0 18px rgba(255, 77, 109, 0.14),
+    0 8px 20px rgba(0, 0, 0, 0.35);
+}
+
+.oee-gauge__svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  position: relative;
+  z-index: 2;
+  filter: drop-shadow(0 0 6px rgba(0, 242, 255, 0.15));
+}
+
+/* Needle drawn above ticks; glow via SVG userSpaceOnUse filters (not collapsed line bbox) */
+.oee-gauge__needle {
+  pointer-events: none;
+}
+
+.oee-gauge--idle .oee-gauge__needle {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.oee-gauge__value {
+  position: absolute;
+  left: 50%;
+  /* Sit just under the needle pivot (arc center) */
+  bottom: 10%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  text-align: center;
+  line-height: 1;
+  z-index: 3;
+}
+
+.oee-gauge__value strong {
+  font-family: "Segoe UI", "DIN Alternate", "Arial Narrow", sans-serif;
+  font-size: clamp(1.55rem, 3.2vw, 2.05rem);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  color: var(--oee-gauge-accent);
+  text-shadow:
+    0 0 4px var(--oee-gauge-accent),
+    0 0 14px color-mix(in srgb, var(--oee-gauge-accent) 70%, transparent),
+    0 0 28px color-mix(in srgb, var(--oee-gauge-accent) 40%, transparent);
+  transition: color 0.35s ease, text-shadow 0.35s ease;
+}
+
+@media (min-width: 1400px) {
+  .andon-oee {
+    min-height: 196px;
+  }
+
+  .andon-shell .oee-gauge,
+  .oee-gauge {
+    width: min(100%, 252px);
+  }
+
+  .oee-gauge__value strong {
+    font-size: clamp(1.7rem, 2.4vw, 2.25rem);
+  }
+}
+
+.andon-catalog-line {
+  margin: 0 0 14px;
+  color: #94a3b8;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-align: center;
+  flex-shrink: 0;
+  min-height: 1.35rem;
 }
 
 .andon-station dl {

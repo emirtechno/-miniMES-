@@ -25,32 +25,8 @@ public static class ShiftSessionAggregator
         ArgumentNullException.ThrowIfNull(session);
 
         var end = session.EndedAt ?? DateTimeOffset.UtcNow;
-        var tagged = await context.MachineMetrics.AsNoTracking()
-            .Where(metric => metric.ShiftSessionId == session.Id)
-            .ToListAsync(cancellationToken);
-
-        var metrics = tagged.Count > 0
-            ? tagged
-            : await context.MachineMetrics.AsNoTracking()
-                .Where(metric => metric.StationId == session.StationId
-                    && metric.RecordedAt >= session.StartedAt
-                    && metric.RecordedAt <= end)
-                .ToListAsync(cancellationToken);
-
-        var scrapTagged = await context.ScrapLogs.AsNoTracking()
-            .Where(log => log.ShiftSessionId == session.Id)
-            .Select(log => log.Quantity)
-            .ToListAsync(cancellationToken);
-
-        var scrapQty = scrapTagged.Count > 0
-            ? scrapTagged.Sum()
-            : await context.ScrapLogs.AsNoTracking()
-                .Where(log => log.StationId == session.StationId
-                    && log.RecordedAt >= session.StartedAt
-                    && log.RecordedAt <= end
-                    && (log.ShiftSessionId == null || log.ShiftSessionId == session.Id))
-                .SumAsync(log => (int?)log.Quantity, cancellationToken) ?? 0;
-
+        var metrics = await LoadMetricsAsync(context, session, end, cancellationToken);
+        var scrapQty = await LoadScrapQuantityAsync(context, session, end, cancellationToken);
         var oee = OeeCalculator.CalculateFromWindow(metrics, session.StationId, session.ShiftCode);
         var mins = Math.Max(0, (int)Math.Round((end - session.StartedAt).TotalMinutes));
 
@@ -64,6 +40,66 @@ public static class ShiftSessionAggregator
             DowntimeSeconds = oee.DowntimeSeconds,
             OeePercent = metrics.Count == 0 ? null : oee.Oee
         };
+    }
+
+    /// <summary>
+    /// Session-scoped OEE (A/P/Q + counts). Returns null when the session has no metrics yet.
+    /// </summary>
+    public static async Task<OeeMetricDto?> BuildOeeAsync(
+        MesDbContext context,
+        ShiftSession session,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(session);
+
+        var end = session.EndedAt ?? DateTimeOffset.UtcNow;
+        var metrics = await LoadMetricsAsync(context, session, end, cancellationToken);
+        if (metrics.Count == 0) return null;
+
+        return OeeCalculator.CalculateFromWindow(metrics, session.StationId, session.ShiftCode);
+    }
+
+    /// <summary>
+    /// Plant-wide Andon board: all non-ended sessions, one per station (latest StartedAt wins).
+    /// </summary>
+    public static async Task<IReadOnlyList<ShiftSessionBoardItemDto>> BuildBoardAsync(
+        MesDbContext context,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        var openSessions = await context.ShiftSessions.AsNoTracking()
+            .Where(session => session.Status != ShiftSessionStatuses.Ended)
+            .OrderByDescending(session => session.StartedAt)
+            .ThenByDescending(session => session.Id)
+            .ToListAsync(cancellationToken);
+
+        var latestPerStation = openSessions
+            .GroupBy(session => session.StationId, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .OrderBy(session => session.StationId, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var board = new List<ShiftSessionBoardItemDto>(latestPerStation.Count);
+        foreach (var session in latestPerStation)
+        {
+            var oee = await BuildOeeAsync(context, session, cancellationToken);
+            board.Add(new ShiftSessionBoardItemDto
+            {
+                SessionId = session.Id,
+                StationId = session.StationId,
+                ShiftCode = session.ShiftCode,
+                ShiftName = ShiftCatalog.DisplayName(session.ShiftCode),
+                OperatorName = session.OperatorName,
+                SecondaryOperatorName = session.SecondaryOperatorName,
+                Status = session.Status,
+                StartedAt = session.StartedAt,
+                Oee = oee
+            });
+        }
+
+        return board;
     }
 
     public static void ApplyPersistedSummary(ShiftSession session, ShiftSessionSummaryDto summary)
@@ -145,5 +181,45 @@ public static class ShiftSessionAggregator
             DowntimeSeconds = session.DowntimeSeconds ?? 0,
             OeePercent = session.OeePercent
         };
+    }
+
+    private static async Task<List<MachineMetric>> LoadMetricsAsync(
+        MesDbContext context,
+        ShiftSession session,
+        DateTimeOffset end,
+        CancellationToken cancellationToken)
+    {
+        var tagged = await context.MachineMetrics.AsNoTracking()
+            .Where(metric => metric.ShiftSessionId == session.Id)
+            .ToListAsync(cancellationToken);
+
+        if (tagged.Count > 0) return tagged;
+
+        return await context.MachineMetrics.AsNoTracking()
+            .Where(metric => metric.StationId == session.StationId
+                && metric.RecordedAt >= session.StartedAt
+                && metric.RecordedAt <= end)
+            .ToListAsync(cancellationToken);
+    }
+
+    private static async Task<int> LoadScrapQuantityAsync(
+        MesDbContext context,
+        ShiftSession session,
+        DateTimeOffset end,
+        CancellationToken cancellationToken)
+    {
+        var scrapTagged = await context.ScrapLogs.AsNoTracking()
+            .Where(log => log.ShiftSessionId == session.Id)
+            .Select(log => log.Quantity)
+            .ToListAsync(cancellationToken);
+
+        if (scrapTagged.Count > 0) return scrapTagged.Sum();
+
+        return await context.ScrapLogs.AsNoTracking()
+            .Where(log => log.StationId == session.StationId
+                && log.RecordedAt >= session.StartedAt
+                && log.RecordedAt <= end
+                && (log.ShiftSessionId == null || log.ShiftSessionId == session.Id))
+            .SumAsync(log => (int?)log.Quantity, cancellationToken) ?? 0;
     }
 }

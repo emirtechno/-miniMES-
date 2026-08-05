@@ -33,6 +33,9 @@ public sealed class TelemetryAnomalyService(
         ArgumentNullException.ThrowIfNull(metric);
         if (string.IsNullOrWhiteSpace(metric.StationId)) return;
 
+        // Retired/legacy stations must not raise Andon anomalies (UI + create gate).
+        if (!StationCatalog.IsActive(metric.StationId)) return;
+
         // Downtime / idle ticks must not raise production anomalies.
         if (metric.ActualProductionCount <= 0) return;
 

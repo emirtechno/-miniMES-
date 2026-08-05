@@ -96,3 +96,20 @@ public sealed class ShiftSessionDetailDto
     public IReadOnlyList<MachineMetricDto> RecentTicks { get; init; } = [];
     public IReadOnlyList<ShiftSessionEventDto> Events { get; init; } = [];
 }
+
+/// <summary>
+/// Plant-wide open ShiftSession row for Andon / TV boards (one per station).
+/// <see cref="Oee"/> is null when the session has no tagged/window metrics yet.
+/// </summary>
+public sealed class ShiftSessionBoardItemDto
+{
+    public int SessionId { get; init; }
+    public string StationId { get; init; } = string.Empty;
+    public string ShiftCode { get; init; } = string.Empty;
+    public string ShiftName { get; init; } = string.Empty;
+    public string OperatorName { get; init; } = string.Empty;
+    public string? SecondaryOperatorName { get; init; }
+    public string Status { get; init; } = string.Empty;
+    public DateTimeOffset StartedAt { get; init; }
+    public OeeMetricDto? Oee { get; init; }
+}

@@ -1,5 +1,6 @@
 import { AlertTriangle, BellPlus } from 'lucide-react';
 import UserRolePanel from '../components/UserRolePanel';
+import ShopFloorResetPanel from '../components/ShopFloorResetPanel';
 import CardHeader from '../components/CardHeader';
 import { ACTIVE_STATION_DEFINITIONS } from '../constants/stations';
 
@@ -20,6 +21,8 @@ const AdminPage = ({
         Kullanıcı yönetimi için <code className="text-xs">users.manage</code> yetkisi gerekir.
       </section>
     )}
+
+    {permissions.canResetShopFloor && <ShopFloorResetPanel />}
 
     {permissions.canCreateAlarms && alarmForm && (
       <section className="mes-surface p-5">

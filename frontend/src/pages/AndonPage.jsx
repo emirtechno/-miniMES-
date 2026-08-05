@@ -1,18 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Navigate, Link } from 'react-router-dom';
-import { Activity, AlertTriangle, CheckCheck, CheckCircle, Radio } from 'lucide-react';
+import { AlertTriangle, CheckCheck, CheckCircle, Radio } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNotify } from '../context/NotificationContext';
+import { useSimulationStatus } from '../context/SimulationStatusContext';
 import {
   acknowledgeAlarm,
   fetchAlarms,
   fetchShiftCurrentOeeAll,
-  fetchSimulationStatus,
+  fetchShiftSessionBoard,
   getApiErrorMessage,
   resolveAlarm,
 } from '../services/api';
 import { useMesHub } from '../hooks/useMesHub';
 import VestelMark from '../components/VestelMark';
+import OeeGauge from '../components/OeeGauge';
 import { ACTIVE_STATION_DEFINITIONS, getStationDisplayName } from '../constants/stations';
 import './AndonPage.css';
 
@@ -60,12 +62,25 @@ const runtimeBadgeLabel = ({ simEnabled, hasMetric, paused, hasAlarm, isDown }) 
   return 'ÇALIŞIYOR';
 };
 
+const averageNumeric = (values) => {
+  const nums = values.filter((value) => typeof value === 'number');
+  if (!nums.length) return null;
+  return nums.reduce((sum, value) => sum + value, 0) / nums.length;
+};
+
+const sumNumeric = (values) => {
+  const nums = values.filter((value) => typeof value === 'number');
+  if (!nums.length) return null;
+  return nums.reduce((sum, value) => sum + value, 0);
+};
+
 const AndonPage = () => {
   const { isAuthenticated, currentUser } = useAuth();
   const { notify, confirm } = useNotify();
+  const { enabled: simEnabled } = useSimulationStatus();
   const [oeeByStation, setOeeByStation] = useState({});
+  const [sessionByStation, setSessionByStation] = useState({});
   const [alarms, setAlarms] = useState([]);
-  const [simEnabled, setSimEnabled] = useState(true);
   const [clock, setClock] = useState(new Date());
   const [hubConnected, setHubConnected] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -86,29 +101,40 @@ const AndonPage = () => {
     setOeeByStation(map);
   }, []);
 
-  const loadShiftOeeOnly = useCallback(async (signal) => {
+  const applySessionBoard = useCallback((rows) => {
+    const map = {};
+    for (const item of rows || []) {
+      if (item?.stationId) map[item.stationId] = item;
+    }
+    setSessionByStation(map);
+  }, []);
+
+  const loadOeeScopes = useCallback(async (signal) => {
     try {
-      applyShiftOee(await fetchShiftCurrentOeeAll({ signal }));
+      const [shiftOee, sessionBoard] = await Promise.all([
+        fetchShiftCurrentOeeAll({ signal }),
+        fetchShiftSessionBoard({ signal }),
+      ]);
+      applyShiftOee(shiftOee);
+      applySessionBoard(sessionBoard);
     } catch (error) {
       if (error.name !== 'CanceledError' && error.name !== 'AbortError') {
         console.error(error);
       }
     }
-  }, [applyShiftOee]);
+  }, [applyShiftOee, applySessionBoard]);
 
   const loadAndonBoard = useCallback(async (signal, { showLoading = false } = {}) => {
     try {
       if (showLoading) setLoading(true);
-      const [alarmPage, shiftOee, simStatus] = await Promise.all([
+      const [alarmPage, shiftOee, sessionBoard] = await Promise.all([
         fetchAlarms({ signal, limit: 40, openOnly: true }),
         fetchShiftCurrentOeeAll({ signal }),
-        fetchSimulationStatus({ signal }).catch(() => null),
+        fetchShiftSessionBoard({ signal }),
       ]);
       setAlarms((alarmPage.items || []).filter((alarm) => !isClosedAlarm(alarm.status)));
       applyShiftOee(shiftOee);
-      if (simStatus && typeof simStatus.enabled === 'boolean') {
-        setSimEnabled(simStatus.enabled);
-      }
+      applySessionBoard(sessionBoard);
     } catch (error) {
       if (error.name !== 'CanceledError' && error.name !== 'AbortError') {
         console.error(error);
@@ -116,7 +142,7 @@ const AndonPage = () => {
     } finally {
       if (showLoading) setLoading(false);
     }
-  }, [applyShiftOee]);
+  }, [applyShiftOee, applySessionBoard]);
 
   useEffect(() => {
     if (!isAuthenticated) return undefined;
@@ -131,8 +157,11 @@ const AndonPage = () => {
 
   const { connected } = useMesHub({
     onOeeUpdated: () => {
-      // Tick hub payload is single-tick scoped; re-fetch shift aggregates so cards stay consistent.
-      loadShiftOeeOnly(undefined);
+      // Tick hub payload is single-tick scoped; re-fetch both OEE scopes so cards stay consistent.
+      loadOeeScopes(undefined);
+    },
+    onShiftUpdated: () => {
+      loadOeeScopes(undefined);
     },
     onAlarmCreated: (alarm) => {
       if (isClosedAlarm(alarm.status)) return;
@@ -157,21 +186,25 @@ const AndonPage = () => {
     setHubConnected(connected);
   }, [connected]);
 
-  const averageOee = useMemo(() => {
-    const values = ANDON_STATIONS
-      .map((id) => oeeByStation[id]?.oee)
-      .filter((value) => typeof value === 'number');
-    if (!values.length) return null;
-    return values.reduce((sum, value) => sum + value, 0) / values.length;
-  }, [oeeByStation]);
+  const averageCatalogOee = useMemo(
+    () => averageNumeric(ANDON_STATIONS.map((id) => oeeByStation[id]?.oee)),
+    [oeeByStation],
+  );
 
-  const plantGood = useMemo(() => {
-    const values = ANDON_STATIONS
-      .map((id) => oeeByStation[id]?.goodProduction)
-      .filter((value) => typeof value === 'number');
-    if (!values.length) return null;
-    return values.reduce((sum, value) => sum + value, 0);
-  }, [oeeByStation]);
+  const averageSessionOee = useMemo(
+    () => averageNumeric(ANDON_STATIONS.map((id) => sessionByStation[id]?.oee?.oee)),
+    [sessionByStation],
+  );
+
+  const plantCatalogGood = useMemo(
+    () => sumNumeric(ANDON_STATIONS.map((id) => oeeByStation[id]?.goodProduction)),
+    [oeeByStation],
+  );
+
+  const plantSessionGood = useMemo(
+    () => sumNumeric(ANDON_STATIONS.map((id) => sessionByStation[id]?.oee?.goodProduction)),
+    [sessionByStation],
+  );
 
   const alarmsByStation = useMemo(() => {
     const map = {};
@@ -262,8 +295,11 @@ const AndonPage = () => {
             <Radio size={16} />
             {hubConnected ? 'CANLI' : 'YENİDEN BAĞLANIYOR'}
           </span>
-          <span className={`andon-live ${simEnabled ? 'on' : 'off'}`} title="Backend fabrika simülasyonu">
-            {simEnabled ? 'SİM AÇIK' : 'SİM KAPALI'}
+          <span
+            className={`andon-live ${simEnabled === true ? 'on' : 'off'}`}
+            title="Backend fabrika simülasyonu (DB’de kalıcı)"
+          >
+            {simEnabled == null ? 'SİM …' : simEnabled ? 'SİM AÇIK' : 'SİM KAPALI'}
           </span>
           <strong>{clock.toLocaleTimeString('tr-TR')}</strong>
           <Link to="/fabrika" className="andon-exit">Panele Dön</Link>
@@ -272,29 +308,40 @@ const AndonPage = () => {
 
       <section className="andon-summary">
         <article>
-          <small>Ortalama OEE (Katalog)</small>
-          <strong>{averageOee == null ? '—' : `%${averageOee.toFixed(1)}`}</strong>
+          <small>Ortalama OEE (Oturum)</small>
+          <strong>{averageSessionOee == null ? '—' : `%${averageSessionOee.toFixed(1)}`}</strong>
+          {plantSessionGood != null && (
+            <span className="andon-summary-sub">Σ Sağlam {plantSessionGood}</span>
+          )}
         </article>
         <article className={openAlarmCount > 0 ? 'alert' : ''}>
           <small>Açık Alarm</small>
           <strong>{openAlarmCount}</strong>
         </article>
         <article>
-          <small>Σ Sağlam (Katalog)</small>
-          <strong>{plantGood == null ? '—' : plantGood}</strong>
+          <small>Ortalama OEE (Katalog)</small>
+          <strong>{averageCatalogOee == null ? '—' : `%${averageCatalogOee.toFixed(1)}`}</strong>
+          {plantCatalogGood != null && (
+            <span className="andon-summary-sub">Σ Sağlam {plantCatalogGood}</span>
+          )}
         </article>
       </section>
 
       <section className="andon-stations">
         {ANDON_STATIONS.map((stationId) => {
-          const metric = oeeByStation[stationId];
-          const oee = metric?.oee;
+          const catalog = oeeByStation[stationId];
+          const session = sessionByStation[stationId];
+          const sessionOee = session?.oee;
+          const hasSession = Boolean(session);
+          const primary = hasSession ? sessionOee : catalog;
+          const oee = primary?.oee;
           const alarmMeta = alarmsByStation[stationId] || { count: 0, isDown: false };
           const stationAlarmCount = alarmMeta.count;
           // Open alarms (and latest-tick downtime) drive DURAKLADI — sim no longer writes
           // identical downtime ticks every interval while Paused/Down.
-          const paused = hasActiveDowntime(metric) || stationAlarmCount > 0;
-          const isDown = alarmMeta.isDown || (paused && stationAlarmCount > 0 && (metric?.downtimeReasonCode === 'BREAKDOWN'));
+          const downtimeSource = sessionOee || catalog;
+          const paused = hasActiveDowntime(downtimeSource) || stationAlarmCount > 0;
+          const isDown = alarmMeta.isDown || (paused && stationAlarmCount > 0 && (downtimeSource?.downtimeReasonCode === 'BREAKDOWN'));
           const tone = stationAlarmCount > 0
             ? 'alarm'
             : !simEnabled
@@ -310,7 +357,7 @@ const AndonPage = () => {
                       : 'bad';
           const statusLabel = runtimeBadgeLabel({
             simEnabled,
-            hasMetric: metric != null && oee != null,
+            hasMetric: primary != null && oee != null,
             paused,
             hasAlarm: stationAlarmCount > 0,
             isDown,
@@ -323,9 +370,12 @@ const AndonPage = () => {
                 ? 'sim-off'
                 : paused
                   ? 'paused'
-                  : (metric == null || oee == null)
+                  : (primary == null || oee == null)
                     ? 'idle'
                     : 'running';
+          const catalogOeeLabel = catalog?.oee == null ? '—' : `%${Number(catalog.oee).toFixed(1)}`;
+          const catalogOk = catalog?.goodProduction ?? '—';
+          const catalogNok = catalog?.scrapProduction ?? '—';
           return (
             <article key={stationId} className={`andon-station ${tone}`}>
               <header>
@@ -335,21 +385,41 @@ const AndonPage = () => {
                     <span className="andon-badge alarm">Alarm{stationAlarmCount > 1 ? ` ×${stationAlarmCount}` : ''}</span>
                   )}
                   <span className={`andon-badge ${statusClass}`}>{statusLabel}</span>
-                  {!stationAlarmCount && !paused && simEnabled && metric?.shiftName && (
-                    <span className="andon-badge shift">{metric.shiftName || metric.shiftCode}</span>
+                  {hasSession ? (
+                    <span className="andon-badge session">
+                      OTURUM · {session.operatorName || 'Operatör'}
+                    </span>
+                  ) : (
+                    <span className="andon-badge idle">Oturum yok</span>
+                  )}
+                  {!stationAlarmCount && !paused && simEnabled && catalog?.shiftName && (
+                    <span className="andon-badge shift">{catalog.shiftName || catalog.shiftCode}</span>
                   )}
                 </div>
               </header>
               <div className="andon-oee">
-                <Activity size={22} />
-                <strong>{oee == null ? '—' : `%${Number(oee).toFixed(1)}`}</strong>
+                <OeeGauge
+                  value={oee == null ? null : Number(oee)}
+                  label="OEE"
+                  ariaLabel={
+                    oee == null
+                      ? (hasSession ? 'Oturum OEE veri yok' : 'Katalog OEE veri yok')
+                      : `${hasSession ? 'Oturum' : 'Katalog'} OEE ${Number(oee).toFixed(1)} yüzde`
+                  }
+                />
               </div>
+              <p className="andon-catalog-line">
+                Katalog {catalogOeeLabel} · OK {catalogOk} / NOK {catalogNok}
+              </p>
               <dl>
-                <div><dt>Kullanılabilirlik</dt><dd>{metric?.availability ?? '—'}%</dd></div>
-                <div><dt>Performans</dt><dd>{metric?.performance ?? '—'}%</dd></div>
-                <div><dt>Kalite</dt><dd>{metric?.quality ?? '—'}%</dd></div>
-                <div><dt>Σ Sağlam / Fire</dt><dd>{metric?.goodProduction ?? '—'} / {metric?.scrapProduction ?? '—'}</dd></div>
-                <div><dt>Duruş</dt><dd>{metric?.downtimeReason || 'Yok'}</dd></div>
+                <div><dt>Kullanılabilirlik</dt><dd>{primary?.availability ?? '—'}%</dd></div>
+                <div><dt>Performans</dt><dd>{primary?.performance ?? '—'}%</dd></div>
+                <div><dt>Kalite</dt><dd>{primary?.quality ?? '—'}%</dd></div>
+                <div>
+                  <dt>Σ Sağlam / Fire</dt>
+                  <dd>{primary?.goodProduction ?? '—'} / {primary?.scrapProduction ?? '—'}</dd>
+                </div>
+                <div><dt>Duruş</dt><dd>{primary?.downtimeReason || catalog?.downtimeReason || 'Yok'}</dd></div>
               </dl>
               {(paused || stationAlarmCount > 0) && (
                 <p className="andon-resume-hint">

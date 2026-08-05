@@ -100,6 +100,7 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
   const canCreateAlarms = hasPermission('alarms.write');
   const canManageAlarms = hasPermission('alarms.manage');
   const canManageUsers = hasPermission('users.manage');
+  const canResetShopFloor = hasPermission('simulation.control');
 
   // Shift-active indicator (not FE ingest). Backend OeeSimulation owns MachineMetrics writes.
   const liveStreamActive = Boolean(shift.active && !shift.onBreak && !shift.inSetup);
@@ -373,6 +374,7 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
                   permissions={{
                     canManageUsers: canManageUsers && isExecutivePersona,
                     canCreateAlarms: canCreateAlarms && isExecutivePersona,
+                    canResetShopFloor: canResetShopFloor && isExecutivePersona,
                   }}
                   alarms={{
                     loading: alarms.alarmLoading,

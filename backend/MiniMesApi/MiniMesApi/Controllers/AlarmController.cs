@@ -64,6 +64,9 @@ namespace MiniMesApi.Controllers
                 query = query.Where(alarm =>
                     alarm.Status != AlarmStatuses.Resolved
                     && alarm.Status != AlarmStatuses.ClosedLegacy);
+                // Soft-hide retired/legacy stations (e.g. Test_Ve_Paketleme_Istasyonu, Montaj_Hatti_02/03).
+                var activeStations = StationCatalog.Active;
+                query = query.Where(alarm => activeStations.Contains(alarm.Station));
             }
             else if (!string.IsNullOrWhiteSpace(status))
             {
@@ -112,9 +115,11 @@ namespace MiniMesApi.Controllers
             [FromBody] CreateAlarmDto request,
             CancellationToken cancellationToken)
         {
-            if (!StationCatalog.Contains(request.Station))
+            if (!StationCatalog.IsActive(request.Station))
             {
-                return Problem(statusCode: StatusCodes.Status400BadRequest, title: "Geçersiz istasyon kimliği.");
+                return Problem(
+                    statusCode: StatusCodes.Status400BadRequest,
+                    title: "Geçersiz veya emekli istasyon kimliği — yeni alarm açılamaz.");
             }
 
             var alarm = new Alarm

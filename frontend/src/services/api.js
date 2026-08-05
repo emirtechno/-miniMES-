@@ -75,6 +75,8 @@ export const localizeIdentityMessage = (message = '') => {
   return next;
 };
 
+const GENERIC_SERVER_DETAIL = 'Hata ayrıntıları sunucu günlüklerine kaydedildi.';
+
 export const getApiErrorMessage = (error, fallback = 'İşlem tamamlanamadı.') => {
   const data = error?.response?.data;
   if (data?.errors) {
@@ -85,10 +87,14 @@ export const getApiErrorMessage = (error, fallback = 'İşlem tamamlanamadı.') 
       return validationErrors.map((item) => localizeIdentityMessage(item)).join(' · ');
     }
   }
-  if (data?.detail) return localizeIdentityMessage(data.detail);
+  // Prefer actionable detail; skip the generic "see server logs" placeholder when title is clearer.
+  if (data?.detail && data.detail !== GENERIC_SERVER_DETAIL) {
+    return localizeIdentityMessage(data.detail);
+  }
   if (data?.title && data.title !== 'One or more validation errors occurred.') {
     return localizeIdentityMessage(data.title);
   }
+  if (data?.detail) return localizeIdentityMessage(data.detail);
   if (data?.message) return localizeIdentityMessage(data.message);
   return error?.message || fallback;
 };
@@ -223,6 +229,12 @@ export const fetchActiveShiftSession = async ({ stationId, signal } = {}) => {
   return response.data || null;
 };
 
+/** Plant-wide open ShiftSessions for Andon (one per station, with session-scoped OEE). */
+export const fetchShiftSessionBoard = async ({ signal } = {}) => {
+  const response = await apiClient.get('/ShiftSession/board', { signal });
+  return Array.isArray(response.data) ? response.data : [];
+};
+
 export const startShiftSession = async (payload, { signal } = {}) => {
   const response = await apiClient.post('/ShiftSession/start', payload, { signal });
   return response.data;
@@ -318,6 +330,16 @@ export const fetchSimulationStatus = async ({ signal } = {}) => {
 
 export const setSimulationEnabled = async (payload, { signal } = {}) => {
   const response = await apiClient.put('/Simulation/enabled', payload, { signal });
+  return response.data;
+};
+
+/** Destructive shop-floor wipe. confirmation must be exactly "SIFIRLA". */
+export const resetShopFloorData = async ({ confirmation = 'SIFIRLA', signal } = {}) => {
+  const response = await apiClient.post(
+    '/Simulation/reset-shop-floor',
+    { confirmation },
+    { signal },
+  );
   return response.data;
 };
 
