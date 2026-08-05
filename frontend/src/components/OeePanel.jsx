@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { fetchLatestOee } from '../services/api';
+import { fetchShiftCurrentOee } from '../services/api';
 import { useNonOverlappingPolling } from '../hooks/useNonOverlappingPolling';
 import { useMesHub } from '../hooks/useMesHub';
 import {
@@ -50,6 +50,7 @@ const GaugeMeter = ({ label, value, detail }) => {
 
 /**
  * OEE gauges with interactive station selector (Availability / Performance / Quality / OEE).
+ * Scope: current catalog shift window (/Oee/shift-current), same as Andon.
  */
 const OeePanel = ({
   stationId: controlledStationId,
@@ -66,21 +67,24 @@ const OeePanel = ({
     onStationChange?.(nextId);
   };
 
-  const handleOeeUpdated = useCallback((metrics) => {
-    const latest = (metrics || []).find((item) => item.stationId === stationId);
-    if (latest) setMetric(latest);
-  }, [stationId]);
-
-  useMesHub({ onOeeUpdated: handleOeeUpdated });
-
-  useNonOverlappingPolling(async (signal) => {
+  const loadShiftOee = useCallback(async (signal) => {
+    if (!stationId) return;
     try {
-      setMetric(await fetchLatestOee(stationId, { signal }));
+      setMetric(await fetchShiftCurrentOee(stationId, { signal }));
     } catch (error) {
       if (error.response?.status === 404) setMetric(null);
       else throw error;
     }
-  }, {
+  }, [stationId]);
+
+  useMesHub({
+    onOeeUpdated: () => {
+      // Hub payload is single-tick; re-fetch shift aggregates for consistent A/P/Q.
+      loadShiftOee(undefined);
+    },
+  });
+
+  useNonOverlappingPolling(loadShiftOee, {
     enabled: Boolean(stationId),
     intervalMs: 30000,
     resetKey: stationId,
@@ -95,7 +99,7 @@ const OeePanel = ({
       <CardHeader
         icon={Gauge}
         title={`OEE / Hat Verimliliği — ${getStationDisplayName(stationId)}`}
-        subtitle={`Son güncelleme: ${lastUpdated}`}
+        subtitle={`Vardiya penceresi · son güncelleme: ${lastUpdated}`}
         actions={showStationSelector ? (
           <select
             className="mes-input h-10 w-auto min-w-[200px]"
@@ -110,19 +114,9 @@ const OeePanel = ({
             ))}
           </select>
         ) : (
-          <InfoTip text="OEE = Kullanılabilirlik × Performans × Kalite. Veriler API ve (açıksa) arka plan simülasyonundan gelir; SignalR ile canlı güncellenir." />
+          <InfoTip text="OEE = Kullanılabilirlik × Performans × Kalite. Değerler katalog vardiya penceresinin (/Oee/shift-current) toplamıdır (Andon ile aynı); operatör oturumu sıfırlanınca burası sıfırlanmaz." />
         )}
       />
-
-      {showStationSelector && (
-        <p className="mes-helper -mt-2 mb-3">
-          İstasyon seçerek Availability, Performance, Quality ve OEE metriklerini yenileyin.
-          <InfoTip
-            className="ml-1"
-            text="OEE = Kullanılabilirlik × Performans × Kalite. Veriler API ve (açıksa) arka plan simülasyonundan gelir."
-          />
-        </p>
-      )}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <GaugeMeter

@@ -12,7 +12,7 @@ const sections = [
     icon: HardHat,
     title: 'Operatör Paneli',
     path: '/operator',
-    body: 'Vardiya Başlat Live Stream’i açar; her tick PLC batch (ör. 128/125) yazar. Sayaçlar Σ Good / Σ Fire.',
+    body: 'Vardiya Başlat operatör oturumunu açar; backend Fabrika Telemetrisi MachineMetrics’e batch yazar. Sayaçlar Σ Good / Σ Fire.',
   },
   {
     icon: Wrench,
@@ -30,13 +30,13 @@ const sections = [
     icon: Gauge,
     title: 'Makine Metrikleri',
     path: '/makine-metrikleri',
-    body: 'SSOT hub: trend, tablo, OEE, lot. Live Stream durumu vardiyaya bağlıdır.',
+    body: 'SSOT hub: trend, tablo, OEE, lot. Operatör vardiya durumu panellerde gösterilir; telemetri backend’dedir.',
   },
   {
     icon: Monitor,
     title: 'Andon',
     path: '/andon',
-    body: 'OEE latest + Live Stream anomali alarmları (SignalR).',
+    body: 'OEE latest + backend telemetri anomali alarmları (SignalR).',
   },
 ];
 
@@ -77,7 +77,7 @@ const OperatorGuidePage = () => (
       <h2 className="mes-section-title m-0">Akış</h2>
       <ol className="mt-3 space-y-2 text-sm">
         <li>1. Vardiya Başlat</li>
-        <li>2. Live Stream → POST MachineMetrics (batch Actual/Good/Downtime)</li>
+        <li>2. Backend Fabrika Telemetrisi → MachineMetrics (batch Actual/Good/Downtime)</li>
         <li>3. Summary / OEE / Lot / Andon senkron güncellenir</li>
         <li>4. Vardiya Bitir → stream durur</li>
       </ol>

@@ -20,8 +20,8 @@ const OeeInsight = ({ metric }) => {
     if (!metric) {
       return {
         tone: 'neutral',
-        title: 'Anlık Durum Analizi',
-        body: 'Bu istasyon için henüz OEE verisi gelmedi. Simülasyon açıksa birkaç saniye içinde güncellenir; kapalıysa Makine Metrikleri ekranından kayıt ekleyin.',
+        title: 'Vardiya OEE Analizi',
+        body: 'Bu istasyon için henüz vardiya OEE verisi gelmedi. Simülasyon açıksa birkaç saniye içinde güncellenir; kapalıysa Makine Metrikleri ekranından kayıt ekleyin.',
       };
     }
 
@@ -53,7 +53,7 @@ const OeeInsight = ({ metric }) => {
     }
 
     const parts = [
-      `Son güncellemede Kalite %${quality.toFixed(1)}, Kullanılabilirlik %${availability.toFixed(1)}, Performans %${performance.toFixed(1)} (OEE %${oee.toFixed(1)}).`,
+      `Vardiya penceresinde Kalite %${quality.toFixed(1)}, Kullanılabilirlik %${availability.toFixed(1)}, Performans %${performance.toFixed(1)} (OEE %${oee.toFixed(1)}).`,
       `Vardiya: ${shift}.`,
     ];
 
@@ -79,7 +79,7 @@ const OeeInsight = ({ metric }) => {
 
     return {
       tone,
-      title: 'Anlık Durum Analizi',
+      title: 'Vardiya OEE Analizi',
       body: parts.join(' '),
       Icon,
     };

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { PlayCircle, X } from 'lucide-react';
 import { ACTIVE_STATION_DEFINITIONS, DEFAULT_STATION } from '../constants/stations';
-import { SHIFT_SCHEDULES } from '../constants/shifts';
+import { resolveShiftCodeForUtc, SHIFT_SCHEDULES } from '../constants/shifts';
 
 /**
  * Structured dialog for starting a shop-floor shift session.
@@ -16,7 +16,7 @@ const ShiftStartModal = ({
 }) => {
   const [operatorName, setOperatorName] = useState(defaultOperatorName);
   const [operatorId, setOperatorId] = useState(defaultOperatorId);
-  const [shiftCode, setShiftCode] = useState(SHIFT_SCHEDULES[0].code);
+  const [shiftCode, setShiftCode] = useState(() => resolveShiftCodeForUtc());
   const [stationId, setStationId] = useState(defaultStationId);
 
   useEffect(() => {
@@ -24,7 +24,7 @@ const ShiftStartModal = ({
     setOperatorName(defaultOperatorName || '');
     setOperatorId(defaultOperatorId || '');
     setStationId(defaultStationId || DEFAULT_STATION);
-    setShiftCode(SHIFT_SCHEDULES[0].code);
+    setShiftCode(resolveShiftCodeForUtc());
   }, [open, defaultOperatorName, defaultOperatorId, defaultStationId]);
 
   if (!open) return null;
@@ -52,7 +52,9 @@ const ShiftStartModal = ({
         <div className="flex items-start justify-between gap-3">
           <div>
             <h3 id="shift-start-title" className="m-0">Vardiya Başlat</h3>
-            <p className="mes-helper mb-0 mt-1">Operatör, vardiya ve istasyon bilgisini girin.</p>
+            <p className="mes-helper mb-0 mt-1">
+              Operatör oturumu KPI’ları sıfırdan başlar. Andon / hat KPI’ları katalog saat penceresinde birikmeye devam eder.
+            </p>
           </div>
           <button type="button" className="mes-btn-ghost" onClick={onClose} aria-label="Kapat">
             <X size={16} />
@@ -82,12 +84,15 @@ const ShiftStartModal = ({
             />
           </label>
           <label className="flex flex-col gap-1 text-sm font-medium">
-            Vardiya Seçimi
+            Oturum vardiya etiketi
             <select className="mes-input" value={shiftCode} onChange={(event) => setShiftCode(event.target.value)}>
               {SHIFT_SCHEDULES.map((shift) => (
                 <option key={shift.code} value={shift.code}>{shift.label}</option>
               ))}
             </select>
+            <span className="text-xs font-normal text-[color:var(--color-muted)]">
+              Varsayılan: şu anki katalog penceresi. Hat OEE (Andon) saate göre katalog kodunu kullanır; bu seçim oturum kaydı içindir.
+            </span>
           </label>
           <label className="flex flex-col gap-1 text-sm font-medium">
             Atanan İstasyon / Hat

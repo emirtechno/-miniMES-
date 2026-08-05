@@ -81,7 +81,101 @@
   }
 
   .mes-topbar {
-    @apply flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--color-line)] bg-white/90 px-4 py-3 backdrop-blur md:px-6;
+    @apply relative z-10 flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-[color:var(--color-line)] bg-white/90 px-3 py-2.5 backdrop-blur sm:px-4 md:px-5;
+  }
+
+  .mes-topbar-brand {
+    @apply flex min-w-0 items-center gap-2.5;
+    flex: 1 1 180px;
+  }
+
+  .mes-topbar-titles {
+    @apply min-w-0 flex-1;
+  }
+
+  .mes-topbar-titles h1 {
+    @apply m-0 truncate font-display text-lg font-semibold tracking-wide text-[color:var(--color-ink)] sm:text-xl;
+  }
+
+  .mes-topbar-titles p {
+    @apply m-0 truncate text-[11px] leading-tight text-[color:var(--color-muted)] sm:text-xs;
+  }
+
+  .mes-topbar-persona {
+    @apply order-3 flex w-full shrink-0 justify-start sm:order-none sm:w-auto sm:justify-center;
+  }
+
+  .mes-topbar-actions {
+    @apply flex min-w-0 flex-wrap items-center justify-end gap-1.5;
+    flex: 1 1 220px;
+  }
+
+  .mes-topbar-shift {
+    @apply max-w-[9.5rem] truncate sm:max-w-[12rem];
+  }
+
+  .mes-topbar-telem {
+    @apply shrink-0;
+  }
+
+  .mes-topbar-telem-label {
+    @apply hidden xl:inline;
+  }
+
+  .mes-topbar-btn-label {
+    @apply hidden sm:inline;
+  }
+
+  .mes-topbar-user {
+    @apply inline-flex max-w-full items-center gap-1.5 rounded-md border border-[color:var(--color-line)] bg-slate-50 py-0.5 pl-2 pr-0.5;
+  }
+
+  .mes-topbar-user-dot {
+    @apply h-2 w-2 shrink-0 rounded-full bg-red-500;
+  }
+
+  .mes-topbar-user-dot.is-active {
+    @apply bg-emerald-500;
+  }
+
+  .mes-topbar-user-name {
+    @apply max-w-[6.5rem] truncate text-xs font-semibold text-[color:var(--color-ink)] sm:max-w-[9rem];
+  }
+
+  .mes-btn-compact {
+    @apply !h-8 !min-h-8 !gap-1.5 !rounded-md !px-2.5 !text-xs;
+  }
+
+  .mes-btn-compact svg {
+    @apply !h-3.5 !w-3.5;
+  }
+
+  /* Wide desktop: single horizontal row — title | personas | actions */
+  @media (min-width: 1100px) {
+    .mes-topbar {
+      @apply flex-nowrap gap-x-4 py-2;
+    }
+
+    .mes-topbar-brand {
+      flex: 0 1 240px;
+      min-width: 0;
+    }
+
+    .mes-topbar-persona {
+      @apply order-none w-auto shrink-0;
+      flex: 0 0 auto;
+    }
+
+    .mes-topbar-actions {
+      @apply flex-nowrap gap-1.5;
+      flex: 1 1 auto;
+      min-width: 0;
+      justify-content: flex-end;
+    }
+
+    .mes-topbar-user-name {
+      @apply max-w-[10rem];
+    }
   }
 
   .mes-content {
@@ -157,7 +251,7 @@
   }
 
   .mes-input {
-    @apply w-full rounded-lg border border-[color:var(--color-line)] bg-white px-3 py-2 text-sm text-[color:var(--color-ink)] outline-none transition focus:border-[color:var(--color-info)] focus:ring-2 focus:ring-[color:var(--color-info)]/20;
+    @apply w-full rounded-lg border border-[color:var(--color-line)] bg-white px-3 py-2 text-sm text-[color:var(--color-ink)] outline-none transition focus:border-[color:var(--color-info)] focus:ring-2 focus:ring-[color:var(--color-info)]/20 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-500 disabled:opacity-90;
   }
 
   .mes-pill {
@@ -192,12 +286,30 @@
     @apply inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold tracking-wide bg-amber-50 text-amber-900 ring-1 ring-amber-200;
   }
 
+  .mes-persona-switch {
+    @apply inline-flex items-stretch overflow-hidden rounded-md border border-[color:var(--color-line)] bg-white;
+  }
+
   .mes-persona-badge {
-    @apply inline-flex h-8 items-center rounded-md border border-[color:var(--color-line)] bg-white px-2.5 text-xs font-bold tracking-wide text-[color:var(--color-muted)] transition hover:border-[color:var(--color-vestel)] hover:text-[color:var(--color-vestel)];
+    @apply inline-flex h-8 items-center border-0 border-r border-[color:var(--color-line)] bg-transparent px-2.5 text-[11px] font-bold tracking-wide text-[color:var(--color-muted)] transition last:border-r-0 hover:bg-slate-50 hover:text-[color:var(--color-vestel)];
   }
 
   .mes-persona-badge-active {
-    @apply border-[color:var(--color-vestel)] bg-[color:var(--color-vestel)] text-white hover:bg-[color:var(--color-vestel-dark)] hover:text-white;
+    @apply bg-[color:var(--color-vestel)] text-white hover:bg-[color:var(--color-vestel-dark)] hover:text-white;
+  }
+
+  .mes-topbar .mes-pill-ok,
+  .mes-topbar .mes-pill-warn,
+  .mes-topbar .mes-pill-neutral,
+  .mes-topbar .mes-pill-nok {
+    @apply h-8 gap-1 px-2 py-0 text-[11px];
+  }
+
+  .mes-topbar .mes-pill-ok svg,
+  .mes-topbar .mes-pill-warn svg,
+  .mes-topbar .mes-pill-neutral svg,
+  .mes-topbar .mes-pill-nok svg {
+    @apply h-3 w-3;
   }
 
   .mes-hmi-grid {
