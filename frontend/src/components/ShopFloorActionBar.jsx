@@ -20,6 +20,15 @@ const FALLBACK_REASONS = [
   { code: 'NO_OPERATOR', name: 'Operatör yok / mola', isPlanned: false },
 ];
 
+const SCRAP_QTY_MAX = 999;
+const SCRAP_QTY_CHIPS = [1, 2, 5, 10, 50, 100];
+
+const clampScrapQty = (value) => {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.min(SCRAP_QTY_MAX, Math.floor(n));
+};
+
 /**
  * Industrial HMI-style touch action bar for the operator panel.
  */
@@ -65,6 +74,14 @@ const ShopFloorActionBar = ({
     return true;
   };
 
+  const runtimePaused = Boolean(
+    shift.active
+      && !shift.onBreak
+      && !shift.inSetup
+      && (shift.runtimeMode === 'Paused' || shift.runtimeMode === 'Down' || shift.hasBlockingAlarms),
+  );
+  const needsResume = Boolean(shift.onBreak || shift.inSetup || runtimePaused);
+
   const submitDowntime = async () => {
     const reason = reasons.find((item) => item.code === selectedReason);
     const ok = await onDowntime({
@@ -106,12 +123,12 @@ const ShopFloorActionBar = ({
               notify?.('Önce vardiyayı başlatın.', 'error');
               return;
             }
-            if (shift.onBreak || shift.inSetup) onResume();
+            if (needsResume) onResume();
             else setShowDowntime(true);
           }}
         >
           <Coffee size={28} />
-          <span>{shift.onBreak || shift.inSetup ? 'Üretime Dön' : 'Duruş / Mola Bildir'}</span>
+          <span>{needsResume ? (runtimePaused ? 'Simülasyonu sürdür' : 'Üretime Dön') : 'Duruş / Mola Bildir'}</span>
           <small>Stoppage</small>
         </button>
 
@@ -122,7 +139,7 @@ const ShopFloorActionBar = ({
         >
           <Flame size={28} />
           <span>Fire / Hata Girişi</span>
-          <small>Scrap · {shift.scrapCount || 0}</small>
+          <small>Operatör fire · {shift.scrapCount || 0}</small>
         </button>
 
         <button
@@ -206,15 +223,22 @@ const ShopFloorActionBar = ({
               <input
                 type="number"
                 min={1}
-                max={999}
+                max={SCRAP_QTY_MAX}
                 className="mes-input"
                 value={scrapQty}
-                onChange={(e) => setScrapQty(Number(e.target.value) || 1)}
+                onChange={(e) => setScrapQty(clampScrapQty(e.target.value))}
               />
             </label>
             <div className="flex flex-wrap gap-2">
-              {[1, 2, 5, 10].map((n) => (
-                <button key={n} type="button" className="mes-btn-secondary" onClick={() => setScrapQty(n)}>+{n}</button>
+              {SCRAP_QTY_CHIPS.map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  className="mes-btn-secondary"
+                  onClick={() => setScrapQty((prev) => clampScrapQty(prev + n))}
+                >
+                  +{n}
+                </button>
               ))}
             </div>
             <div className="confirm-actions">

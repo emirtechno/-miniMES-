@@ -47,18 +47,37 @@ const WorkOrderBoard = ({
             <th>İş Emri</th>
             <th>Ürün</th>
             <th>İstasyon</th>
-            <th>Miktar</th>
+            <th>Tamamlanan / Hedef</th>
+            <th>İlerleme</th>
             <th>Durum</th>
             <th>Aksiyon</th>
           </tr>
         </thead>
         <tbody>
-          {workOrders.map((order) => (
+          {workOrders.map((order) => {
+            const completed = Number(order.completedQuantity ?? 0);
+            const target = Math.max(1, Number(order.quantity) || 1);
+            const progress = Number(order.progressPercent ?? Math.min(100, (completed * 100) / target));
+            const lotCount = Array.isArray(order.lots) ? order.lots.length : 0;
+            return (
             <tr key={order.id}>
-              <td><b>{order.orderNo}</b></td>
+              <td>
+                <b>{order.orderNo}</b>
+                {lotCount > 0 ? (
+                  <div className="text-[11px] text-[color:var(--color-muted)]">{lotCount} lot bağlı</div>
+                ) : null}
+              </td>
               <td>{order.product}</td>
               <td>{getStationDisplayName(order.station)}</td>
-              <td>{order.quantity}</td>
+              <td>{completed} / {order.quantity}</td>
+              <td className="min-w-[120px]">
+                <div className="flex items-center gap-2">
+                  <div className="mes-progress flex-1">
+                    <span style={{ width: `${Math.min(100, progress)}%` }} />
+                  </div>
+                  <span className="w-10 text-right text-xs font-semibold">%{progress.toFixed(0)}</span>
+                </div>
+              </td>
               <td>
                 <span className={`badge ${order.status === 'Tamamlandı' ? 'badge-ok' : order.status === 'Devam Ediyor' ? 'badge-warning' : 'badge-neutral'}`}>
                   {order.status}
@@ -71,7 +90,8 @@ const WorkOrderBoard = ({
                 </button>
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>

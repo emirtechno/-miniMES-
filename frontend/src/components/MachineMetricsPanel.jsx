@@ -17,13 +17,23 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { fetchLatestOee, fetchMachineMetrics } from '../services/api';
+import { fetchMachineMetrics, fetchShiftCurrentOee } from '../services/api';
 import { useNonOverlappingPolling } from '../hooks/useNonOverlappingPolling';
 import { useMesHub } from '../hooks/useMesHub';
 import { DEFAULT_STATION, ACTIVE_STATION_DEFINITIONS, getStationDisplayName } from '../constants/stations';
-import { deriveLiveTelemetry } from '../utils/liveTelemetry';
 import CardHeader from './CardHeader';
-import TraceabilityPanel from './TraceabilityPanel';
+import { kpiFromShiftOee } from '../utils/telemetryAggregate';
+
+const TREND_RANGES = [
+  { id: '30s', label: '30s', ms: 30_000, limit: 40 },
+  { id: '1m', label: '1m', ms: 60_000, limit: 60 },
+  { id: '3m', label: '3m', ms: 180_000, limit: 80 },
+  { id: '5m', label: '5m', ms: 300_000, limit: 100 },
+  { id: '30m', label: '30m', ms: 1_800_000, limit: 160 },
+  { id: '1h', label: '1h', ms: 3_600_000, limit: 200 },
+  { id: '4h', label: '4h', ms: 14_400_000, limit: 200 },
+  { id: '1d', label: '1 gün', ms: 86_400_000, limit: 200 },
+];
 
 const resolveInitialStation = (param) => {
   if (!param) return DEFAULT_STATION;
@@ -32,32 +42,62 @@ const resolveInitialStation = (param) => {
   return match ? match.id : DEFAULT_STATION;
 };
 
+const formatTickTime = (ms, rangeMs) => {
+  const date = new Date(ms);
+  if (rangeMs <= 5 * 60_000) {
+    return date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+  if (rangeMs <= 4 * 60 * 60_000) {
+    return date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+  }
+  return date.toLocaleString('tr-TR', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+const TrendTooltip = ({ active, payload }) => {
+  if (!active || !payload?.length) return null;
+  const row = payload[0]?.payload;
+  if (!row) return null;
+  return (
+    <div
+      className="rounded-lg border border-[color:var(--color-line)] bg-white px-3 py-2 text-xs shadow-md"
+      style={{ minWidth: 160 }}
+    >
+      <div className="mb-1 font-semibold text-[color:var(--color-ink)]">{row.timeLabel}</div>
+      {payload.map((entry) => (
+        <div key={entry.dataKey} className="flex justify-between gap-4" style={{ color: entry.color }}>
+          <span>{entry.name}</span>
+          <span className="font-semibold">{entry.value}</span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 const MachineMetricsPanel = ({
   isFactorySimulationActive = false,
   shiftStationId,
   shiftActive = false,
-  stationKpi,
-  batches = [],
   metricsFeed = [],
 }) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const stationFromUrl = searchParams.get('stationId');
   const [selectedStation, setSelectedStation] = useState(() => resolveInitialStation(stationFromUrl));
+  const [rangeId, setRangeId] = useState('5m');
   const [metrics, setMetrics] = useState([]);
   const [oeeData, setOeeData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [pulse, setPulse] = useState(0);
+
+  const selectedRange = TREND_RANGES.find((range) => range.id === rangeId) || TREND_RANGES[3];
 
   useEffect(() => {
     const next = resolveInitialStation(stationFromUrl);
     setSelectedStation((current) => (current === next ? current : next));
   }, [stationFromUrl]);
-
-  useEffect(() => {
-    if (!isFactorySimulationActive) return undefined;
-    const id = window.setInterval(() => setPulse(Date.now()), 900);
-    return () => window.clearInterval(id);
-  }, [isFactorySimulationActive]);
 
   const selectStation = useCallback((stationId) => {
     setSelectedStation(stationId);
@@ -70,39 +110,44 @@ const MachineMetricsPanel = ({
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
 
-  const handleOeeUpdated = useCallback((payload) => {
-    const latest = (payload || []).find((item) => item.stationId === selectedStation);
-    if (latest) setOeeData(latest);
+  const loadShiftOee = useCallback(async (signal) => {
+    if (!selectedStation || selectedStation === 'Tümü') {
+      setOeeData(null);
+      return;
+    }
+    try {
+      setOeeData(await fetchShiftCurrentOee(selectedStation, { signal }));
+    } catch (error) {
+      if (error.response?.status === 404) setOeeData(null);
+      else throw error;
+    }
   }, [selectedStation]);
 
-  useMesHub({ onOeeUpdated: handleOeeUpdated });
+  useMesHub({
+    onOeeUpdated: () => {
+      loadShiftOee(undefined).catch(() => {});
+    },
+  });
 
   useNonOverlappingPolling(async (signal) => {
     try {
+      const from = new Date(Date.now() - selectedRange.ms).toISOString();
       const page = await fetchMachineMetrics({
         signal,
         stationId: selectedStation === 'Tümü' ? undefined : selectedStation,
-        limit: 80,
+        from,
+        limit: selectedRange.limit,
       });
       setMetrics(page.items);
 
-      if (selectedStation && selectedStation !== 'Tümü') {
-        try {
-          setOeeData(await fetchLatestOee(selectedStation, { signal }));
-        } catch (error) {
-          if (error.response?.status === 404) setOeeData(null);
-          else throw error;
-        }
-      } else {
-        setOeeData(null);
-      }
+      await loadShiftOee(signal);
     } finally {
       setLoading(false);
     }
   }, {
     enabled: true,
     intervalMs: isFactorySimulationActive ? 8000 : 20000,
-    resetKey: `${selectedStation}:${isFactorySimulationActive}`,
+    resetKey: `${selectedStation}:${isFactorySimulationActive}:${rangeId}`,
   });
 
   const stationsList = useMemo(
@@ -110,44 +155,54 @@ const MachineMetricsPanel = ({
     [],
   );
 
-  const chartData = useMemo(() => [...metrics]
-    .slice()
-    .sort((a, b) => new Date(a.recordedAt || 0) - new Date(b.recordedAt || 0))
-    .map((item) => ({
-      time: item.recordedAt ? new Date(item.recordedAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '',
-      Gerceklesen: item.actualProductionCount,
-      Saglam: item.goodProductionCount,
-      Durus: item.downtimeSeconds,
-    })), [metrics]);
+  // Prefer shared feed when factory telemetry is pushing, then apply range + station filter.
+  useEffect(() => {
+    if (!metricsFeed?.length) return;
+    const fromMs = Date.now() - selectedRange.ms;
+    let rows = metricsFeed.filter((item) => {
+      const t = item.recordedAt ? new Date(item.recordedAt).getTime() : 0;
+      return t >= fromMs;
+    });
+    if (selectedStation !== 'Tümü') {
+      rows = rows.filter((item) => item.stationId === selectedStation);
+    }
+    setMetrics(rows.slice(0, selectedRange.limit));
+  }, [metricsFeed, selectedStation, selectedRange]);
+
+  const chartData = useMemo(() => {
+    const fromMs = Date.now() - selectedRange.ms;
+    return [...metrics]
+      .filter((item) => {
+        const t = item.recordedAt ? new Date(item.recordedAt).getTime() : 0;
+        return t >= fromMs;
+      })
+      .sort((a, b) => new Date(a.recordedAt || 0) - new Date(b.recordedAt || 0))
+      .map((item, index) => {
+        const ms = item.recordedAt ? new Date(item.recordedAt).getTime() : index;
+        return {
+          t: ms,
+          timeLabel: formatTickTime(ms, selectedRange.ms),
+          Gerceklesen: item.actualProductionCount ?? 0,
+          Saglam: item.goodProductionCount ?? 0,
+          Durus: item.downtimeSeconds ?? 0,
+          id: item.id ?? `${ms}-${index}`,
+        };
+      });
+  }, [metrics, selectedRange]);
 
   const stationLabel = selectedStation === 'Tümü' ? 'Tüm İstasyonlar' : getStationDisplayName(selectedStation);
 
-  const okNok = useMemo(() => {
-    const kpi = typeof stationKpi === 'function'
-      ? stationKpi(selectedStation === 'Tümü' ? null : selectedStation)
-      : { good: 0, nok: 0, actual: 0 };
-    return { ok: kpi.good || 0, nok: kpi.nok || 0, total: kpi.actual || 0 };
-  }, [stationKpi, selectedStation]);
-
-  const filteredBatches = useMemo(() => {
-    if (selectedStation === 'Tümü') return batches;
-    return batches.filter((batch) => batch.station === selectedStation);
-  }, [batches, selectedStation]);
-
-  // Prefer shared feed when Live Stream is pushing; otherwise poll locally.
-  useEffect(() => {
-    if (!metricsFeed?.length) return;
-    if (selectedStation === 'Tümü') {
-      setMetrics(metricsFeed.slice(0, 80));
-      return;
-    }
-    setMetrics(metricsFeed.filter((item) => item.stationId === selectedStation).slice(0, 80));
-  }, [metricsFeed, selectedStation]);
+  const okNok = useMemo(
+    () => kpiFromShiftOee(oeeData, selectedStation === 'Tümü' ? null : selectedStation),
+    [oeeData, selectedStation],
+  );
 
   const latestMetric = metrics[0];
-  const telemetry = useMemo(
-    () => deriveLiveTelemetry(latestMetric, pulse, isFactorySimulationActive),
-    [latestMetric, pulse, isFactorySimulationActive],
+  const temperature = latestMetric?.temperature;
+  const rpm = latestMetric?.rpm;
+  const vibration = latestMetric?.vibration;
+  const formatGauge = (value, digits = 0) => (
+    value == null || Number.isNaN(Number(value)) ? '—' : Number(value).toFixed(digits)
   );
 
   const renderStationSelect = () => (
@@ -171,14 +226,14 @@ const MachineMetricsPanel = ({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
             <p className="m-0 text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--color-muted)]">
-              Makine telemetri & Live Stream
+              Makine telemetri &amp; fabrika simülasyonu
             </p>
             <h2 className="font-display m-0 mt-1 text-2xl font-semibold text-[color:var(--color-ink)]">
               {stationLabel}
             </h2>
             <p className="mes-helper mt-2 mb-0 max-w-2xl">
-              Tek kaynak: MachineMetrics. Live Stream her tick’te Gerçekleşen/Sağlam/Duruş batch yazar;
-              KPI’lar Σ Actual / Σ Good / Σ (Actual−Good) ile hesaplanır. Barkod 1-by-1 sayım yoktur.
+              Üst KPI / OEE = <strong>katalog vardiya</strong> (<code>/Oee/shift-current</code>, Andon ile aynı; oturum başlatınca sıfırlanmaz).
+              Temp/RPM/Titreşim = son tick; tablo = ham MachineMetrics. Operatör oturum KPI’sı Operatör Panelindedir.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -201,25 +256,21 @@ const MachineMetricsPanel = ({
           <span className="inline-flex items-center gap-2 font-semibold">
             <Activity size={16} className={isFactorySimulationActive ? 'animate-pulse' : ''} />
             {isFactorySimulationActive
-              ? `Live Stream açık${shiftStationId ? ` · istasyon ${getStationDisplayName(shiftStationId)}` : ''} — telemetri ve lot ilerlemesi güncelleniyor.`
+              ? `Fabrika telemetrisi aktif${shiftStationId ? ` · istasyon ${getStationDisplayName(shiftStationId)}` : ''} — MachineMetrics SSOT.`
               : shiftActive
-                ? 'Vardiya aktif ancak duruş/setup’ta — Live Stream duraklatıldı. Üretime dönünce akış devam eder.'
-                : 'Live Stream kapalı — Operatör Panelinden Vardiya Başlat ile telemetri motorunu açın.'}
+                ? 'Vardiya aktif ancak duruş/setup’ta — operatör oturumu duraklatıldı.'
+                : 'Vardiya kapalı — Operatör Panelinden Vardiya Başlat ile oturum açın. Backend telemetrisi bağımsız çalışabilir.'}
           </span>
-          <p className="mt-2 mb-0 text-xs opacity-80">
-            * Sıcaklık / RPM / Titreşim alanları PLC kolonundan gelmez; MachineMetrics (duruş, Actual/Good, çevrim)
-            değerlerinden türetilmiş canlı göstergelerdir. Anomali eşikleri Andon alarmı üretebilir.
-          </p>
         </div>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
           {[
-            { label: 'Sıcaklık*', value: `${telemetry.temperature}°C`, icon: Thermometer, tone: telemetry.temperature > 70 ? 'text-red-700' : 'text-amber-700' },
-            { label: 'RPM*', value: telemetry.rpm, icon: Gauge, tone: 'text-sky-700' },
-            { label: 'Titreşim*', value: `${telemetry.vibration} mm/s`, icon: Waves, tone: telemetry.vibration > 2.5 ? 'text-red-700' : 'text-slate-800' },
-            { label: 'Σ OK', value: okNok.ok, icon: Activity, tone: 'text-emerald-700' },
-            { label: 'Σ NOK', value: okNok.nok, icon: Activity, tone: 'text-red-700' },
-            { label: 'Σ Actual', value: okNok.total, icon: Cpu, tone: 'text-[color:var(--color-ink)]' },
+            { label: 'Anlık Sıcaklık', value: `${formatGauge(temperature, 1)}°C`, icon: Thermometer, tone: Number(temperature) >= 85 ? 'text-red-700' : 'text-amber-700' },
+            { label: 'Anlık RPM', value: formatGauge(rpm, 0), icon: Gauge, tone: Number(rpm) > 0 && Number(rpm) < 500 ? 'text-red-700' : 'text-sky-700' },
+            { label: 'Anlık Titreşim', value: `${formatGauge(vibration, 2)} mm/s`, icon: Waves, tone: Number(vibration) >= 2.8 ? 'text-red-700' : 'text-slate-800' },
+            { label: 'Katalog Σ OK', value: selectedStation === 'Tümü' ? '—' : okNok.good, icon: Activity, tone: 'text-emerald-700' },
+            { label: 'Katalog Σ NOK', value: selectedStation === 'Tümü' ? '—' : okNok.nok, icon: Activity, tone: 'text-red-700' },
+            { label: 'Katalog Σ Actual', value: selectedStation === 'Tümü' ? '—' : okNok.actual, icon: Cpu, tone: 'text-[color:var(--color-ink)]' },
           ].map((card) => {
             const Icon = card.icon;
             return (
@@ -238,11 +289,11 @@ const MachineMetricsPanel = ({
       {oeeData && selectedStation !== 'Tümü' && (
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
           {[
-            { label: 'Genel OEE', value: `%${oeeData.oee}`, tone: 'text-sky-700' },
+            { label: 'Katalog OEE', value: `%${oeeData.oee}`, tone: 'text-sky-700' },
             { label: 'Kullanılabilirlik', value: `%${oeeData.availability}`, tone: 'text-emerald-700' },
             { label: 'Performans', value: `%${oeeData.performance}`, tone: 'text-amber-700' },
             { label: 'Kalite', value: `%${oeeData.quality}`, tone: 'text-rose-700' },
-            { label: 'Vardiya', value: oeeData.shiftName || oeeData.shiftCode || '—', tone: 'text-slate-800' },
+            { label: 'Katalog pencere', value: oeeData.shiftName || oeeData.shiftCode || '—', tone: 'text-slate-800' },
           ].map((card) => (
             <div key={card.label} className="mes-surface p-4">
               <div className="text-xs font-semibold uppercase tracking-wide text-[color:var(--color-muted)]">{card.label}</div>
@@ -252,19 +303,29 @@ const MachineMetricsPanel = ({
         </section>
       )}
 
-      <TraceabilityPanel batches={filteredBatches} />
-
       <section className="mes-surface p-5">
         <CardHeader
           icon={Cpu}
           title="Zaman Bazlı Üretim ve Duruş Trendi"
-          subtitle={`Aktif seçim: ${stationLabel} — grafik yalnızca bu istasyonun telemetrisini gösterir`}
+          subtitle={`Tick serisi: ${stationLabel} — pencere ${selectedRange.label}`}
           actions={renderStationSelect()}
         />
+        <div className="mb-3 flex flex-wrap gap-2" role="group" aria-label="Trend zaman aralığı">
+          {TREND_RANGES.map((range) => (
+            <button
+              key={range.id}
+              type="button"
+              className={rangeId === range.id ? 'mes-btn-primary' : 'mes-btn-secondary'}
+              onClick={() => setRangeId(range.id)}
+            >
+              {range.label}
+            </button>
+          ))}
+        </div>
         <div className="h-[320px] w-full">
           {chartData.length === 0 ? (
             <p className="pt-24 text-center text-[color:var(--color-muted)]">
-              {loading ? 'Trend verisi yükleniyor...' : 'Seçili istasyon için trend verisi yok.'}
+              {loading ? 'Trend verisi yükleniyor...' : 'Seçili istasyon / zaman aralığı için trend verisi yok.'}
             </p>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
@@ -284,15 +345,56 @@ const MachineMetricsPanel = ({
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                <XAxis dataKey="time" tick={{ fill: '#5b6b7c', fontSize: 11 }} axisLine={false} tickLine={false} minTickGap={28} />
+                <XAxis
+                  dataKey="t"
+                  type="number"
+                  domain={['dataMin', 'dataMax']}
+                  tickFormatter={(value) => formatTickTime(value, selectedRange.ms)}
+                  tick={{ fill: '#5b6b7c', fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                  minTickGap={28}
+                />
                 <YAxis tick={{ fill: '#5b6b7c', fontSize: 11 }} axisLine={false} tickLine={false} width={42} />
                 <Tooltip
-                  contentStyle={{ borderRadius: 10, border: '1px solid #d7dee8', boxShadow: '0 8px 24px rgba(15,23,42,0.08)' }}
+                  content={<TrendTooltip />}
+                  cursor={{ stroke: '#94a3b8', strokeWidth: 1, strokeDasharray: '4 4' }}
+                  isAnimationActive={false}
                 />
                 <Legend />
-                <Area type="monotone" dataKey="Gerceklesen" name="Gerçekleşen" stroke="#1769aa" fill="url(#gradActual)" strokeWidth={2.2} />
-                <Area type="monotone" dataKey="Saglam" name="Sağlam (OK)" stroke="#0f9f6e" fill="url(#gradGood)" strokeWidth={2.2} />
-                <Area type="monotone" dataKey="Durus" name="Duruş (sn)" stroke="#d92d20" fill="url(#gradDown)" strokeWidth={2} />
+                <Area
+                  type="linear"
+                  dataKey="Gerceklesen"
+                  name="Gerçekleşen"
+                  stroke="#1769aa"
+                  fill="url(#gradActual)"
+                  strokeWidth={2.2}
+                  isAnimationActive={false}
+                  dot={false}
+                  activeDot={{ r: 4 }}
+                />
+                <Area
+                  type="linear"
+                  dataKey="Saglam"
+                  name="Sağlam (OK)"
+                  stroke="#0f9f6e"
+                  fill="url(#gradGood)"
+                  strokeWidth={2.2}
+                  isAnimationActive={false}
+                  dot={false}
+                  activeDot={{ r: 4 }}
+                />
+                <Area
+                  type="linear"
+                  dataKey="Durus"
+                  name="Duruş (sn)"
+                  stroke="#d92d20"
+                  fill="url(#gradDown)"
+                  strokeWidth={2}
+                  isAnimationActive={false}
+                  dot={false}
+                  activeDot={{ r: 4 }}
+                />
               </AreaChart>
             </ResponsiveContainer>
           )}
@@ -302,8 +404,8 @@ const MachineMetricsPanel = ({
       <section className="mes-surface p-5">
         <CardHeader
           icon={Cpu}
-          title="Makine Telemetri Kayıtları"
-          subtitle="SCADA / PLC / Live Stream satırları (değiştirilemez)"
+          title="Tick kayıtları"
+          subtitle="Ham MachineMetrics satırları (SCADA / PLC / sim — değiştirilemez)"
           actions={renderStationSelect()}
         />
         <div className="overflow-x-auto">

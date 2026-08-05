@@ -1,19 +1,21 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Activity, ClipboardList, History, Package, Radio } from 'lucide-react';
 import OperatorShiftWidget from '../components/OperatorShiftWidget';
 import ShopFloorActionBar from '../components/ShopFloorActionBar';
 import TraceabilityPanel from '../components/TraceabilityPanel';
+import FactorySimulationToggle from '../components/FactorySimulationToggle';
 import CardHeader from '../components/CardHeader';
 import { useShiftSession } from '../context/ShiftSessionContext';
 import { ACTIVE_STATION_DEFINITIONS, DEFAULT_STATION, getStationDisplayName } from '../constants/stations';
 import { getShiftLabel } from '../constants/shifts';
-import { emptyStationKpi } from '../utils/telemetryAggregate';
+import { useNonOverlappingPolling } from '../hooks/useNonOverlappingPolling';
+import { useMesHub } from '../hooks/useMesHub';
+import { emptyStationKpi, kpiFromSessionSummary } from '../utils/telemetryAggregate';
 
 const OperatorDashboardPage = ({
   currentUser,
   notify,
-  stationKpi,
   recentTicks = [],
   workOrders = [],
   batches = [],
@@ -29,6 +31,7 @@ const OperatorDashboardPage = ({
     logScrap,
     loginSecondaryOperator,
     endShift,
+    refreshShift,
   } = useShiftSession();
 
   const [stationId, setLocalStationId] = useState(shift.stationId || DEFAULT_STATION);
@@ -44,7 +47,39 @@ const OperatorDashboardPage = ({
     setStationId(nextStationId);
   };
 
-  const kpi = stationKpi?.(stationId) || emptyStationKpi(stationId);
+  const refreshActiveSession = useCallback(async () => {
+    if (!shift.active) return;
+    await refreshShift();
+  }, [refreshShift, shift.active]);
+
+  useNonOverlappingPolling(refreshActiveSession, {
+    enabled: Boolean(shift.active),
+    intervalMs: liveStreaming ? 8000 : 20000,
+    resetKey: `${shift.id || 'none'}:${liveStreaming}`,
+  });
+
+  useMesHub({
+    onOeeUpdated: () => {
+      refreshActiveSession();
+    },
+    onTelemetryTick: () => {
+      refreshActiveSession();
+    },
+  });
+
+  // Operator KPIs are session-scoped (not catalog /Oee/shift-current).
+  const kpi = useMemo(() => {
+    if (shift.active) {
+      return kpiFromSessionSummary(shift.summary, shift.stationId || stationId);
+    }
+    if (shift.summary) {
+      return kpiFromSessionSummary(shift.summary, shift.summary.stationId || stationId);
+    }
+    return emptyStationKpi(stationId);
+  }, [shift.active, shift.stationId, shift.summary, stationId]);
+
+  const oeePercent = typeof kpi.oee === 'number' ? kpi.oee : null;
+
   const stationTicks = useMemo(
     () => recentTicks.filter((tick) => tick.stationId === stationId).slice(0, 8),
     [recentTicks, stationId],
@@ -65,22 +100,25 @@ const OperatorDashboardPage = ({
         <CardHeader
           icon={Package}
           title="Operatör Paneli"
-          subtitle="Vardiya → Live Stream → MachineMetrics batch tick’leri. Sayaçlar Σ Actual / Σ Good."
+          subtitle="Σ Good/NOK/Verim = bu operatör oturumu (ShiftSession). Andon / İstasyonlar katalog vardiyada birikir; burada Vardiya Başlat ile sıfırdan başlar."
           actions={(
-            <select
-              className="mes-input h-10 w-auto min-w-[200px]"
-              value={stationId}
-              disabled={shift.active}
-              onChange={(e) => handleStationChange(e.target.value)}
-            >
-              {ACTIVE_STATION_DEFINITIONS.map((station) => (
-                <option key={station.id} value={station.id}>{station.displayName}</option>
-              ))}
-            </select>
+            <div className="flex max-w-[240px] flex-col items-end gap-1">
+              <select
+                className="mes-input h-10 w-auto min-w-[200px]"
+                value={stationId}
+                disabled={shift.active}
+                title={shift.active ? 'Vardiya bitince istasyon değiştirilebilir' : undefined}
+                onChange={(e) => handleStationChange(e.target.value)}
+              >
+                {ACTIVE_STATION_DEFINITIONS.map((station) => (
+                  <option key={station.id} value={station.id}>{station.displayName}</option>
+                ))}
+              </select>
+            </div>
           )}
         />
         <div
-          className={`mb-4 rounded-xl border px-4 py-3 text-sm ${
+          className={`mb-3 rounded-xl border px-4 py-3 text-sm ${
             liveStreaming
               ? 'border-emerald-200 bg-emerald-50/80 text-emerald-950'
               : 'border-[color:var(--color-line)] bg-slate-50 text-[color:var(--color-muted)]'
@@ -89,8 +127,8 @@ const OperatorDashboardPage = ({
           <span className="inline-flex items-center gap-2 font-semibold">
             <Radio size={16} className={liveStreaming ? 'animate-pulse' : ''} />
             {liveStreaming
-              ? 'Live Stream açık — her tick ~100–140 adet PLC batch yazar; lot/OEE senkron.'
-              : 'Live Stream kapalı — “Vardiya Başlat” ile MachineMetrics motorunu açın.'}
+              ? 'Vardiya aktif — lot/OEE senkron. Telemetri motoru aşağıda ayrı kontrol edilir.'
+              : 'Vardiya kapalı — “Vardiya Başlat” ile oturum açın (KPI sıfırdan başlar).'}
           </span>
           {liveStreaming && (
             <Link to={`/makine-metrikleri?stationId=${encodeURIComponent(stationId)}`} className="ml-3 underline">
@@ -98,30 +136,42 @@ const OperatorDashboardPage = ({
             </Link>
           )}
         </div>
+        <FactorySimulationToggle className="mb-4" />
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-xl border border-[color:var(--color-line)] bg-slate-50 p-4">
             <div className="text-xs font-semibold uppercase tracking-wide text-[color:var(--color-muted)]">İstasyon</div>
             <div className="font-display mt-1 text-2xl font-semibold">{getStationDisplayName(stationId)}</div>
           </div>
           <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4">
-            <div className="text-xs font-semibold uppercase tracking-wide text-emerald-800">Σ Sağlam (OK)</div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-emerald-800">Oturum Σ Sağlam</div>
             <div className="font-display mt-1 text-3xl font-semibold text-emerald-950">{kpi.good}</div>
           </div>
           <div className="rounded-xl border border-red-200 bg-red-50/70 p-4">
-            <div className="text-xs font-semibold uppercase tracking-wide text-red-800">Σ Fire (NOK)</div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-red-800">Oturum Σ Fire</div>
             <div className="font-display mt-1 text-3xl font-semibold text-red-950">{kpi.nok}</div>
           </div>
           <div className={`rounded-xl border p-4 ${shift.active ? 'border-sky-200 bg-sky-50/80' : 'border-[color:var(--color-line)] bg-slate-50'}`}>
-            <div className="text-xs font-semibold uppercase tracking-wide text-[color:var(--color-muted)]">Vardiya · Verim</div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-[color:var(--color-muted)]">Oturum · Verim</div>
             <div className="mt-1 flex flex-wrap items-center gap-2">
               <span className={shift.active ? 'mes-pill-ok' : 'mes-pill-neutral'}>
                 {shift.active ? 'Aktif' : 'Pasif'}
               </span>
-              <span className="text-sm font-semibold">%{kpi.yield} · {elapsedLabel}</span>
+              <span className="text-sm font-semibold">
+                {oeePercent == null ? '—' : `%${Number(oeePercent).toFixed(1)}`}
+                {' · '}
+                {elapsedLabel}
+              </span>
             </div>
             {shift.active && (
               <div className="mt-1 text-xs text-slate-600">
                 {shift.operatorName} · {getShiftLabel(shift.shiftCode)} · Σ {kpi.actual}
+                {' · oturum '}
+                #{shift.id}
+              </div>
+            )}
+            {!shift.active && shift.summary && (
+              <div className="mt-1 text-xs text-slate-600">
+                Son oturum özeti · {shift.summary.durationMinutes} dk
               </div>
             )}
           </div>
@@ -132,6 +182,7 @@ const OperatorDashboardPage = ({
         user={currentUser}
         stationId={stationId}
         onStationChange={handleStationChange}
+        latestTick={stationTicks[0]}
       />
 
       <ShopFloorActionBar
@@ -172,7 +223,10 @@ const OperatorDashboardPage = ({
         )}
       </section>
 
-      <TraceabilityPanel batches={stationBatches} />
+      <TraceabilityPanel
+        batches={stationBatches}
+        subtitle={`${getStationDisplayName(stationId)} lotları (shop-floor). Tam izlenebilirlik: Kalite.`}
+      />
 
       <section className="mes-surface p-5">
         <CardHeader
@@ -204,7 +258,7 @@ const OperatorDashboardPage = ({
           })}
           {stationTicks.length === 0 && (
             <li className="text-sm text-[color:var(--color-muted)]">
-              Henüz telemetri yok. Vardiya başlatarak Live Stream’i açın.
+              Henüz telemetri yok. Vardiya başlatın; backend Fabrika Telemetrisi tick yazınca burada görünür.
             </li>
           )}
         </ul>

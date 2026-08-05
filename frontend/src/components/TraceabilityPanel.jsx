@@ -10,13 +10,17 @@ const statusClass = (status) => {
 
 /**
  * Read-only lot/batch traceability — produced qty & status come from DB telemetry.
+ * Primary home: Kalite. Operator may show a station-filtered compact view.
  */
-const TraceabilityPanel = ({ batches = [] }) => (
+const TraceabilityPanel = ({
+  batches = [],
+  subtitle = 'Üretilen miktar telemetri Good delta’larından; iş emrine bağlı lotlar otomatik ilerler',
+}) => (
   <section className="mes-surface p-5">
     <CardHeader
       icon={PackageSearch}
       title="Parti / Lot İzlenebilirliği"
-      subtitle="Üretilen miktar aktif istasyonun Live Stream OK sayaçlarından otomatik hesaplanır"
+      subtitle={subtitle}
     />
 
     <div className="overflow-x-auto">
@@ -25,10 +29,11 @@ const TraceabilityPanel = ({ batches = [] }) => (
           Henüz parti kaydı yok.
         </p>
       ) : (
-        <table className="w-full min-w-[760px] border-separate border-spacing-0 text-left text-sm">
+        <table className="w-full min-w-[820px] border-separate border-spacing-0 text-left text-sm">
           <thead>
             <tr className="text-xs uppercase tracking-wide text-[color:var(--color-muted)]">
               <th className="border-b border-[color:var(--color-line)] px-2 py-2">Lot No</th>
+              <th className="border-b border-[color:var(--color-line)] px-2 py-2">İş Emri</th>
               <th className="border-b border-[color:var(--color-line)] px-2 py-2">Ürün</th>
               <th className="border-b border-[color:var(--color-line)] px-2 py-2">İstasyon</th>
               <th className="border-b border-[color:var(--color-line)] px-2 py-2">Hedef</th>
@@ -46,6 +51,9 @@ const TraceabilityPanel = ({ batches = [] }) => (
               return (
                 <tr key={batch.id}>
                   <td className="border-b border-[color:var(--color-line)] px-2 py-3"><b>{batch.lotNo}</b></td>
+                  <td className="border-b border-[color:var(--color-line)] px-2 py-3 text-xs">
+                    {batch.workOrderNo || (batch.workOrderId ? `#${batch.workOrderId}` : '—')}
+                  </td>
                   <td className="border-b border-[color:var(--color-line)] px-2 py-3">{batch.product}</td>
                   <td className="border-b border-[color:var(--color-line)] px-2 py-3">{getStationDisplayName(batch.station)}</td>
                   <td className="border-b border-[color:var(--color-line)] px-2 py-3">{target}</td>

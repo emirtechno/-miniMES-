@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   BarChart3,
@@ -28,12 +28,34 @@ import {
   getStationDisplayName,
   getStationMeta,
 } from '../constants/stations';
-import { fetchLatestOee, fetchMachineMetrics } from '../services/api';
+import { fetchMachineMetrics, fetchShiftCurrentOeeAll } from '../services/api';
 import { useNonOverlappingPolling } from '../hooks/useNonOverlappingPolling';
-import { deriveLiveTelemetry } from '../utils/liveTelemetry';
+import { useMesHub } from '../hooks/useMesHub';
+import { kpiFromShiftOee, mapShiftOeeByStation } from '../utils/telemetryAggregate';
+
+const DETAIL_FLASH_MS = 1400;
+
+/** Scroll detail panel inside `.mes-content` only (never scrollIntoView / window). */
+const scrollPanelIntoMesContent = (panel) => {
+  if (!panel) return;
+  const scroller = panel.closest('.mes-content')
+    || document.querySelector('.mes-content');
+  if (!scroller) return;
+
+  if (window.scrollY !== 0) window.scrollTo(0, 0);
+  document.documentElement.scrollTop = 0;
+  document.body.scrollTop = 0;
+
+  const panelRect = panel.getBoundingClientRect();
+  const scrollerRect = scroller.getBoundingClientRect();
+  const nextTop = scroller.scrollTop + (panelRect.top - scrollerRect.top) - 8;
+  const maxTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+  const clamped = Math.min(Math.max(0, nextTop), maxTop);
+  scroller.scrollTo({ top: clamped, behavior: 'auto' });
+};
 
 const statusFromMetrics = ({ total, nok, ok, streaming }) => {
-  if (streaming && total === 0) return { key: 'run', label: 'Live Stream', pill: 'mes-pill-run', Icon: PlayCircle };
+  if (streaming && total === 0) return { key: 'run', label: 'Telemetri', pill: 'mes-pill-run', Icon: PlayCircle };
   if (total === 0) return { key: 'idle', label: 'Beklemede', pill: 'mes-pill-neutral', Icon: PauseCircle };
   if (nok > ok) return { key: 'stop', label: 'Durdu / Kalite Riski', pill: 'mes-pill-stop', Icon: PauseCircle };
   if (nok > 0 && nok / Math.max(total, 1) >= 0.15) {
@@ -43,15 +65,12 @@ const statusFromMetrics = ({ total, nok, ok, streaming }) => {
 };
 
 const StationsPage = ({
-  stationChartData,
   stationDetailOptions,
   selectedStation,
   onStationChange,
-  stationMetrics,
   recentTicks = [],
   stations,
   onSelectStation,
-  byStation = {},
   liveStreaming = false,
   activeShiftStationId = null,
 }) => {
@@ -59,26 +78,29 @@ const StationsPage = ({
   const [lineFilter, setLineFilter] = useState('Tümü');
   const [oeeByStation, setOeeByStation] = useState({});
   const [metricByStation, setMetricByStation] = useState({});
-  const [pulse, setPulse] = useState(0);
+  const [detailFlash, setDetailFlash] = useState(false);
+  const detailFlashTimerRef = useRef(null);
+
+  useEffect(() => () => {
+    if (detailFlashTimerRef.current) window.clearTimeout(detailFlashTimerRef.current);
+  }, []);
 
   useEffect(() => {
-    if (!liveStreaming) return undefined;
-    const id = window.setInterval(() => setPulse(Date.now()), 1200);
-    return () => window.clearInterval(id);
-  }, [liveStreaming]);
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }, []);
+
+  const applyShiftOee = useCallback((rows) => {
+    setOeeByStation(mapShiftOeeByStation(rows));
+  }, []);
 
   useNonOverlappingPolling(async (signal) => {
-    const oeeEntries = await Promise.all(
-      ACTIVE_STATION_DEFINITIONS.map(async (station) => {
-        try {
-          const metric = await fetchLatestOee(station.id, { signal });
-          return [station.id, metric];
-        } catch {
-          return [station.id, null];
-        }
-      }),
-    );
-    setOeeByStation(Object.fromEntries(oeeEntries));
+    try {
+      applyShiftOee(await fetchShiftCurrentOeeAll({ signal }));
+    } catch {
+      // keep previous shift OEE map
+    }
 
     const page = await fetchMachineMetrics({ signal, limit: 40 });
     const latest = {};
@@ -92,9 +114,27 @@ const StationsPage = ({
     resetKey: String(liveStreaming),
   });
 
+  useMesHub({
+    onOeeUpdated: () => {
+      fetchShiftCurrentOeeAll()
+        .then(applyShiftOee)
+        .catch(() => {});
+    },
+  });
+
   const openStationMetrics = (stationId) => {
     onSelectStation?.(stationId);
     navigate(`/makine-metrikleri?stationId=${encodeURIComponent(stationId)}`);
+  };
+
+  const selectStationSummary = (stationId) => {
+    onSelectStation?.(stationId);
+    window.requestAnimationFrame(() => {
+      scrollPanelIntoMesContent(document.getElementById('station-detail-panel'));
+    });
+    setDetailFlash(true);
+    if (detailFlashTimerRef.current) window.clearTimeout(detailFlashTimerRef.current);
+    detailFlashTimerRef.current = window.setTimeout(() => setDetailFlash(false), DETAIL_FLASH_MS);
   };
 
   const catalogStations = useMemo(() => {
@@ -114,10 +154,28 @@ const StationsPage = ({
     (station) => lineFilter === 'Tümü' || station.line === lineFilter,
   );
 
-  const chartData = (stationChartData || []).map((row) => ({
-    ...row,
-    name: getStationDisplayName(row.name),
-  }));
+  const chartData = useMemo(
+    () => ACTIVE_STATION_DEFINITIONS.map((station) => {
+      const kpi = kpiFromShiftOee(oeeByStation[station.id], station.id);
+      return {
+        name: station.displayName,
+        OK: kpi.good,
+        NOK: kpi.nok,
+      };
+    }).filter((row) => row.OK > 0 || row.NOK > 0),
+    [oeeByStation],
+  );
+
+  // Detail panel KPIs = same catalog shift-current source as cards / Andon (not rolling summary).
+  const detailShiftMetrics = useMemo(() => {
+    const kpi = kpiFromShiftOee(oeeByStation[selectedStation], selectedStation);
+    return {
+      total: kpi.actual,
+      ok: kpi.good,
+      nok: kpi.nok,
+      yield: kpi.yield,
+    };
+  }, [oeeByStation, selectedStation]);
 
   return (
     <div className="flex flex-col gap-5">
@@ -129,10 +187,10 @@ const StationsPage = ({
               Fabrika İstasyonları
             </h2>
             <p className="mes-helper mt-1 mb-0 max-w-3xl">
-              Kartlar Live Stream telemetrisini yansıtır: OK/NOK ve OEE MachineMetrics özetinden;
-              sıcaklık / RPM / titreşim ise duruş–Actual/Good–çevrimden türetilmiş göstergelerdir (PLC kolonu değil).
-              “Detayı Aç” Makine Metrikleri’ne istasyon filtresiyle gider.
-              <InfoTip text="Vardiya Başlat ile Live Stream açılır; duruş/setup sırasında akış duraklar. Sıcaklık/RPM/Titreşim deriveLiveTelemetry ile üretilir." className="ml-1" />
+              Kartlar <strong>katalog vardiya</strong> penceresini yansıtır (Andon ile aynı: <code>/Oee/shift-current</code>).
+              Operatör “Vardiya Başlat” ile sıfırlanmaz; oturum KPI’ları Operatör Panelindedir.
+              Sıcaklık / RPM / titreşim son tick’ten (Anlık).
+              <InfoTip text="Katalog vardiya = saat dilimi A/B/C toplamı. Oturum KPI = tek operatör ShiftSession." className="ml-1" />
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -151,7 +209,7 @@ const StationsPage = ({
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {visibleStations.map((station) => {
-            const kpi = byStation[station.id] || { actual: 0, good: 0, nok: 0, yield: 0 };
+            const kpi = kpiFromShiftOee(oeeByStation[station.id], station.id);
             const total = kpi.actual || 0;
             const ok = kpi.good || 0;
             const nok = kpi.nok || 0;
@@ -160,10 +218,12 @@ const StationsPage = ({
             const StatusIcon = status.Icon;
             const isSelected = selectedStation === station.id;
             const oee = oeeByStation[station.id]?.oee;
-            const gauges = deriveLiveTelemetry(
-              metricByStation[station.id],
-              pulse,
-              streamingHere || liveStreaming,
+            const latest = metricByStation[station.id];
+            const temperature = latest?.temperature;
+            const rpm = latest?.rpm;
+            const vibration = latest?.vibration;
+            const formatGauge = (value, digits = 0) => (
+              value == null || Number.isNaN(Number(value)) ? '—' : Number(value).toFixed(digits)
             );
 
             return (
@@ -195,37 +255,37 @@ const StationsPage = ({
                 <dl className="mt-4 grid grid-cols-3 gap-2 text-center">
                   <div className="rounded-lg bg-amber-50/80 px-2 py-2">
                     <dt className="inline-flex items-center justify-center gap-0.5 text-[10px] uppercase tracking-wide text-amber-900">
-                      <Thermometer size={10} /> °C
+                      <Thermometer size={10} /> Anlık °C
                     </dt>
-                    <dd className="m-0 font-display text-lg font-semibold text-amber-950">{gauges.temperature}</dd>
+                    <dd className="m-0 font-display text-lg font-semibold text-amber-950">{formatGauge(temperature, 1)}</dd>
                   </div>
                   <div className="rounded-lg bg-sky-50/80 px-2 py-2">
                     <dt className="inline-flex items-center justify-center gap-0.5 text-[10px] uppercase tracking-wide text-sky-900">
-                      <Gauge size={10} /> RPM
+                      <Gauge size={10} /> Anlık RPM
                     </dt>
-                    <dd className="m-0 font-display text-lg font-semibold text-sky-950">{gauges.rpm}</dd>
+                    <dd className="m-0 font-display text-lg font-semibold text-sky-950">{formatGauge(rpm, 0)}</dd>
                   </div>
                   <div className="rounded-lg bg-slate-50 px-2 py-2">
                     <dt className="inline-flex items-center justify-center gap-0.5 text-[10px] uppercase tracking-wide text-[color:var(--color-muted)]">
-                      <Waves size={10} /> mm/s
+                      <Waves size={10} /> Anlık mm/s
                     </dt>
-                    <dd className={`m-0 font-display text-lg font-semibold ${gauges.vibration > 2.5 ? 'text-red-700' : ''}`}>
-                      {gauges.vibration}
+                    <dd className={`m-0 font-display text-lg font-semibold ${Number(vibration) >= 2.8 ? 'text-red-700' : ''}`}>
+                      {formatGauge(vibration, 2)}
                     </dd>
                   </div>
                 </dl>
 
                 <dl className="mt-2 grid grid-cols-3 gap-2 text-center">
                   <div className="rounded-lg bg-emerald-50/70 px-2 py-2">
-                    <dt className="text-[10px] uppercase tracking-wide text-emerald-800">OK</dt>
+                    <dt className="text-[10px] uppercase tracking-wide text-emerald-800">Katalog OK</dt>
                     <dd className="m-0 font-display text-lg font-semibold text-emerald-800">{ok}</dd>
                   </div>
                   <div className="rounded-lg bg-red-50/70 px-2 py-2">
-                    <dt className="text-[10px] uppercase tracking-wide text-red-800">NOK</dt>
+                    <dt className="text-[10px] uppercase tracking-wide text-red-800">Katalog NOK</dt>
                     <dd className="m-0 font-display text-lg font-semibold text-red-800">{nok}</dd>
                   </div>
                   <div className="rounded-lg bg-sky-50/70 px-2 py-2">
-                    <dt className="text-[10px] uppercase tracking-wide text-sky-800">OEE</dt>
+                    <dt className="text-[10px] uppercase tracking-wide text-sky-800">Katalog OEE</dt>
                     <dd className="m-0 font-display text-lg font-semibold text-sky-950">
                       {oee == null ? '—' : `%${Number(oee).toFixed(0)}`}
                     </dd>
@@ -237,7 +297,7 @@ const StationsPage = ({
                     <ClipboardList size={13} />
                     Toplam {total}
                   </span>
-                  <span>{streamingHere ? 'Aktif vardiya istasyonu' : 'Telemetri'}</span>
+                  <span>{streamingHere ? 'Aktif vardiya istasyonu' : 'Vardiya penceresi'}</span>
                 </div>
 
                 <div className="mt-4 flex gap-2">
@@ -251,8 +311,8 @@ const StationsPage = ({
                   <button
                     type="button"
                     className="mes-btn-secondary"
-                    title="Özet paneli için seç"
-                    onClick={() => onSelectStation?.(station.id)}
+                    title="İstasyon Detayı paneline kaydır"
+                    onClick={() => selectStationSummary(station.id)}
                   >
                     Özet
                   </button>
@@ -263,11 +323,24 @@ const StationsPage = ({
         </div>
       </section>
 
-      <section className="mes-surface p-5">
+      <StationDetailPanel
+        stationsList={stationDetailOptions}
+        selectedStation={selectedStation}
+        onStationChange={onStationChange}
+        stationMetrics={detailShiftMetrics}
+        recentTicks={recentTicks}
+        className={
+          detailFlash
+            ? 'outline outline-2 outline-[color:var(--color-vestel)] outline-offset-2 bg-red-50/30'
+            : ''
+        }
+      />
+
+      <section className="mes-surface p-5" data-stations-chart>
         <CardHeader
           icon={BarChart3}
           title="İstasyon Bazlı Üretim Hacmi"
-          subtitle="OK / NOK adetleri Live Stream telemetrisinden hesaplanır"
+          subtitle="OK / NOK adetleri katalog vardiya penceresinden (/Oee/shift-current)"
         />
         <div className="h-[400px] w-full">
           {chartData.length === 0 ? (
@@ -297,14 +370,6 @@ const StationsPage = ({
           )}
         </div>
       </section>
-
-      <StationDetailPanel
-        stationsList={stationDetailOptions}
-        selectedStation={selectedStation}
-        onStationChange={onStationChange}
-        stationMetrics={stationMetrics}
-        recentTicks={recentTicks}
-      />
     </div>
   );
 };

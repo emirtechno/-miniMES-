@@ -9,8 +9,8 @@ const SystemFlowPage = () => (
         <div>
           <h1 className="font-display m-0 text-3xl font-semibold tracking-wide">Telemetri SSOT · Sistem Akışı</h1>
           <p className="mes-helper mt-2 mb-0">
-            MachineMetrics (PLC/SCADA batch tick’leri) uygulamanın tek doğruluk kaynağıdır.
-            1-by-1 barkod sayaçları KPI yollarından kaldırılmıştır.
+            MachineMetrics, ScrapLogs, ShiftSession ve StationRuntime backend doğruluk kaynağıdır.
+            Frontend yalnızca okur ve operatör eylemlerini API üzerinden yazar.
           </p>
         </div>
       </div>
@@ -24,10 +24,10 @@ const SystemFlowPage = () => (
       <ul className="mt-3 space-y-2 text-sm font-mono leading-relaxed">
         <li>Actual = Σ ActualProductionCount</li>
         <li>Good (OK) = Σ GoodProductionCount</li>
-        <li>NOK / Fire = Actual − Good</li>
+        <li>NOK / Fire = Actual − Good (operatör fire ScrapLogs + NOK tick)</li>
         <li>Yield = Good / Actual × 100</li>
         <li>OEE = Availability × Performance × Quality (son MachineMetric tick)</li>
-        <li>Lot Produced = Clamp(Σ Good[station], 0, Target)</li>
+        <li>WO Completed / Lot Produced = ProductionProgressSync(delta Good)</li>
       </ul>
     </section>
 
@@ -35,11 +35,11 @@ const SystemFlowPage = () => (
       <article className="mes-surface p-5">
         <h2 className="mes-section-title m-0 flex items-center gap-2">
           <Radio size={18} />
-          Live Stream yazımı
+          Fabrika telemetrisi (backend)
         </h2>
         <p className="mes-helper mt-2">
-          Vardiya Başlat → her ~10 sn <code>POST /MachineMetrics</code> ile ~100–140 adetlik batch tick.
-          Duruş/setup pause; vardiya bitince stream durur. Andon anomali (titreşim/ısınma/duruş/fire) aynı tick’ten doğar.
+          <code>OeeSimulationService</code> tüm istasyonlar için tick üretir; <code>StationRuntime</code>
+          Running değilse Paused/Down downtime tick yazar. Ortak kapı: <code>IMetricIngestService</code>.
         </p>
       </article>
       <article className="mes-surface p-5">
@@ -48,10 +48,10 @@ const SystemFlowPage = () => (
           Okuyucular
         </h2>
         <ul className="mt-3 space-y-2 text-sm">
-          <li>Fabrika / Operatör / İstasyon KPI → <code>GET /MachineMetrics/summary</code></li>
-          <li>Trend / tablo → <code>GET /MachineMetrics</code></li>
-          <li>OEE / Andon → latest metric + SignalR <code>oeeUpdated</code></li>
-          <li>Lot → BatchController Σ Good sync</li>
+          <li>Katalog hat KPI / Andon → <code>GET /Oee/shift-current</code></li>
+          <li>Operatör oturum KPI → <code>GET /ShiftSession/active</code></li>
+          <li>Trend / tick → <code>GET /MachineMetrics</code></li>
+          <li>SignalR → <code>oeeUpdated</code> / <code>telemetryTick</code> / <code>shiftUpdated</code> / alarm*</li>
         </ul>
       </article>
     </section>
@@ -64,17 +64,17 @@ const SystemFlowPage = () => (
         </h2>
       </div>
       <pre className="m-0 overflow-x-auto bg-slate-950 p-5 font-mono text-xs leading-6 text-slate-100">
-{`[Vardiya Başlat]
+{`[OeeSimulation / PLC / Scrap API]
       |
       v
-[Live Stream] --POST--> [MachineMetrics] <-- OeeSimulationService (dev seed)
-      |                        |
-      |                        +--> GET /summary --> Plant / Operator / Stations KPIs
-      |                        +--> OeeCalculator --> SignalR oeeUpdated --> Andon
-      |                        +--> Σ Good --> Batch.ProducedQuantity (lot bars)
+[IMetricIngestService] --> MachineMetrics
+      |                     +--> ProductionProgressSync --> WO + Lots
+      |                     +--> TelemetryAnomaly --> Alarm + StationRuntime pause
+      |                     +--> SignalR oeeUpdated / telemetryTick
       v
-[Anomali] --> POST /Alarm --> Andon
-[Vardiya Bitir / Duruş] --> Live Stream PAUSE`}
+[ShiftSession API] --> StationRuntime (downtime/setup/resume gate)
+[Alarm resolve] -----> pause reason clear (Running YALNIZCA operator resume)
+[UI] <--- GET summary / active + SignalR (no FE tick POST, no sessionStorage domain)`}
       </pre>
     </section>
 

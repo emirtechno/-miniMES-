@@ -1,9 +1,18 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Navigate, Link } from 'react-router-dom';
-import { Activity, AlertTriangle, Factory, Radio } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCheck, CheckCircle, Radio } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { fetchAlarms, fetchLatestOeeAll, fetchTelemetrySummary } from '../services/api';
+import { useNotify } from '../context/NotificationContext';
+import {
+  acknowledgeAlarm,
+  fetchAlarms,
+  fetchShiftCurrentOeeAll,
+  fetchSimulationStatus,
+  getApiErrorMessage,
+  resolveAlarm,
+} from '../services/api';
 import { useMesHub } from '../hooks/useMesHub';
+import VestelMark from '../components/VestelMark';
 import { ACTIVE_STATION_DEFINITIONS, getStationDisplayName } from '../constants/stations';
 import './AndonPage.css';
 
@@ -11,7 +20,13 @@ const ANDON_STATIONS = ACTIVE_STATION_DEFINITIONS.map((station) => station.id);
 
 const isClosedAlarm = (status) => {
   const value = (status || '').toLowerCase();
-  return value === 'onaylandı' || value === 'çözüldü' || value === 'kapalı' || value === 'resolved';
+  // Onaylandı stays on the live list until Çözüldü/Kapalı.
+  return value === 'çözüldü' || value === 'kapalı' || value === 'resolved';
+};
+
+const isAcknowledgedAlarm = (status) => {
+  const value = (status || '').toLowerCase();
+  return value === 'onaylandı' || value === 'acknowledged';
 };
 
 const severityTone = (severity) => {
@@ -21,71 +36,107 @@ const severityTone = (severity) => {
   return 'warn';
 };
 
+const hasActiveDowntime = (metric) => {
+  const reason = (metric?.downtimeReason || metric?.downtimeReasonCode || '').trim();
+  if (!reason) return false;
+  const normalized = reason.toLowerCase();
+  return normalized !== 'yok' && normalized !== 'none' && normalized !== '—' && normalized !== 'duruş yok';
+};
+
+const isDownAlarm = (alarm) => {
+  const severity = (alarm?.severity || '').toLowerCase();
+  const title = alarm?.title || alarm?.Title || '';
+  return severity.includes('kritik')
+    || severity.includes('critical')
+    || /acil|emergency|ar[iı]za/i.test(title);
+};
+
+const runtimeBadgeLabel = ({ simEnabled, hasMetric, paused, hasAlarm, isDown }) => {
+  if (isDown) return 'DURDU';
+  if (paused && hasAlarm) return 'DURAKLADI · Alarm';
+  if (!simEnabled) return 'SİM KAPALI';
+  if (!hasMetric && !paused && !hasAlarm) return 'BOŞTA';
+  if (paused) return 'DURAKLADI';
+  return 'ÇALIŞIYOR';
+};
+
 const AndonPage = () => {
   const { isAuthenticated, currentUser } = useAuth();
+  const { notify, confirm } = useNotify();
   const [oeeByStation, setOeeByStation] = useState({});
   const [alarms, setAlarms] = useState([]);
-  const [plantGood, setPlantGood] = useState(null);
+  const [simEnabled, setSimEnabled] = useState(true);
   const [clock, setClock] = useState(new Date());
   const [hubConnected, setHubConnected] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [actionBusyId, setActionBusyId] = useState(null);
+
+  const canManageAlarms = Boolean(currentUser?.permissions?.includes('alarms.manage'));
 
   useEffect(() => {
     const timer = window.setInterval(() => setClock(new Date()), 1000);
     return () => window.clearInterval(timer);
   }, []);
 
+  const applyShiftOee = useCallback((rows) => {
+    const map = {};
+    for (const metric of rows || []) {
+      if (metric?.stationId) map[metric.stationId] = metric;
+    }
+    setOeeByStation(map);
+  }, []);
+
+  const loadShiftOeeOnly = useCallback(async (signal) => {
+    try {
+      applyShiftOee(await fetchShiftCurrentOeeAll({ signal }));
+    } catch (error) {
+      if (error.name !== 'CanceledError' && error.name !== 'AbortError') {
+        console.error(error);
+      }
+    }
+  }, [applyShiftOee]);
+
+  const loadAndonBoard = useCallback(async (signal, { showLoading = false } = {}) => {
+    try {
+      if (showLoading) setLoading(true);
+      const [alarmPage, shiftOee, simStatus] = await Promise.all([
+        fetchAlarms({ signal, limit: 40, openOnly: true }),
+        fetchShiftCurrentOeeAll({ signal }),
+        fetchSimulationStatus({ signal }).catch(() => null),
+      ]);
+      setAlarms((alarmPage.items || []).filter((alarm) => !isClosedAlarm(alarm.status)));
+      applyShiftOee(shiftOee);
+      if (simStatus && typeof simStatus.enabled === 'boolean') {
+        setSimEnabled(simStatus.enabled);
+      }
+    } catch (error) {
+      if (error.name !== 'CanceledError' && error.name !== 'AbortError') {
+        console.error(error);
+      }
+    } finally {
+      if (showLoading) setLoading(false);
+    }
+  }, [applyShiftOee]);
+
   useEffect(() => {
     if (!isAuthenticated) return undefined;
     const controller = new AbortController();
-
-    const load = async () => {
-      try {
-        setLoading(true);
-        // 3 parallel calls (was 2 + N station OEE fan-out).
-        const [alarmPage, summaries, latestOee] = await Promise.all([
-          fetchAlarms({ signal: controller.signal, limit: 30, openOnly: true }),
-          fetchTelemetrySummary({ signal: controller.signal }),
-          fetchLatestOeeAll({ signal: controller.signal }),
-        ]);
-        setAlarms((alarmPage.items || []).filter((alarm) => !isClosedAlarm(alarm.status)).slice(0, 8));
-        const plant = (summaries || []).find((row) => !row.stationId);
-        setPlantGood(plant ? Number(plant.good) || 0 : null);
-        const map = {};
-        for (const metric of latestOee || []) {
-          if (metric?.stationId) map[metric.stationId] = metric;
-        }
-        setOeeByStation(map);
-      } catch (error) {
-        if (error.name !== 'CanceledError' && error.name !== 'AbortError') {
-          console.error(error);
-        }
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    load();
-    const refresh = window.setInterval(load, 20000);
+    loadAndonBoard(controller.signal, { showLoading: true });
+    const refresh = window.setInterval(() => loadAndonBoard(controller.signal), 20000);
     return () => {
       controller.abort();
       window.clearInterval(refresh);
     };
-  }, [isAuthenticated]);
+  }, [isAuthenticated, loadAndonBoard]);
 
   const { connected } = useMesHub({
-    onOeeUpdated: (metrics) => {
-      setOeeByStation((current) => {
-        const next = { ...current };
-        for (const metric of metrics || []) {
-          next[metric.stationId] = metric;
-        }
-        return next;
-      });
+    onOeeUpdated: () => {
+      // Tick hub payload is single-tick scoped; re-fetch shift aggregates so cards stay consistent.
+      loadShiftOeeOnly(undefined);
     },
     onAlarmCreated: (alarm) => {
       if (isClosedAlarm(alarm.status)) return;
-      setAlarms((current) => [alarm, ...current.filter((item) => (item.id ?? item.Id) !== (alarm.id ?? alarm.Id))].slice(0, 8));
+      setAlarms((current) => [alarm, ...current.filter((item) => (item.id ?? item.Id) !== (alarm.id ?? alarm.Id))]);
     },
     onAlarmUpdated: (alarm) => {
       setAlarms((current) => {
@@ -93,7 +144,7 @@ const AndonPage = () => {
         if (isClosedAlarm(alarm.status)) {
           return current.filter((item) => (item.id ?? item.Id) !== id);
         }
-        return [alarm, ...current.filter((item) => (item.id ?? item.Id) !== id)].slice(0, 8);
+        return [alarm, ...current.filter((item) => (item.id ?? item.Id) !== id)];
       });
     },
     onAlarmDeleted: (payload) => {
@@ -114,26 +165,105 @@ const AndonPage = () => {
     return values.reduce((sum, value) => sum + value, 0) / values.length;
   }, [oeeByStation]);
 
+  const plantGood = useMemo(() => {
+    const values = ANDON_STATIONS
+      .map((id) => oeeByStation[id]?.goodProduction)
+      .filter((value) => typeof value === 'number');
+    if (!values.length) return null;
+    return values.reduce((sum, value) => sum + value, 0);
+  }, [oeeByStation]);
+
+  const alarmsByStation = useMemo(() => {
+    const map = {};
+    for (const alarm of alarms) {
+      const station = alarm.station || alarm.Station;
+      if (!station) continue;
+      const entry = map[station] || { count: 0, isDown: false };
+      entry.count += 1;
+      if (isDownAlarm(alarm)) entry.isDown = true;
+      map[station] = entry;
+    }
+    return map;
+  }, [alarms]);
+
   const openAlarmCount = alarms.length;
+
+  const handleAcknowledge = useCallback(async (alarmId) => {
+    if (!canManageAlarms) {
+      notify('Alarm onaylama yetkiniz bulunmamaktadır.', 'error');
+      return;
+    }
+    if (alarmId == null) {
+      notify('Hata: Alarm kimliği okunamadı.', 'error');
+      return;
+    }
+    try {
+      setActionBusyId(alarmId);
+      await acknowledgeAlarm(alarmId);
+      notify('Alarm onaylandı.', 'success');
+    } catch (error) {
+      notify(getApiErrorMessage(error, 'Alarm onayı kaydedilemedi.'), 'error');
+    } finally {
+      setActionBusyId(null);
+    }
+  }, [canManageAlarms, notify]);
+
+  const handleResolve = useCallback(async (alarmId) => {
+    if (!canManageAlarms) {
+      notify('Alarm çözme yetkiniz bulunmamaktadır.', 'error');
+      return;
+    }
+    if (alarmId == null) {
+      notify('Hata: Alarm kimliği okunamadı.', 'error');
+      return;
+    }
+    if (!(await confirm('Bu alarmı Çöz olarak işaretlemek istediğinize emin misiniz? Kayıt silinmez.'))) {
+      return;
+    }
+    try {
+      setActionBusyId(alarmId);
+      await resolveAlarm(alarmId);
+      setAlarms((current) => current.filter((item) => (item.id ?? item.Id) !== alarmId));
+      notify('Alarm çözüldü / kapatıldı.', 'success');
+    } catch (error) {
+      notify(getApiErrorMessage(error, 'Alarm çözülemedi.'), 'error');
+    } finally {
+      setActionBusyId(null);
+    }
+  }, [canManageAlarms, confirm, notify]);
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
+  }
+
+  // Andon sits outside MainLayout; respect UI persona from session (operator has no Andon access).
+  let activePersona = 'admin';
+  try {
+    activePersona = sessionStorage.getItem('mm_active_persona') || 'admin';
+  } catch {
+    // ignore
+  }
+  if (activePersona === 'operator') {
+    return <Navigate to="/operator" replace />;
   }
 
   return (
     <div className="andon-shell">
       <header className="andon-top">
         <div className="andon-brand">
-          <Factory size={28} />
+          <VestelMark className="text-[color:var(--color-vestel)]" size={28} />
           <div>
             <strong>VESTEL MES ANDON</strong>
-            <span>{currentUser?.name} · Saha Ekranı{loading ? ' · yükleniyor…' : ''}</span>
+            <span>{currentUser?.name} · Canlı saha panosu{loading ? ' · yükleniyor…' : ''}</span>
           </div>
         </div>
         <div className="andon-meta">
           <span className={`andon-live ${hubConnected ? 'on' : 'off'}`}>
             <Radio size={16} />
             {hubConnected ? 'CANLI' : 'YENİDEN BAĞLANIYOR'}
+          </span>
+          <span className={`andon-live ${simEnabled ? 'on' : 'off'}`} title="Backend fabrika simülasyonu">
+            {simEnabled ? 'SİM AÇIK' : 'SİM KAPALI'}
           </span>
           <strong>{clock.toLocaleTimeString('tr-TR')}</strong>
           <Link to="/fabrika" className="andon-exit">Panele Dön</Link>
@@ -142,7 +272,7 @@ const AndonPage = () => {
 
       <section className="andon-summary">
         <article>
-          <small>Ortalama OEE</small>
+          <small>Ortalama OEE (Katalog)</small>
           <strong>{averageOee == null ? '—' : `%${averageOee.toFixed(1)}`}</strong>
         </article>
         <article className={openAlarmCount > 0 ? 'alert' : ''}>
@@ -150,7 +280,7 @@ const AndonPage = () => {
           <strong>{openAlarmCount}</strong>
         </article>
         <article>
-          <small>Σ Sağlam (Telemetri)</small>
+          <small>Σ Sağlam (Katalog)</small>
           <strong>{plantGood == null ? '—' : plantGood}</strong>
         </article>
       </section>
@@ -159,12 +289,56 @@ const AndonPage = () => {
         {ANDON_STATIONS.map((stationId) => {
           const metric = oeeByStation[stationId];
           const oee = metric?.oee;
-          const tone = oee == null ? 'idle' : oee >= 85 ? 'good' : oee >= 60 ? 'warn' : 'bad';
+          const alarmMeta = alarmsByStation[stationId] || { count: 0, isDown: false };
+          const stationAlarmCount = alarmMeta.count;
+          // Open alarms (and latest-tick downtime) drive DURAKLADI — sim no longer writes
+          // identical downtime ticks every interval while Paused/Down.
+          const paused = hasActiveDowntime(metric) || stationAlarmCount > 0;
+          const isDown = alarmMeta.isDown || (paused && stationAlarmCount > 0 && (metric?.downtimeReasonCode === 'BREAKDOWN'));
+          const tone = stationAlarmCount > 0
+            ? 'alarm'
+            : !simEnabled
+              ? 'idle'
+              : paused
+                ? 'paused'
+                : oee == null
+                  ? 'idle'
+                  : oee >= 85
+                    ? 'good'
+                    : oee >= 60
+                      ? 'warn'
+                      : 'bad';
+          const statusLabel = runtimeBadgeLabel({
+            simEnabled,
+            hasMetric: metric != null && oee != null,
+            paused,
+            hasAlarm: stationAlarmCount > 0,
+            isDown,
+          });
+          const statusClass = isDown
+            ? 'down'
+            : stationAlarmCount > 0
+              ? 'paused'
+              : !simEnabled
+                ? 'sim-off'
+                : paused
+                  ? 'paused'
+                  : (metric == null || oee == null)
+                    ? 'idle'
+                    : 'running';
           return (
             <article key={stationId} className={`andon-station ${tone}`}>
               <header>
                 <h2>{getStationDisplayName(stationId)}</h2>
-                <span>{metric?.shiftName || metric?.shiftCode || '—'}</span>
+                <div className="andon-station-badges">
+                  {stationAlarmCount > 0 && (
+                    <span className="andon-badge alarm">Alarm{stationAlarmCount > 1 ? ` ×${stationAlarmCount}` : ''}</span>
+                  )}
+                  <span className={`andon-badge ${statusClass}`}>{statusLabel}</span>
+                  {!stationAlarmCount && !paused && simEnabled && metric?.shiftName && (
+                    <span className="andon-badge shift">{metric.shiftName || metric.shiftCode}</span>
+                  )}
+                </div>
               </header>
               <div className="andon-oee">
                 <Activity size={22} />
@@ -174,32 +348,91 @@ const AndonPage = () => {
                 <div><dt>Kullanılabilirlik</dt><dd>{metric?.availability ?? '—'}%</dd></div>
                 <div><dt>Performans</dt><dd>{metric?.performance ?? '—'}%</dd></div>
                 <div><dt>Kalite</dt><dd>{metric?.quality ?? '—'}%</dd></div>
-                <div><dt>Sağlam / Fire</dt><dd>{metric?.goodProduction ?? '—'} / {metric?.scrapProduction ?? '—'}</dd></div>
+                <div><dt>Σ Sağlam / Fire</dt><dd>{metric?.goodProduction ?? '—'} / {metric?.scrapProduction ?? '—'}</dd></div>
                 <div><dt>Duruş</dt><dd>{metric?.downtimeReason || 'Yok'}</dd></div>
               </dl>
+              {(paused || stationAlarmCount > 0) && (
+                <p className="andon-resume-hint">
+                  {stationAlarmCount > 0
+                    ? 'Kalite/Andon\'dan alarm çöz → Üretime Dön'
+                    : 'Operatör panelinden Üretime Dön veya Vardiya Başlat'}
+                </p>
+              )}
             </article>
           );
         })}
       </section>
 
-      <section className="andon-alarms">
+      <section className="andon-alarms" id="andon-alarms">
         <header>
-          <AlertTriangle size={20} />
-          <h2>Canlı Alarmlar (yalnızca açık)</h2>
+          <div className="andon-alarms-title">
+            <AlertTriangle size={20} />
+            <div>
+              <h2>Canlı Alarmlar</h2>
+              <span>
+                {openAlarmCount === 0
+                  ? 'Aktif açık alarm yok'
+                  : `${openAlarmCount} açık alarm · istasyonların altında`}
+                {canManageAlarms ? ' · Onayla / Çöz aktif' : ''}
+              </span>
+            </div>
+          </div>
+          {openAlarmCount > 0 && (
+            <span className="andon-alarms-count">{openAlarmCount}</span>
+          )}
         </header>
+
         {alarms.length === 0 ? (
-          <p className="andon-empty">Aktif alarm yok.</p>
+          <p className="andon-empty">Aktif alarm yok — hat temiz.</p>
         ) : (
           <ul>
-            {alarms.map((alarm) => (
-              <li key={alarm.id ?? alarm.Id} className={`tone-${severityTone(alarm.severity)}`}>
-                <div>
-                  <strong>{alarm.title}</strong>
-                  <span>{alarm.station} · {alarm.severity}</span>
-                </div>
-                <small>{alarm.time ? new Date(alarm.time).toLocaleTimeString('tr-TR') : '—'}</small>
-              </li>
-            ))}
+            {alarms.map((alarm) => {
+              const alarmId = alarm.id ?? alarm.Id ?? alarm.alarmId ?? alarm.AlarmId;
+              const status = alarm.status || 'Açık';
+              const acknowledged = isAcknowledgedAlarm(status);
+              const busy = actionBusyId === alarmId;
+              return (
+                <li key={alarmId} className={`tone-${severityTone(alarm.severity)}`}>
+                  <div className="andon-alarm-main">
+                    <strong>{alarm.title}</strong>
+                    <span>
+                      {getStationDisplayName(alarm.station) || alarm.station || '—'}
+                      {' · '}
+                      {alarm.severity || '—'}
+                      {' · '}
+                      {status}
+                    </span>
+                  </div>
+                  <div className="andon-alarm-side">
+                    <small>{alarm.time ? new Date(alarm.time).toLocaleTimeString('tr-TR') : '—'}</small>
+                    {canManageAlarms && (
+                      <div className="andon-alarm-actions">
+                        {!acknowledged && (
+                          <button
+                            type="button"
+                            className="andon-btn secondary"
+                            disabled={busy || alarmId == null}
+                            onClick={() => handleAcknowledge(alarmId)}
+                          >
+                            <CheckCircle size={14} />
+                            Onayla
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="andon-btn primary"
+                          disabled={busy || alarmId == null}
+                          onClick={() => handleResolve(alarmId)}
+                        >
+                          <CheckCheck size={14} />
+                          Çöz
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
