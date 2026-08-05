@@ -3,6 +3,20 @@ using MiniMesApi.Services;
 
 namespace MiniMesApi.Tests;
 
+public sealed class AlarmStatusTests
+{
+    [Theory]
+    [InlineData(AlarmStatuses.Open, true)]
+    [InlineData(AlarmStatuses.Acknowledged, true)]
+    [InlineData(AlarmStatuses.Resolved, false)]
+    [InlineData(AlarmStatuses.ClosedLegacy, false)]
+    [InlineData(null, true)]
+    public void IsOpen_keeps_acknowledged_visible(string? status, bool expected)
+    {
+        Assert.Equal(expected, AlarmStatuses.IsOpen(status));
+    }
+}
+
 public sealed class WorkOrderStatusTests
 {
     [Theory]
