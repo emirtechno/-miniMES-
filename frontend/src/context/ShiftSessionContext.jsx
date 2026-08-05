@@ -47,7 +47,6 @@ const mapSessionToShift = (session, fallbackStationId = DEFAULT_STATION) => {
     shiftCode: session.shiftCode || SHIFT_SCHEDULES[0].code,
     operatorName: session.operatorName || '',
     operatorId: session.userId || '',
-    secondaryOperator: null,
     startedAt: session.startedAt,
     breakReason: session.breakReason || null,
     breakStartedAt:
