@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   acknowledgeAlarm,
   createAlarm,
@@ -6,7 +6,7 @@ import {
   fetchAlarms,
   getApiErrorMessage,
 } from '../services/api';
-import { DEFAULT_STATION, ACTIVE_STATION_DEFINITIONS } from '../constants/stations';
+import { DEFAULT_STATION, ACTIVE_STATION_DEFINITIONS, getStationDisplayName } from '../constants/stations';
 import { useMesHub } from './useMesHub';
 
 const TEST_ALARM_TEMPLATES = [
@@ -57,7 +57,6 @@ export function useAlarms({
   const [manualStation, setManualStation] = useState(DEFAULT_STATION);
   const [manualSeverity, setManualSeverity] = useState('Uyarı');
   const [manualDescription, setManualDescription] = useState('');
-  const lastTelemetryAlarmAtRef = useRef(0);
 
   const loadAlarms = useCallback(async (signal) => {
     try {
@@ -85,11 +84,19 @@ export function useAlarms({
   const { connected } = useMesHub({
     onAlarmCreated: (alarm) => {
       setAlarms((current) => upsertAlarm(current, alarm));
-      notify(`Yeni alarm: ${alarm.title || alarm.Title}`, 'error');
+      const title = alarm.title || alarm.Title || 'Alarm';
+      const stationId = alarm.station || alarm.Station || '';
+      const station = stationId ? getStationDisplayName(stationId) : 'İstasyon';
+      const severity = alarm.severity || alarm.Severity || '';
+      notify(
+        `Yeni alarm · ${station}${severity ? ` · ${severity}` : ''}: ${title}`,
+        'error',
+      );
     },
     onAlarmUpdated: (alarm) => {
       const status = (alarm.status || alarm.Status || '').toLowerCase();
-      const closed = status === 'onaylandı' || status === 'çözüldü' || status === 'kapalı' || status === 'resolved';
+      // Onaylandı remains open (needs Çöz); only resolved/closed leave the live list.
+      const closed = status === 'çözüldü' || status === 'kapalı' || status === 'resolved';
       if (closed) {
         const id = alarm.id ?? alarm.Id;
         setAlarms((current) => current.filter((item) => (item.id ?? item.Id) !== id));
@@ -127,39 +134,6 @@ export function useAlarms({
       setAlarmLoading(false);
     }
   }, [canCreateAlarms, connected, loadAlarms, notify]);
-
-  /** Raise Andon alarms from Live Stream anomalies — cooldown + open-only to avoid UI bloat. */
-  const raiseTelemetryAlarms = useCallback(async (stationId, anomalies = []) => {
-    if (!canCreateAlarms || !anomalies.length) return;
-    const now = Date.now();
-    const lastAt = lastTelemetryAlarmAtRef.current || 0;
-    if (now - lastAt < 45000) return; // max ~1 auto-alarm / 45s
-    // Prefer critical / high-signal kinds; skip noisy soft thresholds most of the time.
-    const ranked = [...anomalies].sort((a, b) => {
-      const score = (item) => (item.kind === 'vibration' || item.kind === 'temperature' ? 2 : item.kind === 'downtime' ? 1 : 0);
-      return score(b) - score(a);
-    });
-    const anomaly = ranked[0];
-    if (anomaly.kind === 'nok' && Math.random() > 0.25) return;
-    lastTelemetryAlarmAtRef.current = now;
-    await createAlarm({
-      title: `Live Stream · ${anomaly.title}`,
-      station: stationId || DEFAULT_STATION,
-      severity: anomaly.severity || 'Uyarı',
-      description: anomaly.description || '',
-    });
-    if (!connected) await loadAlarms();
-  }, [canCreateAlarms, connected, loadAlarms]);
-
-  /** @deprecated Prefer raiseTelemetryAlarms — kept for brief compatibility. */
-  const createSimulationAlarm = useCallback(async (stationId) => {
-    await raiseTelemetryAlarms(stationId, [{
-      kind: 'nok',
-      title: 'NOK Kalite Spike',
-      severity: 'Uyarı',
-      description: 'Sensör / vision hattı NOK üretti.',
-    }]);
-  }, [raiseTelemetryAlarms]);
 
   const createManualAlarm = useCallback(async (event) => {
     if (event?.preventDefault) event.preventDefault();
@@ -232,8 +206,6 @@ export function useAlarms({
     liveConnected: connected,
     loadAlarms,
     createTestAlarm,
-    createSimulationAlarm,
-    raiseTelemetryAlarms,
     createManualAlarm,
     handleResolveAlarm,
     handleAcknowledgeAlarm,

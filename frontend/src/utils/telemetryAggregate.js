@@ -58,3 +58,49 @@ export const buildStationChartFromKpis = (byStation = {}) => Object.entries(bySt
   OK: kpi.good || 0,
   NOK: kpi.nok || 0,
 }));
+
+/** Map /Oee/shift-current row → station KPI shape used by overview cards. */
+export const kpiFromShiftOee = (metric, stationId = null) => {
+  const actual = Number(metric?.totalProduction) || 0;
+  const good = Number(metric?.goodProduction) || 0;
+  const nok = Number(metric?.scrapProduction) || Math.max(0, actual - good);
+  return {
+    stationId: stationId ?? metric?.stationId ?? null,
+    actual,
+    good,
+    nok,
+    yield: actual > 0 ? Number(((good / actual) * 100).toFixed(1)) : 0,
+    oee: typeof metric?.oee === 'number' ? metric.oee : null,
+    downtimeSeconds: Number(metric?.downtimeSeconds) || 0,
+    tickCount: 0,
+    lastRecordedAt: metric?.lastUpdated || null,
+  };
+};
+
+/** Map ShiftSession.summary (live or persisted) → operator KPI cards. */
+export const kpiFromSessionSummary = (summary, stationId = null) => {
+  if (!summary) return emptyStationKpi(stationId);
+  const actual = Number(summary.actualCount) || 0;
+  const good = Number(summary.goodCount) || 0;
+  const nok = Number(summary.nokCount ?? summary.scrapCount) || Math.max(0, actual - good);
+  return {
+    stationId: stationId ?? summary.stationId ?? null,
+    actual,
+    good,
+    nok,
+    yield: actual > 0 ? Number(((good / actual) * 100).toFixed(1)) : 0,
+    oee: typeof summary.oeePercent === 'number' ? summary.oeePercent : null,
+    downtimeSeconds: Number(summary.downtimeSeconds) || 0,
+    tickCount: 0,
+    lastRecordedAt: summary.endedAt || null,
+  };
+};
+
+/** Index shift-current rows by stationId. */
+export const mapShiftOeeByStation = (rows = []) => {
+  const map = {};
+  for (const metric of rows || []) {
+    if (metric?.stationId) map[metric.stationId] = metric;
+  }
+  return map;
+};

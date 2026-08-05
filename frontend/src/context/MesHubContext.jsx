@@ -18,6 +18,8 @@ export function MesHubProvider({ children }) {
     alarmUpdated: new Set(),
     alarmDeleted: new Set(),
     oeeUpdated: new Set(),
+    telemetryTick: new Set(),
+    shiftUpdated: new Set(),
   });
 
   useEffect(() => {
@@ -48,6 +50,8 @@ export function MesHubProvider({ children }) {
     connection.on('alarmUpdated', (alarm) => emit('alarmUpdated', alarm));
     connection.on('alarmDeleted', (payload) => emit('alarmDeleted', payload));
     connection.on('oeeUpdated', (metrics) => emit('oeeUpdated', metrics));
+    connection.on('telemetryTick', (metric) => emit('telemetryTick', metric));
+    connection.on('shiftUpdated', (session) => emit('shiftUpdated', session));
     connection.onreconnected(() => setConnected(true));
     connection.onclose(() => setConnected(false));
 
@@ -95,6 +99,8 @@ export function useMesHub(handlers = {}) {
       subscribe('alarmUpdated', (payload) => handlersRef.current.onAlarmUpdated?.(payload)),
       subscribe('alarmDeleted', (payload) => handlersRef.current.onAlarmDeleted?.(payload)),
       subscribe('oeeUpdated', (payload) => handlersRef.current.onOeeUpdated?.(payload)),
+      subscribe('telemetryTick', (payload) => handlersRef.current.onTelemetryTick?.(payload)),
+      subscribe('shiftUpdated', (payload) => handlersRef.current.onShiftUpdated?.(payload)),
     ];
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
   }, [context]);

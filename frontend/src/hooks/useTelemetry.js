@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  createMachineMetric,
   fetchMachineMetrics,
   fetchTelemetrySummary,
   getApiErrorMessage,
 } from '../services/api';
 import { useNonOverlappingPolling } from './useNonOverlappingPolling';
-import { ACTIVE_STATION_DEFINITIONS, DEFAULT_STATION } from '../constants/stations';
-import { deriveLiveTelemetry, detectTelemetryAnomalies } from '../utils/liveTelemetry';
+import { useMesHub } from '../context/MesHubContext';
+import { ACTIVE_STATION_DEFINITIONS } from '../constants/stations';
 import {
   aggregateMetrics,
   buildStationChartFromKpis,
@@ -15,28 +14,14 @@ import {
   summaryFromApi,
 } from '../utils/telemetryAggregate';
 
-const ACTIVE_STATIONS = ACTIVE_STATION_DEFINITIONS.map((station) => station.id);
-
-const pickDowntimeReason = (downtimeSeconds) => {
-  if (downtimeSeconds <= 0) return 'NONE';
-  const pool = Math.random() < 0.35
-    ? ['PLANNED_MAINTENANCE', 'CHANGEOVER']
-    : ['BREAKDOWN', 'MATERIAL_SHORTAGE', 'NO_OPERATOR', 'QUALITY_HOLD', 'OTHER'];
-  return pool[Math.floor(Math.random() * pool.length)];
-};
-
 /**
- * Machine Telemetry SSOT engine.
- * Live Stream writes MachineMetrics batch ticks; all KPIs aggregate from those rows.
+ * Machine Telemetry SSOT read model.
+ * Backend OeeSimulation / PLC writes MachineMetrics; UI refreshes via poll + SignalR.
  */
 export function useTelemetry({
   isAuthenticated,
-  canIngestTelemetry,
   autoRefresh,
   liveStreamActive,
-  streamStationId,
-  shiftCode,
-  onSimulatedAnomalies,
   notify,
 }) {
   const [metrics, setMetrics] = useState([]);
@@ -108,56 +93,15 @@ export function useTelemetry({
     },
   );
 
-  // Shift-driven Live Stream → POST MachineMetrics batch ticks (not 1-by-1 Uretim).
-  useNonOverlappingPolling(async (signal) => {
-    const focusedStation = streamStationId
-      && ACTIVE_STATIONS.includes(streamStationId)
-      ? streamStationId
-      : ACTIVE_STATIONS[Math.floor(Math.random() * ACTIVE_STATIONS.length)] || DEFAULT_STATION;
-
-    const actual = 100 + Math.floor(Math.random() * 41); // 100–140 industrial batch size
-    const scrap = Math.floor(Math.random() * 8);
-    const good = Math.max(0, actual - scrap);
-    const downtimeSeconds = Math.floor(Math.random() * 70);
-    const payload = {
-      stationId: focusedStation,
-      plannedProductionSeconds: 300,
-      downtimeSeconds,
-      downtimeReasonCode: pickDowntimeReason(downtimeSeconds),
-      shiftCode: shiftCode || undefined,
-      idealCycleTimeSeconds: 2,
-      actualProductionCount: actual,
-      goodProductionCount: good,
-      recordedAt: new Date().toISOString(),
-    };
-
-    await createMachineMetric(payload, { signal });
-
-    const telemetry = deriveLiveTelemetry(
-      {
-        downtimeSeconds,
-        actualProductionCount: actual,
-        goodProductionCount: good,
-        idealCycleTimeSeconds: 2,
-      },
-      Date.now(),
-      true,
-    );
-    const anomalies = detectTelemetryAnomalies(telemetry, { nokSpike: scrap >= 6 });
-    if (anomalies.length && typeof onSimulatedAnomalies === 'function') {
-      try {
-        await onSimulatedAnomalies(focusedStation, anomalies, { signal });
-      } catch (err) {
-        console.error(err);
-      }
-    }
-
-    await refresh(signal, { background: true });
-  }, {
-    enabled: liveStreamActive && canIngestTelemetry,
-    intervalMs: 10000,
-    runImmediately: true,
-    resetKey: `${streamStationId || ''}:${liveStreamActive}:${shiftCode || ''}`,
+  useMesHub({
+    onOeeUpdated: () => {
+      if (!isAuthenticated) return;
+      refresh(undefined, { background: true });
+    },
+    onTelemetryTick: () => {
+      if (!isAuthenticated) return;
+      refresh(undefined, { background: true });
+    },
   });
 
   const stationChartData = useMemo(
