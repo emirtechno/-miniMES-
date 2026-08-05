@@ -14,6 +14,11 @@ namespace MiniMesApi.Models
         [StringLength(100)]
         public string Product { get; set; } = string.Empty;
 
+        /// <summary>Optional FK to Products (legacy shadow column now mapped).</summary>
+        public int? ProductId { get; set; }
+
+        public Product? ProductRef { get; set; }
+
         [Required]
         [StringLength(80)]
         public string Station { get; set; } = string.Empty;
@@ -25,6 +30,11 @@ namespace MiniMesApi.Models
         public int TargetQuantity { get; set; } = 100;
 
         public int ProducedQuantity { get; set; }
+
+        /// <summary>Optional link to parent work order (nullable for legacy rows).</summary>
+        public int? WorkOrderId { get; set; }
+
+        public WorkOrder? WorkOrder { get; set; }
 
         public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
     }

@@ -3,8 +3,6 @@ namespace MiniMesApi.Models;
 public static class StationCatalog
 {
     public const string AssemblyLine1 = "Montaj_Hatti_01";
-    public const string AssemblyLine2 = "Montaj_Hatti_02";
-    public const string AssemblyLine3 = "Montaj_Hatti_03";
     public const string ElectronicsBoardAssembly = "Elektronik_Kart_Montaj";
     public const string TestAndQuality = "Test_Ve_Kalite_Istasyonu";
     public const string PackagingLine1 = "Paketleme_Hatti_01";
@@ -16,8 +14,6 @@ public static class StationCatalog
     public static readonly IReadOnlyCollection<string> All =
     [
         AssemblyLine1,
-        AssemblyLine2,
-        AssemblyLine3,
         ElectronicsBoardAssembly,
         TestAndQuality,
         PackagingLine1,

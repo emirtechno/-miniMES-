@@ -1,5 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 
+/// <summary>Legacy traceability Users table — dropped; Identity uses AspNetUsers.</summary>
+[Obsolete("Legacy Traceability Users table removed. Use ApplicationUser / AspNetUsers.")]
 public class User
 {
     public int Id { get; set; }

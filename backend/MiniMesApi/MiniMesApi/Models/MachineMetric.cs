@@ -11,10 +11,7 @@ namespace MiniMesApi.Models
         [StringLength(80)]
         public string StationId { get; set; } = string.Empty;
 
-        // Planlanan Toplam Çalışma Süresi (Saniye)
         public double PlannedProductionSeconds { get; set; }
-
-        // Toplam Duruş Süresi (Saniye)
         public double DowntimeSeconds { get; set; }
 
         [Required]
@@ -25,16 +22,22 @@ namespace MiniMesApi.Models
         [StringLength(20)]
         public string ShiftCode { get; set; } = ShiftCatalog.ShiftA;
 
-        // Parça Başına Olması Gereken İdeal Süre (Saniye)
+        /// <summary>Operator ShiftSession that owns this tick (null for legacy / no open session).</summary>
+        public int? ShiftSessionId { get; set; }
+
         public double IdealCycleTimeSeconds { get; set; }
-
-        // Üretilen Toplam Adet (Sağlam + Fire)
         public int ActualProductionCount { get; set; }
-
-        // Sağlam Üretilen Adet (OK)
         public int GoodProductionCount { get; set; }
 
-        // Kayıt Tarihi
+        /// <summary>Optional physical gauge (°C). Null for legacy rows.</summary>
+        public double? Temperature { get; set; }
+
+        /// <summary>Optional spindle/line RPM. Null for legacy rows.</summary>
+        public double? Rpm { get; set; }
+
+        /// <summary>Optional vibration (mm/s). Null for legacy rows.</summary>
+        public double? Vibration { get; set; }
+
         public DateTimeOffset RecordedAt { get; set; } = DateTimeOffset.UtcNow;
     }
 }
