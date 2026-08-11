@@ -32,7 +32,7 @@ const formatWhen = (value) => {
 };
 
 /**
- * Shop-floor shift status card — start opens structured modal.
+ * Shop-floor vardiya durum kartı — başlatma yapılandırılmış modal açar.
  */
 const OperatorShiftWidget = ({ user, stationId, onStationChange, latestTick }) => {
   const {

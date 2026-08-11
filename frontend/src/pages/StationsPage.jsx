@@ -28,13 +28,14 @@ import {
   getStationMeta,
 } from '../constants/stations';
 import { fetchMachineMetrics, fetchShiftCurrentOeeAll } from '../services/api';
+import { OEE_METRIC_TIPS } from '../constants/oeeMetricTips';
 import { useNonOverlappingPolling } from '../hooks/useNonOverlappingPolling';
 import { useMesHub } from '../hooks/useMesHub';
 import { kpiFromShiftOee, mapShiftOeeByStation } from '../utils/telemetryAggregate';
 
 const DETAIL_FLASH_MS = 1400;
 
-/** Scroll detail panel inside `.mes-content` only (never scrollIntoView / window). */
+/** Detay panelini yalnızca `.mes-content` içinde kaydır (asla scrollIntoView / window değil). */
 const scrollPanelIntoMesContent = (panel) => {
   if (!panel) return;
   const scroller = panel.closest('.mes-content')
@@ -98,7 +99,7 @@ const StationsPage = ({
     try {
       applyShiftOee(await fetchShiftCurrentOeeAll({ signal }));
     } catch {
-      // keep previous shift OEE map
+      // Önceki vardiya OEE haritasını koru
     }
 
     const page = await fetchMachineMetrics({ signal, limit: 40 });
@@ -165,7 +166,7 @@ const StationsPage = ({
     [oeeByStation],
   );
 
-  // Detail panel KPIs = same catalog shift-current source as cards / Andon (not rolling summary).
+  // Detay paneli KPI'ları = kartlar / Andon ile aynı katalog shift-current kaynağı (rolling summary değil).
   const detailShiftMetrics = useMemo(() => {
     const kpi = kpiFromShiftOee(oeeByStation[selectedStation], selectedStation);
     return {
@@ -252,19 +253,19 @@ const StationsPage = ({
                 </div>
 
                 <dl className="mt-4 grid grid-cols-3 gap-2 text-center">
-                  <div className="rounded-lg bg-amber-50/80 px-2 py-2">
+                  <div className="rounded-lg bg-amber-50/80 px-2 py-2" title={OEE_METRIC_TIPS.gaugeTemp} style={{ cursor: 'help' }}>
                     <dt className="inline-flex items-center justify-center gap-0.5 text-[10px] uppercase tracking-wide text-amber-900">
                       <Thermometer size={10} /> Anlık °C
                     </dt>
                     <dd className="m-0 font-display text-lg font-semibold text-amber-950">{formatGauge(temperature, 1)}</dd>
                   </div>
-                  <div className="rounded-lg bg-sky-50/80 px-2 py-2">
+                  <div className="rounded-lg bg-sky-50/80 px-2 py-2" title={OEE_METRIC_TIPS.gaugeRpm} style={{ cursor: 'help' }}>
                     <dt className="inline-flex items-center justify-center gap-0.5 text-[10px] uppercase tracking-wide text-sky-900">
                       <Gauge size={10} /> Anlık RPM
                     </dt>
                     <dd className="m-0 font-display text-lg font-semibold text-sky-950">{formatGauge(rpm, 0)}</dd>
                   </div>
-                  <div className="rounded-lg bg-slate-50 px-2 py-2">
+                  <div className="rounded-lg bg-slate-50 px-2 py-2" title={OEE_METRIC_TIPS.gaugeVibration} style={{ cursor: 'help' }}>
                     <dt className="inline-flex items-center justify-center gap-0.5 text-[10px] uppercase tracking-wide text-[color:var(--color-muted)]">
                       <Waves size={10} /> Anlık mm/s
                     </dt>
@@ -275,15 +276,15 @@ const StationsPage = ({
                 </dl>
 
                 <dl className="mt-2 grid grid-cols-3 gap-2 text-center">
-                  <div className="rounded-lg bg-emerald-50/70 px-2 py-2">
+                  <div className="rounded-lg bg-emerald-50/70 px-2 py-2" title={OEE_METRIC_TIPS.goodScrap} style={{ cursor: 'help' }}>
                     <dt className="text-[10px] uppercase tracking-wide text-emerald-800">Katalog OK</dt>
                     <dd className="m-0 font-display text-lg font-semibold text-emerald-800">{ok}</dd>
                   </div>
-                  <div className="rounded-lg bg-red-50/70 px-2 py-2">
+                  <div className="rounded-lg bg-red-50/70 px-2 py-2" title={OEE_METRIC_TIPS.goodScrap} style={{ cursor: 'help' }}>
                     <dt className="text-[10px] uppercase tracking-wide text-red-800">Katalog NOK</dt>
                     <dd className="m-0 font-display text-lg font-semibold text-red-800">{nok}</dd>
                   </div>
-                  <div className="rounded-lg bg-sky-50/70 px-2 py-2">
+                  <div className="rounded-lg bg-sky-50/70 px-2 py-2" title={`${OEE_METRIC_TIPS.catalogOee} ${OEE_METRIC_TIPS.oee}`} style={{ cursor: 'help' }}>
                     <dt className="text-[10px] uppercase tracking-wide text-sky-800">Katalog OEE</dt>
                     <dd className="m-0 font-display text-lg font-semibold text-sky-950">
                       {oee == null ? '—' : `%${Number(oee).toFixed(0)}`}

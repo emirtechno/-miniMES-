@@ -35,7 +35,7 @@ public sealed class OeeController(MesDbContext context) : ControllerBase
         }).ToArray());
 
     /// <summary>
-    /// Latest single-tick OEE per station (PLC/sim tick scope). Prefer shift-current for Andon boards.
+    /// İstasyon başına son tek-tick OEE (PLC/sim tick kapsamı). Andon panoları için shift-current tercih edilir.
     /// </summary>
     [HttpGet("latest")]
     public async Task<ActionResult<IReadOnlyList<OeeMetricDto>>> GetLatestForAllStations(
@@ -91,8 +91,8 @@ public sealed class OeeController(MesDbContext context) : ControllerBase
     }
 
     /// <summary>
-    /// Shift-to-date OEE aggregates for the current ShiftCatalog window (Σ Actual/Good/NOK + A/P/Q).
-    /// Downtime reason/status overlays from the absolute latest tick per station.
+    /// Güncel ShiftCatalog penceresi için vardiya-bugüne OEE toplamları (Σ Actual/Good/NOK + A/P/Q).
+    /// Duruş nedeni/durum katmanı istasyon başına mutlak son tick'ten gelir.
     /// </summary>
     [HttpGet("shift-current")]
     public async Task<ActionResult<IReadOnlyList<OeeMetricDto>>> GetCurrentShiftForAllStations(
@@ -132,9 +132,9 @@ public sealed class OeeController(MesDbContext context) : ControllerBase
     {
         var window = ShiftCatalog.ResolveWindowForUtc(DateTimeOffset.UtcNow);
 
-        // Time-window aggregate for the current catalog occurrence. Ingest stamps catalog
-        // ShiftCode from RecordedAt; do not also require ShiftCode == window.Code so older
-        // session-overridden rows still count until they age out of the window.
+        // NEDEN: Güncel katalog penceresinin zaman aralığı toplamı. Ingest, ShiftCode'u RecordedAt'tan damgalar;
+        // ayrıca ShiftCode == window.Code şartı koyma — oturumla override edilmiş eski satırlar
+        // pencereden düşene kadar sayılsın.
         var windowQuery = context.MachineMetrics
             .AsNoTracking()
             .Where(item =>

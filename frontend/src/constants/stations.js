@@ -51,7 +51,7 @@ export const STATION_DEFINITIONS = [
     area: 'Sevkiyat',
     description: 'Sevkiyat öncesi son görsel / işlevsel kontrol.',
   },
-  // Keep legacy packaging/test code for older records & seeds.
+  // Eski paketleme/test kodunu eski kayıtlar ve seed'ler için tut.
   {
     id: 'Test_Ve_Paketleme_Istasyonu',
     displayName: 'Test ve Paketleme (Eski)',

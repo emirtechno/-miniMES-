@@ -4,7 +4,7 @@ import { Delete, X } from 'lucide-react';
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', '⌫'];
 
 /**
- * Touchscreen numeric keypad for secondary operator PIN login.
+ * İkincil operatör PIN girişi için dokunmatik sayısal tuş takımı.
  */
 const OperatorKeypadModal = ({ open, onClose, onSubmit }) => {
   const [pin, setPin] = useState('');

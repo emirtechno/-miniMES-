@@ -15,6 +15,8 @@ using MiniMesApi.Services;
 
 namespace MiniMesApi.Controllers
 {
+    // NEDEN: Andon alarm yaşam döngüsü — oluştur / onayla / çöz. Hard-delete yok (DELETE = soft-resolve).
+    // scope=open|resolved: açık (Onaylandı dahil) vs çözülmüş; emekli istasyonlar open/resolved'ta filtrelenir.
     [Route("api/[controller]")]
     [ApiController]
     [Authorize]
@@ -48,6 +50,7 @@ namespace MiniMesApi.Controllers
             [FromQuery] int limit = 50,
             [FromQuery] string? cursor = null,
             [FromQuery] string? status = null,
+            [FromQuery] string? scope = null,
             [FromQuery] bool openOnly = false,
             CancellationToken cancellationToken = default)
         {
@@ -58,13 +61,28 @@ namespace MiniMesApi.Controllers
             }
 
             var query = _context.Alarms.AsNoTracking();
-            if (openOnly)
+            // NEDEN: scope=open → Andon canlı liste (Çözüldü/Kapalı hariç; Onaylandı hâlâ “açık”).
+            // scope=resolved → geçmiş/audit. status=… tek durum filtresi (legacy).
+            var normalizedScope = scope?.Trim().ToLowerInvariant();
+            var wantOpen = openOnly
+                || string.Equals(normalizedScope, "open", StringComparison.Ordinal);
+            var wantResolved = string.Equals(normalizedScope, "resolved", StringComparison.Ordinal);
+
+            if (wantOpen)
             {
-                // Onaylandı stays open until Çözüldü/Kapalı — acknowledge is awareness only.
+                // NEDEN: Onaylandı, Çözüldü/Kapalı olana kadar açık kalır — acknowledge sadece farkındalık.
                 query = query.Where(alarm =>
                     alarm.Status != AlarmStatuses.Resolved
                     && alarm.Status != AlarmStatuses.ClosedLegacy);
-                // Soft-hide retired/legacy stations (e.g. Test_Ve_Paketleme_Istasyonu, Montaj_Hatti_02/03).
+                // NEDEN: Emekli/eski istasyonları soft-gizle (Test_Ve_Paketleme, Montaj_Hatti_02/03).
+                var activeStations = StationCatalog.Active;
+                query = query.Where(alarm => activeStations.Contains(alarm.Station));
+            }
+            else if (wantResolved)
+            {
+                query = query.Where(alarm =>
+                    alarm.Status == AlarmStatuses.Resolved
+                    || alarm.Status == AlarmStatuses.ClosedLegacy);
                 var activeStations = StationCatalog.Active;
                 query = query.Where(alarm => activeStations.Contains(alarm.Station));
             }
@@ -149,9 +167,7 @@ namespace MiniMesApi.Controllers
             }
         }
 
-        /// <summary>
-        /// Soft-resolve (product model): never hard-delete downtime records. DELETE maps to resolve.
-        /// </summary>
+        // NEDEN: Ürün modeli soft-resolve — duruş kayıtları hard-delete edilmez. DELETE = resolve.
         [HttpDelete("{id:int}")]
         [Authorize(Policy = PolicyNames.AlarmManage)]
         public Task<ActionResult<AlarmDto>> DeleteAlarm(int id, CancellationToken cancellationToken) =>
@@ -206,7 +222,8 @@ namespace MiniMesApi.Controllers
                     return Ok(ToDto(alarm));
                 }
 
-                // Soft-close for audit: never hard-delete downtime records.
+                // NEDEN: Audit için soft-kapat — duruş kayıtları hard-delete edilmez.
+                // NASIL: Status=Çözüldü → DowntimeEvent kapat → runtime RefreshAfterAlarmResolved → SignalR.
                 if (alarm.AcknowledgedAt is null)
                 {
                     alarm.AcknowledgedAt = DateTimeOffset.UtcNow;

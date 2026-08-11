@@ -1,5 +1,5 @@
 /**
- * Unified card header with optional right-aligned action toolbar.
+ * İsteğe bağlı sağ hizalı eylem araç çubuğu olan birleşik kart başlığı.
  */
 const CardHeader = ({ icon: Icon, title, subtitle, actions, className = '' }) => (
   <div className={`mes-card-header ${className}`}>

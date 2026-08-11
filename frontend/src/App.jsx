@@ -104,7 +104,7 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
   const canManageUsers = hasPermission('users.manage');
   const canResetShopFloor = hasPermission('simulation.control');
 
-  // Shift-active indicator (not FE ingest). Backend OeeSimulation owns MachineMetrics writes.
+  // Vardiya-aktif göstergesi (FE ingest değil). MachineMetrics yazımlarını backend OeeSimulation yönetir.
   const liveStreamActive = Boolean(shift.active && !shift.onBreak && !shift.inSetup);
   const streamStationId = shift.active ? shift.stationId : null;
 
@@ -308,7 +308,6 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
                   notify={notify}
                   recentTicks={telemetry.recentTicks}
                   workOrders={workOrders.workOrders}
-                  batches={workOrders.batches}
                   liveStreaming={liveStreamActive}
                 />
               )}
@@ -323,7 +322,6 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
                   isFactorySimulationActive={liveStreamActive}
                   shiftStationId={shift.stationId}
                   shiftActive={shift.active}
-                  metricsFeed={telemetry.metrics}
                 />
               )}
             />
@@ -350,18 +348,21 @@ function MainLayoutShell({ currentUser, logout, notify, confirm }) {
                 <QualityPage
                   workOrders={{
                     items: workOrders.workOrders,
+                    historyItems: workOrders.historyWorkOrders,
                     onAdvance: workOrders.handleAdvanceWorkOrder,
+                    onRestore: workOrders.handleRestoreWorkOrder,
+                    onDelete: workOrders.handleDeleteWorkOrder,
                     onCreateSample: workOrders.handleCreateSampleWorkOrder,
                     creatingSample: workOrders.creatingSample,
                   }}
                   alarms={{
                     items: alarms.alarms,
+                    historyItems: alarms.historyAlarms,
                     loading: alarms.alarmLoading,
                     error: alarms.alarmError,
                     onAcknowledge: alarms.handleAcknowledgeAlarm,
                     onResolve: alarms.handleResolveAlarm,
                   }}
-                  batches={workOrders.batches}
                   scrapTicks={telemetry.scrapTicks}
                   plantKpi={telemetry.plantKpi}
                   permissions={{

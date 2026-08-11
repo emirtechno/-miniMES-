@@ -1,6 +1,6 @@
 import { Info } from 'lucide-react';
 
-/** Small inline helper for shop-floor tooltips. */
+/** Shop-floor araç ipuçları için küçük satır içi yardımcı. */
 const InfoTip = ({ text, className = '' }) => (
   <span
     className={`inline-flex items-center gap-1 text-[color:var(--color-muted)] ${className}`}

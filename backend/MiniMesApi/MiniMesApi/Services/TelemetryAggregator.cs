@@ -3,7 +3,7 @@ using MiniMesApi.Models;
 
 namespace MiniMesApi.Services;
 
-/// <summary>Aggregate MachineMetric rows into plant / station KPIs.</summary>
+/// <summary>MachineMetric satırlarını fabrika / istasyon KPI'larına toplar.</summary>
 public static class TelemetryAggregator
 {
     public static TelemetrySummaryDto Aggregate(IEnumerable<MachineMetric> metrics, string? stationId = null)

@@ -4,7 +4,7 @@ import { ACTIVE_STATION_DEFINITIONS, DEFAULT_STATION } from '../constants/statio
 import { resolveShiftCodeForUtc, SHIFT_SCHEDULES } from '../constants/shifts';
 
 /**
- * Structured dialog for starting a shop-floor shift session.
+ * Shop-floor vardiya oturumu başlatma için yapılandırılmış diyalog.
  */
 const ShiftStartModal = ({
   open,

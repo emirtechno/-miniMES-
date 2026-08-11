@@ -19,6 +19,5 @@ public class Product
 
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
-    public ICollection<Batch> Batches { get; set; } = new List<Batch>();
     public ICollection<WorkOrder> WorkOrders { get; set; } = new List<WorkOrder>();
 }

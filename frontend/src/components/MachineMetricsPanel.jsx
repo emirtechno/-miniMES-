@@ -23,6 +23,7 @@ import { useMesHub } from '../hooks/useMesHub';
 import { DEFAULT_STATION, ACTIVE_STATION_DEFINITIONS, getStationDisplayName } from '../constants/stations';
 import CardHeader from './CardHeader';
 import { kpiFromShiftOee } from '../utils/telemetryAggregate';
+import { OEE_METRIC_TIPS } from '../constants/oeeMetricTips';
 
 const TREND_RANGES = [
   { id: '30s', label: '30s', ms: 30_000, limit: 40 },
@@ -65,7 +66,7 @@ const TrendTooltip = ({ active, payload }) => {
   return (
     <div
       className="rounded-lg border border-[color:var(--color-line)] bg-white px-3 py-2 text-xs shadow-md"
-      style={{ minWidth: 160 }}
+      style={{ minWidth: 180 }}
     >
       <div className="mb-1 font-semibold text-[color:var(--color-ink)]">{row.timeLabel}</div>
       {payload.map((entry) => (
@@ -74,15 +75,31 @@ const TrendTooltip = ({ active, payload }) => {
           <span className="font-semibold">{entry.value}</span>
         </div>
       ))}
+      <div className="mt-1 border-t border-slate-100 pt-1 text-[10px] text-slate-500">
+        Bu tick: {row.tickActual}/{row.tickGood} · duruş {row.tickDown} sn
+      </div>
     </div>
   );
 };
 
+const metricsFingerprint = (items) => {
+  if (!items?.length) return '0';
+  const first = items[0];
+  const last = items[items.length - 1];
+  return `${items.length}:${first?.id ?? ''}:${last?.id ?? ''}:${first?.recordedAt ?? ''}:${last?.recordedAt ?? ''}`;
+};
+
+const applyMetricsIfChanged = (setter, nextItems) => {
+  setter((prev) => (metricsFingerprint(prev) === metricsFingerprint(nextItems) ? prev : nextItems));
+};
+
+// NEDEN: Makine metrik paneli kendi poll'unu SSOT kabul eder — App-level metricsFeed buraya merge edilmez
+// (önceden last-120 üzerine yazınca Σ yükseklik kısa→uzun→kısa zıplıyordu).
+// NASIL: Aralık + istasyon ile MachineMetrics çek → kümülatif chartData; OEE = /Oee/shift-current (katalog vardiya).
 const MachineMetricsPanel = ({
   isFactorySimulationActive = false,
   shiftStationId,
   shiftActive = false,
-  metricsFeed = [],
 }) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const stationFromUrl = searchParams.get('stationId');
@@ -138,7 +155,7 @@ const MachineMetricsPanel = ({
         from,
         limit: selectedRange.limit,
       });
-      setMetrics(page.items);
+      applyMetricsIfChanged(setMetrics, page.items);
 
       await loadShiftOee(signal);
     } finally {
@@ -155,45 +172,48 @@ const MachineMetricsPanel = ({
     [],
   );
 
-  // Prefer shared feed when factory telemetry is pushing, then apply range + station filter.
-  useEffect(() => {
-    if (!metricsFeed?.length) return;
-    const fromMs = Date.now() - selectedRange.ms;
-    let rows = metricsFeed.filter((item) => {
-      const t = item.recordedAt ? new Date(item.recordedAt).getTime() : 0;
-      return t >= fromMs;
-    });
-    if (selectedStation !== 'Tümü') {
-      rows = rows.filter((item) => item.stationId === selectedStation);
-    }
-    setMetrics(rows.slice(0, selectedRange.limit));
-  }, [metricsFeed, selectedStation, selectedRange]);
+  // NEDEN: Panel poll grafik/tablo için tek kaynak. App-level plant feed (son 120) buraya merge edilmez —
+  // o overwrite Σ yüksekliğini kısa→uzun→kısa zıplatıyordu.
+  // NASIL: Ham tick'ler zaman sırasıyla; Gerceklesen/Saglam/Durus kümülatif; tick* alanları tooltip için.
+  const chartData = useMemo(() => {
+    const sorted = [...metrics]
+      .filter((item) => item.recordedAt)
+      .sort((a, b) => new Date(a.recordedAt) - new Date(b.recordedAt));
 
-  const [chartWindowMs, setChartWindowMs] = useState(() => Date.now());
-  useEffect(() => {
-    setChartWindowMs(Date.now());
+    let cumActual = 0;
+    let cumGood = 0;
+    let cumDown = 0;
+    return sorted.map((item, index) => {
+      const ms = new Date(item.recordedAt).getTime();
+      cumActual += Number(item.actualProductionCount) || 0;
+      cumGood += Number(item.goodProductionCount) || 0;
+      cumDown += Number(item.downtimeSeconds) || 0;
+      return {
+        t: ms,
+        timeLabel: formatTickTime(ms, selectedRange.ms),
+        Gerceklesen: cumActual,
+        Saglam: cumGood,
+        Durus: cumDown,
+        tickActual: item.actualProductionCount ?? 0,
+        tickGood: item.goodProductionCount ?? 0,
+        tickDown: item.downtimeSeconds ?? 0,
+        id: item.id ?? `${ms}-${index}`,
+      };
+    });
   }, [metrics, selectedRange]);
 
-  const chartData = useMemo(() => {
-    const fromMs = chartWindowMs - selectedRange.ms;
-    return [...metrics]
-      .filter((item) => {
-        const t = item.recordedAt ? new Date(item.recordedAt).getTime() : 0;
-        return t >= fromMs;
-      })
-      .sort((a, b) => new Date(a.recordedAt || 0) - new Date(b.recordedAt || 0))
-      .map((item, index) => {
-        const ms = item.recordedAt ? new Date(item.recordedAt).getTime() : index;
-        return {
-          t: ms,
-          timeLabel: formatTickTime(ms, selectedRange.ms),
-          Gerceklesen: item.actualProductionCount ?? 0,
-          Saglam: item.goodProductionCount ?? 0,
-          Durus: item.downtimeSeconds ?? 0,
-          id: item.id ?? `${ms}-${index}`,
-        };
-      });
-  }, [metrics, selectedRange, chartWindowMs]);
+  const chartDomain = useMemo(() => {
+    if (!chartData.length) return ['dataMin', 'dataMax'];
+    const newest = chartData[chartData.length - 1].t;
+    const oldest = chartData[0].t;
+    const span = newest - oldest;
+    // NEDEN: API limit yüzünden tick'ler seçilen pencerenin yarısından azını kapsıyorsa ekseni veriye zoom'la —
+    // 24s boş eksen + sağda sivri uç olmasın.
+    if (span < selectedRange.ms * 0.5) {
+      return [oldest, newest];
+    }
+    return [newest - selectedRange.ms, newest];
+  }, [chartData, selectedRange.ms]);
 
   const stationLabel = selectedStation === 'Tümü' ? 'Tüm İstasyonlar' : getStationDisplayName(selectedStation);
 
@@ -294,13 +314,13 @@ const MachineMetricsPanel = ({
       {oeeData && selectedStation !== 'Tümü' && (
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
           {[
-            { label: 'Katalog OEE', value: `%${oeeData.oee}`, tone: 'text-sky-700' },
-            { label: 'Kullanılabilirlik', value: `%${oeeData.availability}`, tone: 'text-emerald-700' },
-            { label: 'Performans', value: `%${oeeData.performance}`, tone: 'text-amber-700' },
-            { label: 'Kalite', value: `%${oeeData.quality}`, tone: 'text-rose-700' },
-            { label: 'Katalog pencere', value: oeeData.shiftName || oeeData.shiftCode || '—', tone: 'text-slate-800' },
+            { label: 'Katalog OEE', value: `%${oeeData.oee}`, tone: 'text-sky-700', tip: `${OEE_METRIC_TIPS.oee} ${OEE_METRIC_TIPS.catalogOee}` },
+            { label: 'Kullanılabilirlik', value: `%${oeeData.availability}`, tone: 'text-emerald-700', tip: OEE_METRIC_TIPS.availability },
+            { label: 'Performans', value: `%${oeeData.performance}`, tone: 'text-amber-700', tip: OEE_METRIC_TIPS.performance },
+            { label: 'Kalite', value: `%${oeeData.quality}`, tone: 'text-rose-700', tip: OEE_METRIC_TIPS.quality },
+            { label: 'Katalog pencere', value: oeeData.shiftName || oeeData.shiftCode || '—', tone: 'text-slate-800', tip: OEE_METRIC_TIPS.catalogOee },
           ].map((card) => (
-            <div key={card.label} className="mes-surface p-4">
+            <div key={card.label} className="mes-surface p-4" title={card.tip} style={{ cursor: 'help' }}>
               <div className="text-xs font-semibold uppercase tracking-wide text-[color:var(--color-muted)]">{card.label}</div>
               <div className={`font-display mt-1 text-2xl font-semibold ${card.tone}`}>{card.value}</div>
             </div>
@@ -312,7 +332,7 @@ const MachineMetricsPanel = ({
         <CardHeader
           icon={Cpu}
           title="Zaman Bazlı Üretim ve Duruş Trendi"
-          subtitle={`Tick serisi: ${stationLabel} — pencere ${selectedRange.label}`}
+          subtitle={`Kümülatif üretim: ${stationLabel} — ${selectedRange.label} (yüklenen tick’ler; tablo ham kayıt)`}
           actions={renderStationSelect()}
         />
         <div className="mb-3 flex flex-wrap gap-2" role="group" aria-label="Trend zaman aralığı">
@@ -353,14 +373,15 @@ const MachineMetricsPanel = ({
                 <XAxis
                   dataKey="t"
                   type="number"
-                  domain={['dataMin', 'dataMax']}
+                  domain={chartDomain}
+                  allowDataOverflow
                   tickFormatter={(value) => formatTickTime(value, selectedRange.ms)}
                   tick={{ fill: '#5b6b7c', fontSize: 11 }}
                   axisLine={false}
                   tickLine={false}
                   minTickGap={28}
                 />
-                <YAxis tick={{ fill: '#5b6b7c', fontSize: 11 }} axisLine={false} tickLine={false} width={42} />
+                <YAxis tick={{ fill: '#5b6b7c', fontSize: 11 }} axisLine={false} tickLine={false} width={48} />
                 <Tooltip
                   content={<TrendTooltip />}
                   cursor={{ stroke: '#94a3b8', strokeWidth: 1, strokeDasharray: '4 4' }}
@@ -370,7 +391,7 @@ const MachineMetricsPanel = ({
                 <Area
                   type="linear"
                   dataKey="Gerceklesen"
-                  name="Gerçekleşen"
+                  name="Σ Gerçekleşen"
                   stroke="#1769aa"
                   fill="url(#gradActual)"
                   strokeWidth={2.2}
@@ -381,7 +402,7 @@ const MachineMetricsPanel = ({
                 <Area
                   type="linear"
                   dataKey="Saglam"
-                  name="Sağlam (OK)"
+                  name="Σ Sağlam (OK)"
                   stroke="#0f9f6e"
                   fill="url(#gradGood)"
                   strokeWidth={2.2}
@@ -392,7 +413,7 @@ const MachineMetricsPanel = ({
                 <Area
                   type="linear"
                   dataKey="Durus"
-                  name="Duruş (sn)"
+                  name="Σ Duruş (sn)"
                   stroke="#d92d20"
                   fill="url(#gradDown)"
                   strokeWidth={2}

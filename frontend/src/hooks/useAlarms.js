@@ -11,9 +11,17 @@ import { useMesHub } from './useMesHub';
 
 const ACTIVE_STATION_IDS = new Set(ACTIVE_STATION_DEFINITIONS.map((s) => s.id));
 
+// NEDEN: Operatör/admin alarm listesi — açık + geçmiş; SignalR ile anında upsert.
+// NASIL: openOnly canlı; scope=resolved geçmiş; emekli istasyon alarmları filtrelenir.
+
 const isActiveStationAlarm = (alarm) => {
   const station = alarm?.station || alarm?.Station;
   return Boolean(station && ACTIVE_STATION_IDS.has(station));
+};
+
+const isClosedAlarm = (status) => {
+  const value = (status || '').toLowerCase();
+  return value === 'çözüldü' || value === 'kapalı' || value === 'resolved';
 };
 
 const TEST_ALARM_TEMPLATES = [
@@ -58,6 +66,7 @@ export function useAlarms({
   confirm,
 }) {
   const [alarms, setAlarms] = useState([]);
+  const [historyAlarms, setHistoryAlarms] = useState([]);
   const [alarmLoading, setAlarmLoading] = useState(false);
   const [alarmError, setAlarmError] = useState(null);
   const [manualTitle, setManualTitle] = useState('');
@@ -68,9 +77,13 @@ export function useAlarms({
   const loadAlarms = useCallback(async (signal) => {
     try {
       setAlarmLoading(true);
-      // Prefer open alarms for shop-floor lists; closed/resolved stay in DB for audit.
-      const page = await fetchAlarms({ signal, openOnly: true, limit: 50 });
-      setAlarms((page.items || []).filter(isActiveStationAlarm));
+      // Canlı liste = açık (+ Onaylandı); geçmiş = soft-resolve (aynı Alarms tablosu).
+      const [openPage, historyPage] = await Promise.all([
+        fetchAlarms({ signal, openOnly: true, limit: 50 }),
+        fetchAlarms({ signal, scope: 'resolved', limit: 50 }),
+      ]);
+      setAlarms((openPage.items || []).filter(isActiveStationAlarm));
+      setHistoryAlarms((historyPage.items || []).filter(isActiveStationAlarm));
       setAlarmError(null);
     } catch (err) {
       if (err.name === 'CanceledError' || err.name === 'AbortError') return;
@@ -102,11 +115,18 @@ export function useAlarms({
       );
     },
     onAlarmUpdated: (alarm) => {
-      const status = (alarm.status || alarm.Status || '').toLowerCase();
-      // Onaylandı remains open (needs Çöz); only resolved/closed leave the live list.
-      const closed = status === 'çözüldü' || status === 'kapalı' || status === 'resolved';
+      const status = alarm.status || alarm.Status || '';
+      // Onaylandı canlı listede kalır (Çöz gerekir); yalnızca Çözüldü/Kapalı canlıdan düşer.
+      const closed = isClosedAlarm(status);
       const id = alarm.id ?? alarm.Id;
-      if (closed || !isActiveStationAlarm(alarm)) {
+      if (closed) {
+        setAlarms((current) => current.filter((item) => (item.id ?? item.Id) !== id));
+        if (isActiveStationAlarm(alarm)) {
+          setHistoryAlarms((current) => upsertAlarm(current, alarm));
+        }
+        return;
+      }
+      if (!isActiveStationAlarm(alarm)) {
         setAlarms((current) => current.filter((item) => (item.id ?? item.Id) !== id));
         return;
       }
@@ -115,6 +135,7 @@ export function useAlarms({
     onAlarmDeleted: (payload) => {
       const id = payload?.id ?? payload?.Id;
       setAlarms((current) => current.filter((item) => (item.id ?? item.Id) !== id));
+      setHistoryAlarms((current) => current.filter((item) => (item.id ?? item.Id) !== id));
     },
   });
 
@@ -183,8 +204,15 @@ export function useAlarms({
       return;
     }
     try {
-      await resolveAlarm(id);
-      if (!connected) await loadAlarms();
+      const resolved = await resolveAlarm(id);
+      if (!connected) {
+        await loadAlarms();
+      } else if (resolved) {
+        setAlarms((current) => current.filter((item) => (item.id ?? item.Id) !== id));
+        if (isActiveStationAlarm(resolved)) {
+          setHistoryAlarms((current) => upsertAlarm(current, resolved));
+        }
+      }
       notify('Alarm çözüldü / kapatıldı (audit korundu).', 'success');
     } catch (err) {
       notify(getApiErrorMessage(err, 'Alarm çözülemedi.'), 'error');
@@ -209,6 +237,7 @@ export function useAlarms({
 
   return {
     alarms,
+    historyAlarms,
     alarmLoading,
     alarmError,
     liveConnected: connected,

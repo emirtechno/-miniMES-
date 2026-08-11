@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 
 const PERSONA_KEY = 'mm_active_persona';
 
-/** Paths each UI persona may open (nav + route guard). */
+/** Her UI personasının açabileceği yollar (nav + route guard). */
 export const PERSONA_ALLOWED_PATHS = {
   operator: ['/operator', '/istasyonlar', '/makine-metrikleri', '/kilavuz'],
   admin: ['/fabrika', '/operator', '/istasyonlar', '/kalite', '/makine-metrikleri', '/andon', '/kilavuz', '/sistem', '/yonetim'],
@@ -46,7 +46,9 @@ export const getPersonaHomePath = (personaId) => {
 };
 
 /**
- * UI persona switcher (does not change JWT roles). Options are gated by real JWT roles.
+ * NEDEN: UI persona seçici (Operatör / Yönetici / IT) — JWT rollerini değiştirmez.
+ * Seçenekler gerçek JWT rollerine göre filtrelenir; menü/route daraltır.
+ * NASIL: sessionStorage mm_active_persona; isPathAllowedForPersona ile koruma.
  */
 export const PersonaProvider = ({ children, defaultPersona = 'admin', roles = [] }) => {
   const navigate = useNavigate();
@@ -78,7 +80,7 @@ export const PersonaProvider = ({ children, defaultPersona = 'admin', roles = []
     const def = allowedPersonas.find((item) => item.id === nextId);
     if (!def) return;
     setPersonaState(def.id);
-    // Stay on the current screen when the new persona can still access it.
+    // Yeni persona hâlâ erişebiliyorsa mevcut ekranda kal.
     if (!isPathAllowedForPersona(location.pathname, def.id)) {
       navigate(def.homePath);
     }

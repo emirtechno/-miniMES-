@@ -1,5 +1,7 @@
 import axios from 'axios';
 
+// NEDEN: Tüm REST çağrıları tek axios istemcisi — JWT Bearer + 401'de oturum düşürme.
+// NASIL: VITE_MES_API_URL (…/api); Authorization header; süresi dolmuş token → mm:unauthorized olayı.
 const API_BASE_URL = (import.meta.env.VITE_MES_API_URL || 'http://localhost:5000/api')
   .replace(/\/+$/, '')
   .replace(/\/Uretim$/, '');
@@ -12,6 +14,7 @@ const apiClient = axios.create({
 apiClient.interceptors.request.use((config) => {
   const token = sessionStorage.getItem('mm_access_token');
   const expiresAt = sessionStorage.getItem('mm_token_expires_at');
+  // NEDEN: Süresi dolmuş token ile istek atma — backend 401 dönmeden önce UI logout tetikler.
   if (token && expiresAt && new Date(expiresAt) <= new Date()) {
     window.dispatchEvent(new Event('mm:unauthorized'));
     return Promise.reject(new axios.CanceledError('Oturum süresi doldu.'));
@@ -25,6 +28,7 @@ apiClient.interceptors.request.use((config) => {
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
+    // NEDEN: 401 (login hariç) → AuthContext oturumu kapatır / login'e yönlendirir.
     if (error.response?.status === 401 && !error.config?.url?.endsWith('/Auth/login')) {
       window.dispatchEvent(new Event('mm:unauthorized'));
     }
@@ -87,7 +91,7 @@ export const getApiErrorMessage = (error, fallback = 'İşlem tamamlanamadı.') 
       return validationErrors.map((item) => localizeIdentityMessage(item)).join(' · ');
     }
   }
-  // Prefer actionable detail; skip the generic "see server logs" placeholder when title is clearer.
+  // Eyleme dönük detayı tercih et; başlık daha netse genel “sunucu loglarına bakın” yer tutucusunu atla.
   if (data?.detail && data.detail !== GENERIC_SERVER_DETAIL) {
     return localizeIdentityMessage(data.detail);
   }
@@ -99,7 +103,7 @@ export const getApiErrorMessage = (error, fallback = 'İşlem tamamlanamadı.') 
   return error?.message || fallback;
 };
 
-/** Collect all ASP.NET validation error strings for multi-line UI display. */
+/** ASP.NET doğrulama hata dizelerini çok satırlı UI gösterimi için topla. */
 export const getApiValidationErrors = (error) => {
   const data = error?.response?.data;
   if (!data?.errors) return [];
@@ -108,7 +112,7 @@ export const getApiValidationErrors = (error) => {
     const list = Array.isArray(messages) ? messages : [messages];
     return list.filter(Boolean).map((message) => {
       const localized = localizeIdentityMessage(message);
-      // Prefer message alone when field is an Identity code.
+      // Alan bir Identity koduysa yalnızca message'ı tercih et.
       if (/^Password/i.test(field) || field === '') return localized;
       return `${field}: ${localized}`;
     });
@@ -142,38 +146,38 @@ export const resolveAlarm = async (id) => {
   return response.data;
 };
 
-/** Soft-resolve via DELETE (backend maps DELETE → resolve; never hard-deletes). */
+/** Soft-resolve: DELETE → backend resolve (hard-delete yok; audit korunur). */
 export const deleteAlarm = async (id) => {
   const response = await apiClient.delete(`/Alarm/${id}`);
   return response.data;
 };
 
-export const fetchWorkOrders = (options) => fetchPage('/WorkOrder', options);
+export const fetchWorkOrders = (options = {}) => fetchPage('/WorkOrder', options);
 
 export const createWorkOrder = async (payload) => {
   const response = await apiClient.post('/WorkOrder', payload);
   return response.data;
 };
 
+// NEDEN: RowVersion iyimser kilit — eşzamanlı güncellemede 409 + güncel DTO.
 export const advanceWorkOrder = async (id, rowVersion) => {
   const response = await apiClient.put(`/WorkOrder/${id}/advance`, { rowVersion });
   return response.data;
 };
 
-export const fetchBatches = (options) => fetchPage('/Batch', options);
-
-export const advanceBatch = async (id) => {
-  const response = await apiClient.post(`/Batch/${id}/advance`);
+export const restoreWorkOrder = async (id, rowVersion) => {
+  const response = await apiClient.put(`/WorkOrder/${id}/restore`, { rowVersion });
   return response.data;
 };
 
-export const reopenBatch = async (id) => {
-  const response = await apiClient.post(`/Batch/${id}/reopen`);
+// NEDEN: Soft-delete (DeletedAt); body'de rowVersion — axios delete data ile gönderilir.
+export const deleteWorkOrder = async (id, rowVersion) => {
+  const response = await apiClient.delete(`/WorkOrder/${id}`, { data: { rowVersion } });
   return response.data;
 };
 
-export const updateBatchProgress = async (id, payload) => {
-  const response = await apiClient.put(`/Batch/${id}/progress`, payload);
+export const restoreDeletedWorkOrder = async (id, rowVersion) => {
+  const response = await apiClient.put(`/WorkOrder/${id}/restore-deleted`, { rowVersion });
   return response.data;
 };
 
@@ -198,7 +202,7 @@ export const fetchMachineMetrics = async ({
   return unwrapPage(response);
 };
 
-/** Aggregated KPIs from MachineMetrics SSOT (plant + per-station). */
+/** MachineMetrics SSOT'tan toplanmış KPI'lar (fabrika + istasyon). */
 export const fetchTelemetrySummary = async ({ stationId, signal } = {}) => {
   const response = await apiClient.get('/MachineMetrics/summary', {
     params: {
@@ -209,13 +213,13 @@ export const fetchTelemetrySummary = async ({ stationId, signal } = {}) => {
   return response.data || [];
 };
 
-/** PLC / external ingest — batch Actual/Good/Downtime tick (frontend no longer posts ticks). */
+/** PLC / dış ingest — Actual/Good/Downtime tick (frontend artık tick post etmez; sim backend yazar). */
 export const createMachineMetric = async (payload, { signal } = {}) => {
   const response = await apiClient.post('/MachineMetrics', payload, { signal });
   return response.data;
 };
 
-/** Operator scrap — ScrapLog + NOK MachineMetrics tick. */
+/** Operatör fire girişi — ScrapLog + NOK MachineMetrics tick. */
 export const logMachineScrap = async (payload, { signal } = {}) => {
   const response = await apiClient.post('/MachineMetrics/scrap', payload, { signal });
   return response.data;
@@ -229,7 +233,7 @@ export const fetchActiveShiftSession = async ({ stationId, signal } = {}) => {
   return response.data || null;
 };
 
-/** Plant-wide open ShiftSessions for Andon (one per station, with session-scoped OEE). */
+/** Andon için fabrika geneli açık ShiftSession'lar (istasyon başına biri + oturum OEE). */
 export const fetchShiftSessionBoard = async ({ signal } = {}) => {
   const response = await apiClient.get('/ShiftSession/board', { signal });
   return Array.isArray(response.data) ? response.data : [];
@@ -260,7 +264,7 @@ export const endShiftSession = async (id, { signal } = {}) => {
   return response.data;
 };
 
-/** Recent ShiftSessions for the current user (includes live/persisted summary). */
+/** Kullanıcının son ShiftSession kayıtları (canlı/kalıcı özet dahil). */
 export const fetchShiftSessionHistory = async ({ limit = 20, stationId, signal } = {}) => {
   const response = await apiClient.get('/ShiftSession/history', {
     params: {
@@ -272,7 +276,7 @@ export const fetchShiftSessionHistory = async ({ limit = 20, stationId, signal }
   return response.data || [];
 };
 
-/** Session detail with summary + optional recent MachineMetrics ticks. */
+/** Oturum detayı: özet + isteğe bağlı son MachineMetrics tick'leri. */
 export const fetchShiftSessionDetail = async (id, { tickLimit = 12, signal } = {}) => {
   const response = await apiClient.get(`/ShiftSession/${id}`, {
     params: { tickLimit },
@@ -296,13 +300,13 @@ export const fetchLatestOee = async (stationId, { signal } = {}) => {
   return response.data;
 };
 
-/** Bulk latest OEE for all stations (single-tick scope). */
+/** Tüm istasyonlar için son tick OEE (tek-tick kapsamı). */
 export const fetchLatestOeeAll = async ({ signal } = {}) => {
   const response = await apiClient.get('/Oee/latest', { signal });
   return Array.isArray(response.data) ? response.data : [];
 };
 
-/** Current shift-window OEE for one station (catalog shift window). */
+/** Katalog vardiya penceresi OEE (tek istasyon) — oturum başlatınca sıfırlanmaz. */
 export const fetchShiftCurrentOee = async (stationId, { signal } = {}) => {
   const response = await apiClient.get(
     `/Oee/shift-current/${encodeURIComponent(stationId)}`,
@@ -311,7 +315,7 @@ export const fetchShiftCurrentOee = async (stationId, { signal } = {}) => {
   return response.data;
 };
 
-/** Current shift-window OEE aggregates — preferred by Andon / plant overview. */
+/** Katalog vardiya OEE (tümü) — Andon / fabrika özeti (çift OEE'nin katalog ayağı). */
 export const fetchShiftCurrentOeeAll = async ({ signal } = {}) => {
   const response = await apiClient.get('/Oee/shift-current', { signal });
   return Array.isArray(response.data) ? response.data : [];
@@ -322,7 +326,7 @@ export const fetchOeeStations = async ({ signal } = {}) => {
   return response.data || [];
 };
 
-/** Runtime factory simulation gate (independent of operator shift). */
+/** Fabrika simülasyon kapısı (operatör vardiyasından bağımsız). */
 export const fetchSimulationStatus = async ({ signal } = {}) => {
   const response = await apiClient.get('/Simulation/status', { signal });
   return response.data;
@@ -333,7 +337,7 @@ export const setSimulationEnabled = async (payload, { signal } = {}) => {
   return response.data;
 };
 
-/** Destructive shop-floor wipe. confirmation must be exactly "SIFIRLA". */
+/** Shop-floor yıkıcı sıfırlama. confirmation tam olarak "SIFIRLA" olmalı. */
 export const resetShopFloorData = async ({ confirmation = 'SIFIRLA', signal } = {}) => {
   const response = await apiClient.post(
     '/Simulation/reset-shop-floor',

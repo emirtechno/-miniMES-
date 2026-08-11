@@ -60,7 +60,7 @@ const mapSessionToShift = (session, fallbackStationId = DEFAULT_STATION) => {
     activeWorkOrderId: session.activeWorkOrderId ?? null,
     scrapCount: session.summary?.scrapLogQuantity ?? 0,
     secondaryOperator: session.secondaryOperatorName || null,
-    // Live session aggregate (Good/NOK/OEE) from GET /active or SignalR.
+    // NEDEN: Canlı oturum özeti (Good/NOK/OEE) GET /active veya SignalR shiftUpdated'dan gelir.
     summary: mapSummary(session),
     runtimeMode: session.runtimeMode || null,
     pauseReason: session.pauseReason || null,
@@ -92,6 +92,8 @@ export const createDefaultShift = (stationId = DEFAULT_STATION) => ({
 
 const ShiftSessionContext = createContext(null);
 
+// NEDEN: Operatör vardiya oturumu (başlat/mola/setup/bitir) backend kaynağıdır — UI sadece yansıtır.
+// Katalog OEE (Andon) ile karışmaz: oturum KPI'sı ShiftSessionAggregator; panolar /Oee/shift-current kullanır.
 export const ShiftSessionProvider = ({ children, user, notify }) => {
   const [shift, setShift] = useState(() => createDefaultShift());
   const [nowTick, setNowTick] = useState(0);
@@ -100,7 +102,7 @@ export const ShiftSessionProvider = ({ children, user, notify }) => {
   const applySession = useCallback((session) => {
     setShift((current) => {
       const next = mapSessionToShift(session, current.stationId);
-      // Keep last ended summary when active fetch returns null (e.g. after end / reload race).
+      // NEDEN: End/reload yarışında active null dönse bile son özet KPI kartında kalsın.
       if (!session && !next.active && current.summary && !next.summary) {
         return { ...next, summary: current.summary };
       }
@@ -117,7 +119,7 @@ export const ShiftSessionProvider = ({ children, user, notify }) => {
 
     const controller = new AbortController();
     setHydrated(false);
-    // Domain shift state is backend-owned; clear legacy sessionStorage keys.
+    // NEDEN: Vardiya durumu backend'de; eski sessionStorage anahtarları temizlenir (çift kaynak olmasın).
     try {
       sessionStorage.removeItem(`mm_operator_shift_${user.id}`);
       sessionStorage.removeItem('mm_operator_shift_anon');
@@ -260,14 +262,14 @@ export const ShiftSessionProvider = ({ children, user, notify }) => {
     }
   }, [applySession, notify, shift.id]);
 
-  /** Refresh shift + runtimeMode from backend (heals FE desync after sim tick). */
+  /** Backend'den vardiya + runtimeMode yenile (sim tick sonrası FE uyumsuzluğunu düzeltir). */
   const refreshShift = useCallback(async () => {
     if (!user?.id) return;
     try {
       const session = await fetchActiveShiftSession();
       applySession(session);
     } catch {
-      // ignore background refresh errors
+      // Arka plan yenileme hatalarını yok say
     }
   }, [applySession, user?.id]);
 

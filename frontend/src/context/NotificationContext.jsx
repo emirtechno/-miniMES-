@@ -12,10 +12,26 @@ export const NotificationProvider = ({ children }) => {
     setToasts((current) => current.filter((toast) => toast.id !== id));
   }, []);
 
-  const notify = useCallback((message, type = 'info') => {
+  /**
+   * @param {string} message
+   * @param {'info'|'success'|'error'} [type]
+   * @param {{ actionLabel?: string, onAction?: () => void, durationMs?: number }} [options]
+   */
+  const notify = useCallback((message, type = 'info', options = {}) => {
     const id = ++toastId;
-    setToasts((current) => [...current, { id, message, type }]);
-    window.setTimeout(() => dismiss(id), 4500);
+    const hasAction = Boolean(options.actionLabel && options.onAction);
+    const durationMs = options.durationMs ?? (hasAction ? 12000 : 4500);
+    setToasts((current) => [
+      ...current,
+      {
+        id,
+        message,
+        type,
+        actionLabel: options.actionLabel,
+        onAction: options.onAction,
+      },
+    ]);
+    window.setTimeout(() => dismiss(id), durationMs);
   }, [dismiss]);
 
   const confirm = useCallback((message) => new Promise((resolve) => {
@@ -36,7 +52,21 @@ export const NotificationProvider = ({ children }) => {
       <div className="toast-stack" aria-live="polite" aria-relevant="additions">
         {toasts.map((toast) => (
           <div key={toast.id} className={`toast toast-${toast.type}`} role="status">
-            <span>{toast.message}</span>
+            <div className="toast-body">
+              <span>{toast.message}</span>
+              {toast.actionLabel && toast.onAction ? (
+                <button
+                  type="button"
+                  className="toast-action"
+                  onClick={() => {
+                    toast.onAction();
+                    dismiss(toast.id);
+                  }}
+                >
+                  {toast.actionLabel}
+                </button>
+              ) : null}
+            </div>
             <button type="button" className="toast-close" onClick={() => dismiss(toast.id)} aria-label="Bildirimi kapat">
               ×
             </button>

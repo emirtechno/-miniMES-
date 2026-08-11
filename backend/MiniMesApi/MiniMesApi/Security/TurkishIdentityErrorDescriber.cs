@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Identity;
 
 namespace MiniMesApi.Security;
 
-/// <summary>Turkish Identity error messages for factory operators.</summary>
+/// <summary>Fabrika operatörleri için Türkçe Identity hata mesajları.</summary>
 public sealed class TurkishIdentityErrorDescriber : IdentityErrorDescriber
 {
     public override IdentityError PasswordTooShort(int length) => new()

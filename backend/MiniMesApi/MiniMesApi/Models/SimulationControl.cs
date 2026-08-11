@@ -4,8 +4,8 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace MiniMesApi.Models;
 
 /// <summary>
-/// Singleton runtime gate for the OEE factory simulation (Id = 1).
-/// Survives process restart; independent of operator shift sessions.
+/// OEE fabrika simülasyonu için tekil (singleton) runtime kapısı (Id = 1).
+/// Süreç restart'ından sonra da kalır; operatör vardiya oturumlarından bağımsız.
 /// </summary>
 [Table("SimulationControls")]
 public class SimulationControl

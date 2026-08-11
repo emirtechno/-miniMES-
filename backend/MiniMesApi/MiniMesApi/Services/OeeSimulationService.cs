@@ -5,6 +5,10 @@ using MiniMesApi.Options;
 
 namespace MiniMesApi.Services
 {
+    // NEDEN: Gerçek PLC olmadığı için demo fabrikayı arka planda “canlı” tutar.
+    // Her ~15 sn tick üretir → MetricIngest → MachineMetrics + WO ilerlemesi + Andon/OEE panoları.
+    // NASIL: BackgroundService döngüsü; SimulationControl açıkken her aktif istasyon için
+    // StationRuntime heal → (gerekirse catch-up downtime) → BuildTick → IngestAsync.
     public class OeeSimulationService : BackgroundService
     {
         private static readonly IReadOnlyCollection<string> Stations = StationCatalog.Active;
@@ -13,28 +17,37 @@ namespace MiniMesApi.Services
         private readonly TimeSpan _interval;
         private readonly int _intervalSeconds;
 
-        /// <summary>Ideal cycle so ~6–7 pieces fit a typical 15s tick near capacity.</summary>
+        // NEDEN: Bilinmeyen istasyon / geriye uyum için varsayılan ICT (aktif hatlar profil kullanır).
         internal const double IdealCycleTimeSeconds = 2;
 
-        /// <summary>Chance of a brief micro-stop inside a Running tick.</summary>
+        // NEDEN: Varsayılan mikro-duruş — profil yoksa kullanılır.
         internal const double MicroDowntimeProbability = 0.03;
 
-        /// <summary>Chance a running tick includes one scrap unit.</summary>
-        internal const double ScrapProbability = 0.04;
+        // NEDEN: Varsayılan fire oranı — profil yoksa kullanılır (aktif hatlar station profile ile ayrışır).
+        internal const double ScrapProbability = 0.046;
 
-        /// <summary>Running-tick chance of a critical temperature excursion (≥85 °C).</summary>
-        internal const double ExtremeTemperatureProbability = 0.004;
+        // NEDEN: Andon'da tüm hatlar aynı A/P/Q göstermesin — MES'e uygun istasyon karakteri.
+        // Chaos değil: montaj hızlı/stabil, test darboğaz + daha çok NOK, paketleme-2 yaşlı hat.
+        internal readonly record struct StationSimProfile(
+            double IdealCycleTimeSeconds,
+            double PerformanceMin,
+            double PerformanceMax,
+            double ScrapProbability,
+            int MaxScrapPerTick,
+            double MicroDowntimeProbability,
+            int MaxMicroDowntimeSeconds);
 
-        /// <summary>Running-tick chance of a low-RPM excursion (&lt;500) while producing.</summary>
-        internal const double ExtremeRpmProbability = 0.002;
+        // NEDEN: Nadir sıcaklık aşımı (≥85 °C) → TelemetryAnomaly alarm demosu. Oranlar düşük tutulur (×0.8 demosu için seyreklik).
+        internal const double ExtremeTemperatureProbability = 0.0032;
 
-        /// <summary>Running-tick chance of a critical vibration excursion (≥2.8 mm/s).</summary>
-        internal const double ExtremeVibrationProbability = 0.004;
+        // NEDEN: Üretimde düşük RPM (&lt;500) anomali demosu — daha da seyrek.
+        internal const double ExtremeRpmProbability = 0.0016;
 
-        /// <summary>
-        /// Cap resume catch-up so long Idle/no-shift gaps do not dominate catalog OEE.
-        /// Operator break downtime still registers; multi-hour demo pauses no longer zero Availability.
-        /// </summary>
+        // NEDEN: Kritik titreşim (≥2.8 mm/s) anomali demosu.
+        internal const double ExtremeVibrationProbability = 0.0032;
+
+        // NEDEN: Uzun Idle/vardiyasız boşluklar katalog OEE'yi sıfırlamasın diye catch-up tavanı (120 sn).
+        // Operatör molası yine kayda geçer; saatlerce demo duraklaması Availability'yi sıfırlamaz.
         internal const int MaxCatchUpSeconds = 120;
 
         public OeeSimulationService(
@@ -93,27 +106,29 @@ namespace MiniMesApi.Services
             var ingest = scope.ServiceProvider.GetRequiredService<IMetricIngestService>();
             var runtimeService = scope.ServiceProvider.GetRequiredService<IStationRuntimeService>();
             var recordedAt = DateTimeOffset.UtcNow;
-            // Catalog clock code only — MetricIngest also resolves from RecordedAt.
+            // NEDEN: Katalog saat kodu — MetricIngest da RecordedAt'tan aynı kodu çözer (çift kaynak tutarlılığı).
             var catalogShiftCode = ShiftCatalog.ResolveForUtc(recordedAt);
             var wroteAny = false;
 
             foreach (var stationId in Stations)
             {
-                // Snapshot pause anchor before heal — resume may clear Mode/UpdatedAt.
+                // NEDEN: Heal Mode/UpdatedAt'ı temizleyebilir; catch-up için pause başlangıcını önce snapshot'la.
                 var runtimeBefore = await runtimeService.GetOrCreateAsync(stationId, cancellationToken);
                 var priorMode = runtimeBefore.Mode;
                 var pauseAnchor = runtimeBefore.UpdatedAt;
                 var pauseReason = runtimeBefore.PauseReason;
 
-                // Active shift + no blocking alarms → Running; OnBreak/InSetup → Paused; blocking → Paused/Down.
+                // NEDEN: Aktif vardiya + engelleyici alarm yok → Running; mola/setup → Paused; engelleyici → Paused/Down.
+                // NASIL: HealRuntimeForStationAsync durumu düzeltir; engelleyici varsa üretim tick'i yazılmaz.
                 var mode = await runtimeService.HealRuntimeForStationAsync(stationId, cancellationToken);
                 var blocked = await runtimeService.HasOpenBlockingAlarmAsync(stationId, cancellationToken);
                 var isRunning = mode == StationRuntimeModes.Running && !blocked;
 
-                // Paused/Down: status lives on StationRuntime (Andon DURAKLADI) — do not spam identical ticks.
+                // NEDEN: Paused/Down durumu StationRuntime'da (Andon DURAKLADI) — aynı tick'leri spam etme.
                 if (!ShouldIngestProductionTick(isRunning))
                     continue;
 
+                // NEDEN: Duraklamadan Running'e dönüşte atlanan downtime'ı tek catch-up metriğiyle kapat (max 120 sn).
                 if (ShouldWriteCatchUp(priorMode, isRunning))
                 {
                     var catchUp = BuildCatchUpDowntimeTick(
@@ -148,20 +163,18 @@ namespace MiniMesApi.Services
                 _logger.LogDebug("OEE simülasyon: tüm istasyonlar Paused/Down — tick atlandı ({RecordedAt}).", recordedAt);
         }
 
-        /// <summary>DB/runtime gate: when false, skip all station ticks (no ingest).</summary>
+        // NEDEN: DB/runtime kapısı — kapalıysa hiç istasyon tick'i yazılmaz (ingest yok).
         internal static bool ShouldRunSimulationTicks(bool controlEnabled) => controlEnabled;
 
-        /// <summary>Running stations keep writing interval production ticks; paused/down skip ingest.</summary>
+        // NEDEN: Sadece Running istasyonlar aralık tick'i yazar; Paused/Down ingest atlar.
         internal static bool ShouldIngestProductionTick(bool isRunning) => isRunning;
 
-        /// <summary>After heal returns to Running from a prior pause/down, write one catch-up downtime metric.</summary>
+        // NEDEN: Heal sonrası Paused/Down → Running geçişinde bir catch-up downtime metriği yaz.
         internal static bool ShouldWriteCatchUp(string priorMode, bool isRunningNow) =>
             isRunningNow
             && priorMode is StationRuntimeModes.Paused or StationRuntimeModes.Down;
 
-        /// <summary>
-        /// Elapsed pause seconds from StationRuntime.UpdatedAt, clamped to [0, maxCatchUpSeconds].
-        /// </summary>
+        // NEDEN: Pause süresi StationRuntime.UpdatedAt'tan; [0, maxCatchUpSeconds] ile sınırlanır.
         internal static int ComputeCatchUpSeconds(
             DateTimeOffset pauseStartedAt,
             DateTimeOffset now,
@@ -174,10 +187,8 @@ namespace MiniMesApi.Services
             return (int)Math.Min(Math.Floor(elapsed), max);
         }
 
-        /// <summary>
-        /// One downtime metric covering the pause gap so shift OEE does not ignore downtime while ingest was skipped.
-        /// Returns null when the gap is negligible.
-        /// </summary>
+        // NEDEN: Ingest atlanırken kaçırılan duruşu tek metrikte kapatır — vardiya OEE downtime'ı unutmaz.
+        // NASIL: saniye < 1 ise null; aksi halde isRunning=false BuildTick (tam pencere downtime).
         internal static CreateMachineMetricDto? BuildCatchUpDowntimeTick(
             string stationId,
             string priorMode,
@@ -201,11 +212,8 @@ namespace MiniMesApi.Services
                 pauseReason);
         }
 
-        /// <summary>
-        /// Interval-aligned tick: Planned = simulation interval (real-time demo), not a 300s batch.
-        /// Running → production for this window (rare micro-downtime).
-        /// Not-running → full-window downtime (used for resume catch-up, not per-interval spam).
-        /// </summary>
+        // NEDEN: Planned = simülasyon aralığı (gerçek zamanlı demo), 300 sn batch değil.
+        // Running → istasyon profiline göre üretim/fire/mikro-duruş; değilse → tam pencere downtime (catch-up).
         internal static CreateMachineMetricDto BuildTick(
             string stationId,
             string mode,
@@ -216,6 +224,7 @@ namespace MiniMesApi.Services
             string? pauseReason = null)
         {
             var planned = Math.Max(intervalSeconds, 1);
+            var profile = ResolveStationProfile(stationId);
 
             double downtimeSeconds;
             string downtimeReason;
@@ -224,18 +233,27 @@ namespace MiniMesApi.Services
 
             if (isRunning)
             {
-                // Near capacity: IdealCycleTimeSeconds=2 → ~7 pcs / 15s planned window.
-                var maxByCycle = Math.Max(1, (int)Math.Floor(planned / IdealCycleTimeSeconds));
-                var minCount = Math.Max(1, maxByCycle - 1);
-                var maxCount = maxByCycle;
-                totalProduced = Random.Shared.Next(minCount, maxCount + 1);
-                scrapCount = Random.Shared.NextDouble() < ScrapProbability ? 1 : 0;
-                if (scrapCount > totalProduced) scrapCount = totalProduced;
+                // NEDEN: Teorik kapasite × hat performans bandı (±1 jitter) — istasyonlar ayrışır.
+                var maxByCycle = Math.Max(1, (int)Math.Floor(planned / profile.IdealCycleTimeSeconds));
+                var factor = profile.PerformanceMin
+                    + Random.Shared.NextDouble() * (profile.PerformanceMax - profile.PerformanceMin);
+                var target = (int)Math.Round(maxByCycle * factor, MidpointRounding.AwayFromZero);
+                totalProduced = Math.Clamp(target + Random.Shared.Next(-1, 2), 1, Math.Max(1, maxByCycle + 1));
 
-                // Usually clean; rare brief stop (0–3s) within the tick.
-                if (Random.Shared.NextDouble() < MicroDowntimeProbability)
+                scrapCount = 0;
+                if (Random.Shared.NextDouble() < profile.ScrapProbability && totalProduced > 0)
                 {
-                    downtimeSeconds = Math.Min(planned, Random.Shared.Next(0, 4));
+                    var maxScrap = Math.Min(profile.MaxScrapPerTick, totalProduced);
+                    scrapCount = maxScrap <= 1 ? 1 : Random.Shared.Next(1, maxScrap + 1);
+                }
+
+                // NEDEN: Genelde temiz; hat tipine göre nadir kısa duruş (Availability'yi hafif ezer).
+                if (Random.Shared.NextDouble() < profile.MicroDowntimeProbability)
+                {
+                    var maxDt = Math.Max(0, profile.MaxMicroDowntimeSeconds);
+                    downtimeSeconds = maxDt == 0
+                        ? 0
+                        : Math.Min(planned, Random.Shared.Next(1, maxDt + 1));
                     downtimeReason = downtimeSeconds > 0
                         ? DowntimeReasonCatalog.Other
                         : DowntimeReasonCatalog.None;
@@ -264,7 +282,7 @@ namespace MiniMesApi.Services
                 DowntimeSeconds = downtimeSeconds,
                 DowntimeReasonCode = downtimeReason,
                 ShiftCode = shiftCode,
-                IdealCycleTimeSeconds = IdealCycleTimeSeconds,
+                IdealCycleTimeSeconds = profile.IdealCycleTimeSeconds,
                 ActualProductionCount = totalProduced,
                 GoodProductionCount = good,
                 Temperature = temperature,
@@ -274,10 +292,76 @@ namespace MiniMesApi.Services
             };
         }
 
-        /// <summary>
-        /// Map StationRuntime.PauseReason / mode to a catalog code so catch-up downtime
-        /// keeps a stable reason instead of rotating.
-        /// </summary>
+        // NEDEN: Hat tipi → ICT / performans bandı / fire / mikro-duruş (demo Andon çeşitliliği).
+        internal static StationSimProfile ResolveStationProfile(string stationId) =>
+            stationId switch
+            {
+                // Montaj: hızlı, stabil, düşük fire
+                StationCatalog.AssemblyLine1 => new(
+                    IdealCycleTimeSeconds: 2.0,
+                    PerformanceMin: 0.88,
+                    PerformanceMax: 0.98,
+                    ScrapProbability: 0.018,
+                    MaxScrapPerTick: 1,
+                    MicroDowntimeProbability: 0.02,
+                    MaxMicroDowntimeSeconds: 3),
+                // Elektronik: biraz daha hızlı, orta fire
+                StationCatalog.ElectronicsBoardAssembly => new(
+                    IdealCycleTimeSeconds: 1.8,
+                    PerformanceMin: 0.90,
+                    PerformanceMax: 1.00,
+                    ScrapProbability: 0.028,
+                    MaxScrapPerTick: 1,
+                    MicroDowntimeProbability: 0.015,
+                    MaxMicroDowntimeSeconds: 2),
+                // Test: darboğaz (yüksek ICT), daha çok NOK — Quality %100'de takılmaz
+                StationCatalog.TestAndQuality => new(
+                    IdealCycleTimeSeconds: 3.2,
+                    PerformanceMin: 0.72,
+                    PerformanceMax: 0.90,
+                    ScrapProbability: 0.09,
+                    MaxScrapPerTick: 2,
+                    MicroDowntimeProbability: 0.035,
+                    MaxMicroDowntimeSeconds: 4),
+                // Paketleme 1: stabil
+                StationCatalog.PackagingLine1 => new(
+                    IdealCycleTimeSeconds: 2.2,
+                    PerformanceMin: 0.86,
+                    PerformanceMax: 0.97,
+                    ScrapProbability: 0.012,
+                    MaxScrapPerTick: 1,
+                    MicroDowntimeProbability: 0.025,
+                    MaxMicroDowntimeSeconds: 3),
+                // Paketleme 2: yaşlı hat — daha düşük perf + daha sık mikro-duruş
+                StationCatalog.PackagingLine2 => new(
+                    IdealCycleTimeSeconds: 2.4,
+                    PerformanceMin: 0.70,
+                    PerformanceMax: 0.88,
+                    ScrapProbability: 0.022,
+                    MaxScrapPerTick: 1,
+                    MicroDowntimeProbability: 0.06,
+                    MaxMicroDowntimeSeconds: 5),
+                // Final kontrol: yavaş tempo, düşük fire, az duruş
+                StationCatalog.FinalInspection => new(
+                    IdealCycleTimeSeconds: 3.5,
+                    PerformanceMin: 0.80,
+                    PerformanceMax: 0.94,
+                    ScrapProbability: 0.015,
+                    MaxScrapPerTick: 1,
+                    MicroDowntimeProbability: 0.012,
+                    MaxMicroDowntimeSeconds: 2),
+                _ => new(
+                    IdealCycleTimeSeconds: IdealCycleTimeSeconds,
+                    PerformanceMin: 0.85,
+                    PerformanceMax: 0.98,
+                    ScrapProbability: ScrapProbability,
+                    MaxScrapPerTick: 1,
+                    MicroDowntimeProbability: MicroDowntimeProbability,
+                    MaxMicroDowntimeSeconds: 3)
+            };
+
+        // NEDEN: Catch-up downtime nedeni her tick'te dönmesin diye PauseReason/mode → katalog kodu.
+        // NASIL: Metin anahtar kelimeleri (mola, setup, alarm…) → DowntimeReasonCatalog sabitleri.
         internal static string ResolveStableDowntimeReason(string mode, string? pauseReason)
         {
             if (!string.IsNullOrWhiteSpace(pauseReason))
@@ -305,10 +389,8 @@ namespace MiniMesApi.Services
         private static bool ContainsAny(string text, params string[] tokens) =>
             tokens.Any(token => text.Contains(token, StringComparison.OrdinalIgnoreCase));
 
-        /// <summary>
-        /// Running: mostly healthy gauges; rare excursions for anomaly demos.
-        /// Paused/Down: idle/low gauges.
-        /// </summary>
+        // NEDEN: Running → çoğunlukla sağlıklı göstergeler + nadir aşım (anomali demosu).
+        // Paused/Down → düşük/idle göstergeler. İstasyon başına cooldown Andon spam'ini keser.
         internal static (double Temperature, double Rpm, double Vibration) GeneratePhysicalGauges(bool isRunning)
         {
             if (!isRunning)
@@ -319,7 +401,7 @@ namespace MiniMesApi.Services
                     Math.Round(0.05 + Random.Shared.NextDouble() * 0.25, 2));
             }
 
-            // Keep excursions sparse for demo sessions (per-station cooldown still gates Andon spam).
+            // NEDEN: Aşımlar seyrek kalsın (demo oturumu); istasyon cooldown'u Andon spam'ini engeller.
             var temperature = Random.Shared.NextDouble() < ExtremeTemperatureProbability
                 ? 85 + Random.Shared.NextDouble() * 12
                 : 45 + Random.Shared.NextDouble() * 35;

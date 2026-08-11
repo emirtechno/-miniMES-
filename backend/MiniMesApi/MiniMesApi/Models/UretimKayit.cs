@@ -4,8 +4,8 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace MiniMesApi.Models
 {
     /// <summary>
-    /// Optional barcode / unit-level production record path (API exists).
-    /// Shop-floor OEE and shift KPIs use MachineMetrics + ScrapLogs, not this table.
+    /// İsteğe bağlı barkod / birim düzeyinde üretim kayıt yolu (API mevcut).
+    /// Shop-floor OEE ve vardiya KPI'ları MachineMetrics + ScrapLogs kullanır; bu tablo değil.
     /// </summary>
     [Table("UretimKayitlari")]
     public class UretimKayit

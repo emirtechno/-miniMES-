@@ -66,7 +66,7 @@ namespace MiniMesApi.Middlewares
 
         private (string Title, string Detail) ResolveClientMessage(Exception exception)
         {
-            // Prefer explicit InvalidOperationException messages (e.g. shop-floor reset).
+            // Açık InvalidOperationException mesajlarını tercih et (örn. shop-floor sıfırlama).
             if (exception is InvalidOperationException &&
                 !string.IsNullOrWhiteSpace(exception.Message) &&
                 exception.Message is not ("Operation is not valid due to the current state of the object."))

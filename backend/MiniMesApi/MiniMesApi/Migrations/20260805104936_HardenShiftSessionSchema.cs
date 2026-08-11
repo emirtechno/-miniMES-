@@ -74,9 +74,9 @@ namespace MiniMesApi.Migrations
                 type: "int",
                 nullable: true);
 
-            // Data hardening before unique index / new FKs (safe on empty and populated DBs).
+            // Benzersiz indeks / yeni FK öncesi veri sertleştirme (boş ve dolu DB'lerde güvenli).
             migrationBuilder.Sql("""
-                -- Keep newest open session per user; end older duplicates.
+                -- Kullanıcı başına en yeni açık oturumu tut; eski yinelenenleri bitir.
                 ;WITH OpenSessions AS (
                     SELECT Id, UserId,
                            ROW_NUMBER() OVER (PARTITION BY UserId ORDER BY StartedAt DESC, Id DESC) AS rn

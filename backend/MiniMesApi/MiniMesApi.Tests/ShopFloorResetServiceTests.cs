@@ -108,18 +108,6 @@ public sealed class ShopFloorResetServiceTests
         db.WorkOrders.Add(workOrder);
         await db.SaveChangesAsync();
 
-        var batch = new Batch
-        {
-            LotNo = "LOT-1",
-            Product = "P1",
-            Station = StationCatalog.AssemblyLine1,
-            Status = BatchStatuses.InProgress,
-            TargetQuantity = 50,
-            ProducedQuantity = 8,
-            WorkOrderId = workOrder.Id
-        };
-        db.Batches.Add(batch);
-
         var session = new ShiftSession
         {
             UserId = "u-fk",
@@ -133,7 +121,6 @@ public sealed class ShopFloorResetServiceTests
         db.ShiftSessions.Add(session);
         await db.SaveChangesAsync();
 
-        session.ActiveBatchId = batch.Id;
         var metric = new MachineMetric
         {
             StationId = StationCatalog.AssemblyLine1,
@@ -180,7 +167,6 @@ public sealed class ShopFloorResetServiceTests
             OperatorUserId = "u-fk",
             ShiftSessionId = session.Id,
             WorkOrderId = workOrder.Id,
-            BatchId = batch.Id,
             MachineMetricId = metric.Id,
             RecordedAt = DateTimeOffset.UtcNow
         });
@@ -210,7 +196,6 @@ public sealed class ShopFloorResetServiceTests
         Assert.Equal(1, result.MachineMetricsDeleted);
         Assert.Equal(1, result.ShiftSessionsDeleted);
         Assert.Equal(1, result.WorkOrdersProgressCleared);
-        Assert.Equal(1, result.BatchesProgressCleared);
         Assert.Equal(1, result.StationRuntimesReset);
 
         Assert.Empty(await db.DowntimeEvents.ToListAsync());
@@ -220,7 +205,6 @@ public sealed class ShopFloorResetServiceTests
         Assert.Empty(await db.MachineMetrics.ToListAsync());
         Assert.Empty(await db.ShiftSessions.ToListAsync());
         Assert.Equal(0, (await db.WorkOrders.SingleAsync()).CompletedQuantity);
-        Assert.Equal(0, (await db.Batches.SingleAsync()).ProducedQuantity);
         Assert.Equal(StationRuntimeModes.Paused, (await db.StationRuntimes.SingleAsync()).Mode);
         Assert.Equal("Shop-floor reset", (await db.StationRuntimes.SingleAsync()).PauseReason);
     }

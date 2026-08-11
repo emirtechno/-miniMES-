@@ -1,2 +1,2 @@
-/** @deprecated use context re-export; kept for import stability */
+/** @deprecated context re-export kullanın; import kararlılığı için tutuluyor */
 export { useMesHub } from '../context/MesHubContext';

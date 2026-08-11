@@ -31,7 +31,7 @@ const getStoredSession = () => {
       return { user, expiresAt };
     }
   } catch {
-    // Invalid session data is cleared below.
+  // Geçersiz oturum verisi aşağıda temizlenir.
   }
   clearSession();
   return { user: null, expiresAt: null };
@@ -74,7 +74,7 @@ export const AuthProvider = ({ children }) => {
         setCurrentUser(user);
       })
       .catch(() => {
-        // The response interceptor handles an unauthorized session.
+        // Yetkisiz oturumu response interceptor ele alır.
       });
   }, [currentUserId]);
 

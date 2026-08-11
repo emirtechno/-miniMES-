@@ -21,10 +21,8 @@ public sealed class StartShiftSessionDto
     [StringLength(120)]
     public string? SecondaryOperatorUserId { get; init; }
 
-    /// <summary>Optional active work order for this session (UI select can come later).</summary>
+    /// <summary>Bu oturum için isteğe bağlı aktif iş emri (UI seçimi sonra eklenebilir).</summary>
     public int? ActiveWorkOrderId { get; init; }
-
-    public int? ActiveBatchId { get; init; }
 }
 
 public sealed class ShiftDowntimeDto
@@ -51,7 +49,6 @@ public sealed class ShiftSessionDto
     public string? SecondaryOperatorName { get; init; }
     public string? SecondaryOperatorUserId { get; init; }
     public int? ActiveWorkOrderId { get; init; }
-    public int? ActiveBatchId { get; init; }
     public DateTimeOffset StartedAt { get; init; }
     public DateTimeOffset? EndedAt { get; init; }
     public DateTimeOffset? BreakStartedAt { get; init; }
@@ -61,7 +58,7 @@ public sealed class ShiftSessionDto
     public bool Active => Status is "Active" or "OnBreak" or "InSetup";
     public bool OnBreak => Status == "OnBreak";
     public bool InSetup => Status == "InSetup";
-    /// <summary>StationRuntime mode: Running / Paused / Down.</summary>
+    /// <summary>StationRuntime modu: Running / Paused / Down.</summary>
     public string? RuntimeMode { get; init; }
     public string? PauseReason { get; init; }
     public bool HasBlockingAlarms { get; init; }
@@ -98,8 +95,8 @@ public sealed class ShiftSessionDetailDto
 }
 
 /// <summary>
-/// Plant-wide open ShiftSession row for Andon / TV boards (one per station).
-/// <see cref="Oee"/> is null when the session has no tagged/window metrics yet.
+/// Andon / TV panoları için fabrika geneli açık ShiftSession satırı (istasyon başına bir).
+/// Oturumda henüz etiketli/pencere metriği yoksa <see cref="Oee"/> null olur.
 /// </summary>
 public sealed class ShiftSessionBoardItemDto
 {

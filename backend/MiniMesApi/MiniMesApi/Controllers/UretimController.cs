@@ -142,7 +142,7 @@ namespace MiniMesApi.Controllers
             return Ok(ToCursorPage(sonuc, limit));
         }
 
-        // Sensor / PLC / Live Stream ingestion (POST: api/Uretim) — immutable append-only telemetry.
+        // Sensör / PLC / Live Stream ingest (POST: api/Uretim) — değiştirilemez, yalnızca ekleme telemetrisi.
         [HttpPost]
         [Microsoft.AspNetCore.Authorization.Authorize(Policy = PolicyNames.ProductionWrite)]
         public async Task<IActionResult> UretimEkle(

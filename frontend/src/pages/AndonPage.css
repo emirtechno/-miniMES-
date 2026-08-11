@@ -1,5 +1,5 @@
-/* Standalone Andon route: body/#root are overflow:hidden — this shell owns vertical scroll.
-   Document flow (not a viewport-locked 1fr grid) so stations never paint under alarms. */
+/* Bağımsız Andon rotası: body/#root overflow:hidden — dikey kaydırmayı bu kabuk yönetir.
+   Belge akışı (viewport kilitli 1fr grid değil) — istasyonlar alarmların altına boyanmasın. */
 .andon-shell {
   height: 100dvh;
   width: 100%;
@@ -262,16 +262,16 @@
   margin: 12px 0 8px;
 }
 
-/* Neon dark OEE speedometer (OeeGauge.jsx) — matches Andon dark cards */
+/* Neon koyu OEE hız göstergesi (OeeGauge.jsx) — Andon koyu kartlarla uyumlu */
 .andon-shell .oee-gauge,
 .oee-gauge {
   position: relative;
   width: min(100%, 236px);
-  aspect-ratio: 200 / 148;
+  aspect-ratio: 200 / 160;
   height: auto;
   margin: 0 auto;
   flex-shrink: 0;
-  padding: 6px 4px 2px;
+  padding: 22px 4px 2px;
   box-sizing: border-box;
   border-radius: 18px;
   border: 1px solid rgba(0, 242, 255, 0.12);
@@ -284,14 +284,39 @@
     inset 0 -10px 24px rgba(0, 0, 0, 0.45),
     0 0 0 1px rgba(0, 0, 0, 0.35),
     0 8px 20px rgba(0, 0, 0, 0.35);
-  /* Idle default — never hardcode green; tone classes set accent */
+  /* Idle varsayılan — yeşili sabitleme; ton sınıfları vurguyu ayarlar */
   --oee-gauge-accent: #5B7A8A;
-  /* Keep glow/needle tips; avoid clipping the shaft at the edges */
+  /* Glow/ibre uçlarını koru; şaftın kenarlarda kesilmesini önle */
   overflow: visible;
   text-align: center;
 }
 
-/* Match .andon-shell .oee-gauge specificity so --bad/--good/--warn are not overridden */
+/* Neon Andon başlık — gauge yayının üstünde, % okumasıyla aynı dil */
+.oee-gauge__label {
+  position: absolute;
+  top: 7px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 4;
+  margin: 0;
+  padding: 0;
+  font-family: "Segoe UI", "DIN Alternate", "Arial Narrow", sans-serif;
+  font-size: clamp(0.72rem, 1.35vw, 0.88rem);
+  font-weight: 800;
+  letter-spacing: 0.32em;
+  line-height: 1;
+  text-indent: 0.32em; /* letter-spacing dengesi — görsel ortalama */
+  text-transform: uppercase;
+  color: #00f2ff;
+  text-shadow:
+    0 0 4px rgba(0, 242, 255, 0.95),
+    0 0 12px rgba(0, 242, 255, 0.55),
+    0 0 22px rgba(255, 43, 214, 0.28);
+  pointer-events: none;
+  user-select: none;
+}
+
+/* .andon-shell .oee-gauge özgüllüğüne uy — --bad/--good/--warn ezilmesin */
 .andon-shell .oee-gauge--good,
 .oee-gauge--good { --oee-gauge-accent: #2DFF8A; }
 .andon-shell .oee-gauge--warn,
@@ -338,7 +363,7 @@
   filter: drop-shadow(0 0 6px rgba(0, 242, 255, 0.15));
 }
 
-/* Needle drawn above ticks; glow via SVG userSpaceOnUse filters (not collapsed line bbox) */
+/* İbre tick'lerin üstünde çizilir; glow SVG userSpaceOnUse filtreleriyle (çökmüş line bbox değil) */
 .oee-gauge__needle {
   pointer-events: none;
 }
@@ -351,7 +376,7 @@
 .oee-gauge__value {
   position: absolute;
   left: 50%;
-  /* Sit just under the needle pivot (arc center) */
+  /* İbre pivotunun (yay merkezi) hemen altına otur */
   bottom: 10%;
   transform: translateX(-50%);
   display: flex;
@@ -410,6 +435,13 @@
   margin: 0;
 }
 
+.andon-summary article[title],
+.andon-oee[title],
+.andon-catalog-line[title],
+.andon-station dl > div[title] {
+  cursor: help;
+}
+
 .andon-station dt {
   color: #94a3b8;
   font-size: 0.78rem;
@@ -428,7 +460,7 @@
   padding: 16px 18px 14px;
   border-color: rgba(248, 113, 113, 0.28);
   box-shadow: inset 0 0 0 1px rgba(248, 113, 113, 0.08);
-  /* Stay in document flow below stations — no overlay stacking. */
+  /* İstasyonların altında belge akışında kal — üst üste bindirme yok. */
 }
 
 .andon-alarms-title {
@@ -540,6 +572,63 @@
 .andon-alarms .tone-critical { border-left: 4px solid #ef4444; }
 .andon-alarms .tone-high { border-left: 4px solid #f59e0b; }
 .andon-alarms .tone-warn { border-left: 4px solid #38bdf8; }
+.andon-alarms .tone-resolved { border-left: 4px solid #64748b; opacity: 0.88; }
+
+.andon-alarm-history {
+  margin-top: 14px;
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+  padding-top: 10px;
+}
+
+.andon-history-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 4px;
+  border: 0;
+  background: transparent;
+  color: #e2e8f0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.andon-history-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.andon-history-label small {
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.andon-history-hint {
+  color: #94a3b8;
+  font-size: 0.8rem;
+}
+
+.andon-history-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.andon-history-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(2, 6, 23, 0.35);
+}
 
 @keyframes andon-pulse {
   0%, 100% { opacity: 1; }

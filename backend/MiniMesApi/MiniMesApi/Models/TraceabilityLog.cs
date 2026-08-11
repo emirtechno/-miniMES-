@@ -1,14 +1,13 @@
 using System.ComponentModel.DataAnnotations;
 using MiniMesApi.Models;
 
-/// <summary>Legacy traceability cycle log — table dropped; unused by shop-floor MES path.</summary>
+/// <summary>Eski izlenebilirlik döngü logu — tablo düşürüldü; shop-floor MES yolu kullanmaz.</summary>
 [Obsolete("Legacy TraceabilityLogs table removed.")]
 public class TraceabilityLog
 {
     public int Id { get; set; }
     
     public int BatchId { get; set; }
-    public Batch? Batch { get; set; }
 
     public int StationId { get; set; }
     public Station? Station { get; set; }

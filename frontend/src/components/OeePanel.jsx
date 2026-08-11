@@ -11,8 +11,9 @@ import OeeInsight from './OeeInsight';
 import InfoTip from './InfoTip';
 import CardHeader from './CardHeader';
 import { Gauge } from 'lucide-react';
+import { OEE_METRIC_TIPS } from '../constants/oeeMetricTips';
 
-const GaugeMeter = ({ label, value, detail }) => {
+const GaugeMeter = ({ label, value, detail, tip }) => {
   const isAvailable = typeof value === 'number' && !Number.isNaN(value);
   const normalizedValue = isAvailable ? Math.max(0, Math.min(value, 100)) : 0;
   const radius = 42;
@@ -20,7 +21,11 @@ const GaugeMeter = ({ label, value, detail }) => {
   const color = normalizedValue >= 85 ? '#0f9f6e' : normalizedValue >= 60 ? '#c47f17' : '#d92d20';
 
   return (
-    <article className="rounded-xl border border-[color:var(--color-line)] bg-slate-50/60 px-3 py-3 text-center">
+    <article
+      className="rounded-xl border border-[color:var(--color-line)] bg-slate-50/60 px-3 py-3 text-center"
+      title={tip}
+      style={tip ? { cursor: 'help' } : undefined}
+    >
       <div className="relative mx-auto h-[72px] w-[110px]">
         <svg viewBox="0 0 110 70" aria-hidden="true" className="h-full w-full">
           <path d="M 13 58 A 42 42 0 0 1 97 58" fill="none" stroke="#e2e8f0" strokeWidth="10" strokeLinecap="round" />
@@ -49,8 +54,8 @@ const GaugeMeter = ({ label, value, detail }) => {
 };
 
 /**
- * OEE gauges with interactive station selector (Availability / Performance / Quality / OEE).
- * Scope: current catalog shift window (/Oee/shift-current), same as Andon.
+ * Etkileşimli istasyon seçicili OEE göstergeleri (Kullanılabilirlik / Performans / Kalite / OEE).
+ * Kapsam: güncel katalog vardiya penceresi (/Oee/shift-current), Andon ile aynı.
  */
 const OeePanel = ({
   stationId: controlledStationId,
@@ -79,7 +84,7 @@ const OeePanel = ({
 
   useMesHub({
     onOeeUpdated: () => {
-      // Hub payload is single-tick; re-fetch shift aggregates for consistent A/P/Q.
+      // Hub payload tek-tick; tutarlı A/P/Q için vardiya toplamlarını yeniden çek.
       loadShiftOee(undefined);
     },
   });
@@ -114,7 +119,7 @@ const OeePanel = ({
             ))}
           </select>
         ) : (
-          <InfoTip text="OEE = Kullanılabilirlik × Performans × Kalite. Değerler katalog vardiya penceresinin (/Oee/shift-current) toplamıdır (Andon ile aynı); operatör oturumu sıfırlanınca burası sıfırlanmaz." />
+          <InfoTip text={`${OEE_METRIC_TIPS.oee} ${OEE_METRIC_TIPS.catalogOee}`} />
         )}
       />
 
@@ -122,6 +127,7 @@ const OeePanel = ({
         <GaugeMeter
           label="Kullanılabilirlik"
           value={metric?.availability}
+          tip={OEE_METRIC_TIPS.availability}
           detail={metric?.downtimeReason
             ? `${metric.downtimeReason}${metric.isPlannedDowntime ? ' (planlı)' : ''}`
             : 'Planlı süre ve duruş verisi'}
@@ -129,16 +135,19 @@ const OeePanel = ({
         <GaugeMeter
           label="Performans"
           value={metric?.performance}
+          tip={OEE_METRIC_TIPS.performance}
           detail={metric?.shiftName || 'İdeal çevrim ve gerçekleşen üretim'}
         />
         <GaugeMeter
           label="Kalite"
           value={metric?.quality}
+          tip={OEE_METRIC_TIPS.quality}
           detail={`${metric?.goodProduction ?? 0} OK / ${metric?.totalProduction ?? 0} Toplam`}
         />
         <GaugeMeter
           label="OEE"
           value={metric?.oee}
+          tip={`${OEE_METRIC_TIPS.oee} ${OEE_METRIC_TIPS.catalogOee}`}
           detail={`${metric?.scrapProduction ?? 0} fire`}
         />
       </div>

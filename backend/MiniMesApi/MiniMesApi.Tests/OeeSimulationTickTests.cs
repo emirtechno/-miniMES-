@@ -43,6 +43,7 @@ public class OeeSimulationTickTests
     {
         const int interval = 15;
         var recordedAt = DateTimeOffset.UtcNow;
+        var profile = OeeSimulationService.ResolveStationProfile(StationCatalog.AssemblyLine1);
         var dto = OeeSimulationService.BuildTick(
             StationCatalog.AssemblyLine1,
             StationRuntimeModes.Running,
@@ -52,15 +53,28 @@ public class OeeSimulationTickTests
             interval);
 
         Assert.Equal(interval, dto.PlannedProductionSeconds);
-        Assert.Equal(OeeSimulationService.IdealCycleTimeSeconds, dto.IdealCycleTimeSeconds);
-        Assert.InRange(dto.ActualProductionCount, 5, 12);
+        Assert.Equal(profile.IdealCycleTimeSeconds, dto.IdealCycleTimeSeconds);
+        Assert.InRange(dto.ActualProductionCount, 1, 12);
         Assert.InRange(dto.GoodProductionCount, 0, dto.ActualProductionCount);
-        Assert.InRange(dto.DowntimeSeconds, 0, 3);
+        Assert.InRange(dto.DowntimeSeconds, 0, profile.MaxMicroDowntimeSeconds);
         Assert.True(dto.DowntimeSeconds <= dto.PlannedProductionSeconds);
         if (dto.DowntimeSeconds == 0)
             Assert.Equal(DowntimeReasonCatalog.None, dto.DowntimeReasonCode);
         Assert.True(dto.Temperature > 0);
         Assert.True(dto.Rpm >= 0);
+    }
+
+    [Fact]
+    public void ResolveStationProfile_DifferentiatesActiveLines()
+    {
+        var montaj = OeeSimulationService.ResolveStationProfile(StationCatalog.AssemblyLine1);
+        var test = OeeSimulationService.ResolveStationProfile(StationCatalog.TestAndQuality);
+        var paket2 = OeeSimulationService.ResolveStationProfile(StationCatalog.PackagingLine2);
+
+        Assert.True(test.IdealCycleTimeSeconds > montaj.IdealCycleTimeSeconds);
+        Assert.True(test.ScrapProbability > montaj.ScrapProbability);
+        Assert.True(paket2.MicroDowntimeProbability > montaj.MicroDowntimeProbability);
+        Assert.True(paket2.PerformanceMax < montaj.PerformanceMax);
     }
 
     [Fact]
@@ -176,9 +190,17 @@ public class OeeSimulationTickTests
     [Fact]
     public void ExtremeGaugeProbabilities_AreSparseForDemoSessions()
     {
-        Assert.Equal(0.004, OeeSimulationService.ExtremeTemperatureProbability);
-        Assert.Equal(0.002, OeeSimulationService.ExtremeRpmProbability);
-        Assert.Equal(0.004, OeeSimulationService.ExtremeVibrationProbability);
+        // ~20% lower raise chance vs prior demo rates (0.004 / 0.002 / 0.004).
+        Assert.Equal(0.0032, OeeSimulationService.ExtremeTemperatureProbability);
+        Assert.Equal(0.0016, OeeSimulationService.ExtremeRpmProbability);
+        Assert.Equal(0.0032, OeeSimulationService.ExtremeVibrationProbability);
+    }
+
+    [Fact]
+    public void ScrapProbability_DefaultFallback_IsRaisedForDemoFireRate()
+    {
+        // Bilinmeyen istasyon fallback'i; aktif hatlar StationSimProfile kullanır.
+        Assert.Equal(0.046, OeeSimulationService.ScrapProbability);
     }
 
     [Fact]

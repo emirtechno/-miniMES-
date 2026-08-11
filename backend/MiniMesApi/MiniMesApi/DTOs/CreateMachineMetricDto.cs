@@ -1,6 +1,6 @@
 namespace MiniMesApi.DTOs;
 
-/// <summary>PLC / simulation ingest payload for a machine telemetry tick.</summary>
+/// <summary>PLC / simülasyon ingest gövdesi — makine telemetri tick'i.</summary>
 public sealed class CreateMachineMetricDto
 {
     public string StationId { get; set; } = string.Empty;

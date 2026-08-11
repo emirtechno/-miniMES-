@@ -1,17 +1,17 @@
 import { useId } from 'react';
 
 /**
- * Dark neon semi-circular OEE speedometer for Andon.
- * Value color bands: ≥85 green, ≥45 & <85 yellow, <45 red, null idle.
- * Arc stays cyan→magenta regardless of tone.
+ * Andon için koyu neon yarım daire OEE hız göstergesi.
+ * Değer bantları: ≥85 yeşil, ≥45 & <85 sarı, <45 kırmızı, null idle.
+ * Yay her ton için cyan→magenta kalır.
  */
 
-/** Green from this value up (inclusive). */
+/** Bu değer ve üzeri yeşil (dahil). */
 const GREEN_MIN = 85;
-/** Yellow/warn from this value up (inclusive); below is red. */
+/** Bu değer ve üzeri sarı/uyarı (dahil); altı kırmızı. */
 const YELLOW_MIN = 45;
 
-/** Neon accents for needle + % readout (arc gradient is fixed). */
+/** İbre + % okuması için neon vurgular (yay gradyanı sabittir). */
 const TONE_COLORS = {
   good: '#2DFF8A',
   warn: '#FFE566',
@@ -20,18 +20,18 @@ const TONE_COLORS = {
 };
 
 const CX = 100;
-/** Arc / needle pivot — sits just above the digital % readout. */
+/** Yay / ibre pivotu — dijital % okumasının hemen üstünde. */
 const CY = 102;
 const R = 74;
 const TRACK_R = 74;
-/** Needle shaft reaches near the inner edge of the arc track. */
+/** İbre şaftı yay rayının iç kenarına yaklaşır. */
 const NEEDLE_LEN = 64;
-/** Small gap from pivot so the shaft starts just above the % text. */
+/** Pivot'tan küçük boşluk — şaft % metninin hemen üstünden başlar. */
 const NEEDLE_HUB = 6;
-/** Arrowhead length along the shaft. */
+/** Ok ucu uzunluğu (şaft boyunca). */
 const TIP_LEN = 9;
 
-/** Polar → SVG coords; 0° = right, 180° = left; y increases downward. */
+/** Kutupsal → SVG koordinat; 0° = sağ, 180° = sol; y aşağı artar. */
 function polar(cx, cy, r, angleDeg) {
   const rad = (angleDeg * Math.PI) / 180;
   return {
@@ -40,7 +40,7 @@ function polar(cx, cy, r, angleDeg) {
   };
 }
 
-/** Value 0..100 → gauge angle 180° (left) → 0° (right). */
+/** Değer 0..100 → gösterge açısı 180° (sol) → 0° (sağ). */
 function valueToAngle(value) {
   const v = Math.max(0, Math.min(100, value));
   return 180 - (v / 100) * 180;
@@ -54,7 +54,7 @@ function describeArc(cx, cy, r, startAngle, endAngle) {
   return `M ${start.x} ${start.y} A ${r} ${r} 0 ${large} ${sweep} ${end.x} ${end.y}`;
 }
 
-/** Coerce API/numberish values; null/NaN/non-finite → null (idle). */
+/** API/sayısal değerleri zorla; null/NaN/sonlu değil → null (boşta). */
 function coerceOeeValue(value) {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string' && value.trim() !== '') {
@@ -82,13 +82,13 @@ function buildTicks() {
   return ticks;
 }
 
-/** Arrowhead polygon at `tip`, pointing along `angleDeg` (same polar convention). */
+/** `tip` noktasında ok ucu poligonu; `angleDeg` yönünde (aynı kutupsal kural). */
 function arrowHeadPoints(tip, angleDeg, len = TIP_LEN, halfW = 3.6) {
   const rad = (angleDeg * Math.PI) / 180;
-  // Unit toward tip (from pivot): (cos, -sin). Base sits back along shaft.
+  // Uç yönünde birim vektör (pivot'tan): (cos, -sin). Taban şaft boyunca geriye oturur.
   const bx = tip.x - len * Math.cos(rad);
   const by = tip.y + len * Math.sin(rad);
-  // Perpendicular in screen space
+  // Ekran uzayında dikey
   const px = halfW * Math.sin(rad);
   const py = halfW * Math.cos(rad);
   return `${tip.x},${tip.y} ${bx - px},${by - py} ${bx + px},${by + py}`;
@@ -134,6 +134,7 @@ export default function OeeGauge({
       aria-label={ariaLabel}
       style={{ '--oee-gauge-accent': accent }}
     >
+      <div className="oee-gauge__label" aria-hidden="true">{label}</div>
       <svg
         className="oee-gauge__svg"
         viewBox="0 0 200 148"
@@ -142,7 +143,7 @@ export default function OeeGauge({
         focusable="false"
       >
         <defs>
-          {/* userSpaceOnUse: percentage filter regions collapse on thin lines (zero bbox height). */}
+          {/* userSpaceOnUse: ince çizgilerde yüzde filtresi bölgeleri çöker (sıfır bbox yüksekliği). */}
           <filter
             id={glowId}
             filterUnits="userSpaceOnUse"
@@ -180,7 +181,7 @@ export default function OeeGauge({
           </linearGradient>
         </defs>
 
-        {/* Recessed dark track */}
+        {/* Gölgeli koyu ray */}
         <path
           className="oee-gauge__track"
           d={describeArc(CX, CY, TRACK_R, 180, 0)}
@@ -197,7 +198,7 @@ export default function OeeGauge({
           strokeLinecap="round"
         />
 
-        {/* Soft bloom under neon arc */}
+        {/* Neon yay altında yumuşak parıltı */}
         <path
           d={describeArc(CX, CY, TRACK_R, 180, 0)}
           fill="none"
@@ -208,7 +209,7 @@ export default function OeeGauge({
           filter={`url(#${softGlowId})`}
         />
 
-        {/* Neon cyan → magenta arc */}
+        {/* Neon camgöbeği → magenta yay */}
         <path
           className="oee-gauge__arc"
           d={describeArc(CX, CY, TRACK_R, 180, 0)}
@@ -219,7 +220,7 @@ export default function OeeGauge({
           filter={`url(#${glowId})`}
         />
 
-        {/* Inner highlight hairline */}
+        {/* İç vurgu ince çizgisi */}
         <path
           d={describeArc(CX, CY, TRACK_R - 1.5, 180, 0)}
           fill="none"
@@ -243,10 +244,10 @@ export default function OeeGauge({
           />
         ))}
 
-        {/* Needle: pivot just above % → tip on arc. Drawn in absolute coords (no CSS rotate). */}
+        {/* İbre: pivot % hemen üstünde → uç yayda. Mutlak koordinatta çizilir (CSS rotate yok). */}
         {hasValue && (
           <g className="oee-gauge__needle">
-            {/* Soft neon bloom under shaft */}
+            {/* Şaft altında yumuşak neon parıltı */}
             <line
               x1={needleBase.x}
               y1={needleBase.y}
@@ -258,7 +259,7 @@ export default function OeeGauge({
               opacity="0.28"
               filter={`url(#${softGlowId})`}
             />
-            {/* Visible shaft (çubuk) — thick enough for TV Andon */}
+            {/* Görünür şaft (çubuk) — TV Andon için yeterince kalın */}
             <line
               className="oee-gauge__needle-shaft"
               x1={needleBase.x}
@@ -270,14 +271,14 @@ export default function OeeGauge({
               strokeLinecap="round"
               filter={`url(#${glowId})`}
             />
-            {/* Arrow tip on the arc */}
+            {/* Yay üzerinde ok ucu */}
             <polygon
               className="oee-gauge__needle-tip"
               points={arrowHeadPoints(needleTip, needleAngle)}
               fill={accent}
               filter={`url(#${glowId})`}
             />
-            {/* Subtle pivot dot — no big hub */}
+            {/* Hafif pivot noktası — büyük göbek yok */}
             <circle
               cx={CX}
               cy={CY}
@@ -291,7 +292,7 @@ export default function OeeGauge({
       </svg>
 
       <div className="oee-gauge__value" aria-hidden="true">
-        {/* Inline color so % never stays green when CSS var cascade loses to .andon-shell */}
+        {/* CSS var zinciri .andon-shell'e kayınca % yeşilde kalmasın diye satır içi renk */}
         <strong style={{ color: accent }}>{display}</strong>
       </div>
     </div>

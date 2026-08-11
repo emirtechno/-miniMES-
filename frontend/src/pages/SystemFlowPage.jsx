@@ -205,7 +205,7 @@ const SystemFlowPage = () => (
         </p>
         <p className="m-0 text-sky-300">→ IMetricIngestService → MachineMetrics (SSOT)</p>
         <p className="m-0 pl-4 text-slate-300">
-          + ProductionProgressSync (WO / Lot) · + TelemetryAnomaly → Alarm + pause
+          + ProductionProgressSync (WO) · + TelemetryAnomaly → Alarm + pause
         </p>
         <p className="m-0 pl-4 text-slate-300">
           + SignalR: oeeUpdated · telemetryTick · shiftUpdated · alarmCreated/Updated
@@ -344,11 +344,11 @@ const SystemFlowPage = () => (
           Actual − Good.
         </li>
         <li>
-          <strong>Kalite Raporları:</strong> iş emirleri, lot, alarm listesi, fire içeren tick’ler.
+          <strong>Kalite Raporları:</strong> iş emirleri, alarm listesi, fire içeren tick’ler.
         </li>
         <li>
           <strong>Shop-floor sıfırlama (Yönetim):</strong> onay kutusuna <code className="text-xs">SIFIRLA</code>{' '}
-          → metrikler, scrap, alarmlar, vardiya oturumları, duruş olayları silinir; WO/lot sayaçları 0’lanır;
+          → metrikler, scrap, alarmlar, vardiya oturumları, duruş olayları silinir; WO sayaçları 0’lanır;
           StationRuntime’lar Paused’a çekilir. Kullanıcılar ve ürün/istasyon kataloğu kalır.
         </li>
       </ul>
@@ -369,7 +369,7 @@ const SystemFlowPage = () => (
         <li>NOK / Fire = Actual − Good</li>
         <li>Yield = Good / Actual × 100</li>
         <li>OEE = Availability × Performance × Quality (tick / pencere toplamı)</li>
-        <li>WO / Lot ilerleme = ProductionProgressSync(delta Good)</li>
+        <li>WO ilerleme = ProductionProgressSync(delta Good)</li>
       </ul>
       <ul className="mt-4 space-y-2 text-sm">
         <li>

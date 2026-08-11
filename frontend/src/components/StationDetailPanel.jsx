@@ -1,6 +1,7 @@
 import { Activity } from 'lucide-react';
 import InfoTip from './InfoTip';
 import { getStationDisplayName } from '../constants/stations';
+import { OEE_METRIC_TIPS } from '../constants/oeeMetricTips';
 
 const StationDetailPanel = ({
   stationsList,
@@ -22,7 +23,7 @@ const StationDetailPanel = ({
           <h2 className="mes-section-title m-0">İstasyon Detayı</h2>
           <p className="mes-helper mt-0.5 mb-0">
             Katalog vardiya toplamları (Andon ile aynı) ve son telemetri tick’leri
-            <InfoTip text="Σ değerler /Oee/shift-current penceresidir; operatör oturumu sıfırlanınca burası sıfırlanmaz." className="ml-1 align-middle" />
+            <InfoTip text={OEE_METRIC_TIPS.catalogOee} className="ml-1 align-middle" />
           </p>
         </div>
       </div>
@@ -38,12 +39,12 @@ const StationDetailPanel = ({
 
     <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {[
-        { label: 'Katalog Σ Gerçekleşen', value: stationMetrics.total, hint: 'Aktif katalog vardiya penceresi Σ Actual' },
-        { label: 'Katalog Σ Sağlam', value: stationMetrics.ok, tone: 'text-emerald-700', hint: 'Aktif katalog vardiya penceresi Σ Good' },
-        { label: 'Katalog Σ Fire', value: stationMetrics.nok, tone: 'text-red-700', hint: 'Actual − Good (katalog pencere)' },
-        { label: 'Katalog Verim', value: `%${stationMetrics.yield}`, tone: 'text-amber-700', hint: 'Good / Actual (katalog pencere)' },
+        { label: 'Katalog Σ Gerçekleşen', value: stationMetrics.total, hint: `${OEE_METRIC_TIPS.catalogOee} Σ ActualProductionCount.` },
+        { label: 'Katalog Σ Sağlam', value: stationMetrics.ok, tone: 'text-emerald-700', hint: OEE_METRIC_TIPS.goodScrap },
+        { label: 'Katalog Σ Fire', value: stationMetrics.nok, tone: 'text-red-700', hint: OEE_METRIC_TIPS.goodScrap },
+        { label: 'Katalog Verim', value: `%${stationMetrics.yield}`, tone: 'text-amber-700', hint: OEE_METRIC_TIPS.quality },
       ].map((item) => (
-        <div key={item.label} className="rounded-xl border border-[color:var(--color-line)] bg-slate-50/80 px-4 py-3">
+        <div key={item.label} className="rounded-xl border border-[color:var(--color-line)] bg-slate-50/80 px-4 py-3" title={item.hint} style={{ cursor: 'help' }}>
           <div className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-[color:var(--color-muted)]">
             {item.label}
             <InfoTip text={item.hint} />

@@ -1,6 +1,6 @@
 /**
- * Build and download an .xlsx workbook using ExcelJS (replaces vulnerable sheetjs/xlsx).
- * ExcelJS is loaded on demand to keep the main bundle smaller.
+ * ExcelJS ile .xlsx çalışma kitabı oluştur ve indir (sheetjs/xlsx yerine).
+ * Ana paketi küçük tutmak için ExcelJS istek üzerine yüklenir.
  */
 export async function downloadWorkbook({
   sheetName,

@@ -1,4 +1,4 @@
-/** Maps Identity permission codes to operator-friendly Turkish labels. */
+/** Identity yetki kodlarını operatör dostu Türkçe etiketlere eşler. */
 export const PERMISSION_LABELS = {
   'production.write': 'Telemetri Yazma (Live Stream)',
   'production.manage': 'Kalite Sınıflandırma',

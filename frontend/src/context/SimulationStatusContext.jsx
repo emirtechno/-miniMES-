@@ -5,7 +5,7 @@ import { fetchSimulationStatus, setSimulationEnabled as apiSetSimulationEnabled 
 const SimulationStatusContext = createContext(null);
 
 /**
- * Backend SimulationControls singleton — persists across refresh/restart.
+ * Backend SimulationControls tekil kaydı — yenileme/restart sonrası da kalır.
  */
 export const SimulationStatusProvider = ({ children }) => {
   const { isAuthenticated, currentUser } = useAuth();

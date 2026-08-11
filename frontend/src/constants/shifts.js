@@ -1,4 +1,4 @@
-/** Standard shop-floor shift schedules — must match backend ShiftCatalog (UTC hours). */
+/** Standart shop-floor vardiya çizelgesi — backend ShiftCatalog ile aynı olmalı (UTC saatleri). */
 export const SHIFT_SCHEDULES = [
   {
     code: 'SHIFT_A',
@@ -24,7 +24,7 @@ export const getShiftLabel = (code) => (
   SHIFT_SCHEDULES.find((shift) => shift.code === code)?.label || code || '—'
 );
 
-/** Current catalog shift code for a UTC timestamp (mirrors backend ShiftCatalog.ResolveForUtc). */
+/** UTC zaman damgası için güncel katalog vardiya kodu (backend ShiftCatalog.ResolveForUtc ile aynı). */
 export const resolveShiftCodeForUtc = (date = new Date()) => {
   const hour = date instanceof Date ? date.getUTCHours() : new Date(date).getUTCHours();
   if (hour >= 6 && hour < 14) return 'SHIFT_A';
