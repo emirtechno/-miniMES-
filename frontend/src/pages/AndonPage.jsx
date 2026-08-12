@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, Link } from 'react-router-dom';
 import { AlertTriangle, CheckCheck, CheckCircle, ChevronDown, ChevronRight, History, Radio } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -124,9 +124,6 @@ const AndonPage = () => {
   }, []);
 
   const loadOeeScopes = useCallback(async (signal) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7845/ingest/a8884a6c-891e-4596-b89a-d935c7793420',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'492148'},body:JSON.stringify({sessionId:'492148',runId:'crash-scan',hypothesisId:'H2',location:'AndonPage.jsx:loadOeeScopes',message:'loadOeeScopes called',data:{hasSignal:Boolean(signal)},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     try {
       // NEDEN: Çift OEE — katalog saat penceresi (shift-current) + açık operatör oturumu (board).
       // Oturum başlatınca katalog OEE sıfırlanmaz; oturum OEE StartedAt'tan birikir.
@@ -142,6 +139,17 @@ const AndonPage = () => {
       }
     }
   }, [applyShiftOee, applySessionBoard]);
+
+  // NEDEN: Her istasyon tick'i oeeUpdated basınca 6× paralel shift-current/board isteği pending yığılıp Andon çöküyordu.
+  const oeeRefreshTimerRef = useRef(0);
+  const scheduleOeeRefresh = useCallback(() => {
+    window.clearTimeout(oeeRefreshTimerRef.current);
+    oeeRefreshTimerRef.current = window.setTimeout(() => {
+      loadOeeScopes(undefined);
+    }, 400);
+  }, [loadOeeScopes]);
+
+  useEffect(() => () => window.clearTimeout(oeeRefreshTimerRef.current), []);
 
   const loadAndonBoard = useCallback(async (signal, { showLoading = false } = {}) => {
     try {
@@ -178,11 +186,10 @@ const AndonPage = () => {
 
   const { connected } = useMesHub({
     onOeeUpdated: () => {
-      // Hub tick payload tek-tick kapsamlı; kartlar tutarlı kalsın diye her iki OEE kapsamını yeniden çek.
-      loadOeeScopes(undefined);
+      scheduleOeeRefresh();
     },
     onShiftUpdated: () => {
-      loadOeeScopes(undefined);
+      scheduleOeeRefresh();
     },
     onAlarmCreated: (alarm) => {
       if (isClosedAlarm(alarm.status)) return;
