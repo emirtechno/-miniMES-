@@ -180,15 +180,13 @@ const MachineMetricsPanel = ({
       .filter((item) => item.recordedAt)
       .sort((a, b) => new Date(a.recordedAt) - new Date(b.recordedAt));
 
-    let cumActual = 0;
-    let cumGood = 0;
-    let cumDown = 0;
-    return sorted.map((item, index) => {
+    return sorted.reduce((rows, item, index) => {
       const ms = new Date(item.recordedAt).getTime();
-      cumActual += Number(item.actualProductionCount) || 0;
-      cumGood += Number(item.goodProductionCount) || 0;
-      cumDown += Number(item.downtimeSeconds) || 0;
-      return {
+      const prev = rows[rows.length - 1];
+      const cumActual = (prev?.Gerceklesen ?? 0) + (Number(item.actualProductionCount) || 0);
+      const cumGood = (prev?.Saglam ?? 0) + (Number(item.goodProductionCount) || 0);
+      const cumDown = (prev?.Durus ?? 0) + (Number(item.downtimeSeconds) || 0);
+      rows.push({
         t: ms,
         timeLabel: formatTickTime(ms, selectedRange.ms),
         Gerceklesen: cumActual,
@@ -198,8 +196,9 @@ const MachineMetricsPanel = ({
         tickGood: item.goodProductionCount ?? 0,
         tickDown: item.downtimeSeconds ?? 0,
         id: item.id ?? `${ms}-${index}`,
-      };
-    });
+      });
+      return rows;
+    }, []);
   }, [metrics, selectedRange]);
 
   const chartDomain = useMemo(() => {
