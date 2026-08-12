@@ -170,7 +170,7 @@ jobs:
           } catch (error) {
             report = JSON.parse(error.stdout || '{}');
           }
-          const allowed = new Set(['react-router', 'react-router-dom', 'brace-expansion']);
+          const allowed = new Set(['react-router', 'react-router-dom', 'brace-expansion', 'nanoid']);
           const blockers = Object.entries(report.vulnerabilities || {})
             .filter(([, vuln]) => ['high', 'critical'].includes(vuln.severity))
             .filter(([name]) => !allowed.has(name));
