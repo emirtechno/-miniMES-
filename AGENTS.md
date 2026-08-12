@@ -1,6 +1,6 @@
 # AGENTS.md
 
-## Cursor Cloud specific instructions
+## Local and cloud agent setup
 
 This repo is a two-service **Vestel Mini MES** app plus a SQL Server database:
 
