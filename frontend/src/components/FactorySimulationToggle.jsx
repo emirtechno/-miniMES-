@@ -5,7 +5,7 @@ import { useSimulationStatus } from '../context/SimulationStatusContext';
 import { getApiErrorMessage } from '../services/api';
 
 /**
- * Toggle for backend SimulationControls (persisted in DB across restarts).
+ * Backend SimulationControls anahtarı (restart sonrası DB'de kalır).
  */
 const FactorySimulationToggle = ({ compact = false, className = '' }) => {
   const { notify, confirm } = useNotify();

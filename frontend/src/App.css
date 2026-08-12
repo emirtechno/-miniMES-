@@ -11,7 +11,7 @@
   --warning: #c47f17;
 }
 
-/* Legacy layout helpers kept for panels not yet fully migrated */
+/* Henüz tam taşınmamış paneller için eski düzen yardımcıları */
 .app-container {
   display: flex;
   height: 100vh;
@@ -20,7 +20,7 @@
   overflow: hidden;
 }
 
-/* Sidebar */
+/* Kenar çubuğu */
 .sidebar {
   width: 240px;
   background: linear-gradient(180deg, #0f172a 0%, #111827 100%);
@@ -87,7 +87,7 @@
   flex-direction: column;
 }
 
-/* Header */
+/* Üst başlık */
 .top-header {
   display: flex;
   justify-content: space-between;
@@ -217,8 +217,8 @@
   gap: 12px;
 }
 
-/* Legacy OeePanel meter helpers (Tailwind GaugeMeter replaced the old card).
-   Neon Andon gauge styles live in AndonPage.css — do not reintroduce a light panel here. */
+/* Eski OeePanel metre yardımcıları (eski kartın yerini Tailwind GaugeMeter aldı).
+   Neon Andon gauge stilleri AndonPage.css'te — buraya açık renkli panel geri getirme. */
 .oee-gauge-visual {
   position: relative;
   height: 66px;
@@ -248,7 +248,7 @@
   font-size: 1rem;
 }
 
-/* Form */
+/* Form alanı */
 .form-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -312,7 +312,7 @@
   background-color: var(--primary-hover);
 }
 
-/* Desktop-like compact layout */
+/* Masaüstü benzeri kompakt düzen */
 .main-content > * {
   max-width: 100%;
 }
@@ -624,6 +624,31 @@
   background: #fff;
   box-shadow: 0 12px 30px rgba(15, 23, 42, 0.16);
   color: var(--text-dark);
+}
+
+.toast-body {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.toast-action {
+  border: 1px solid currentColor;
+  background: transparent;
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  color: inherit;
+  white-space: nowrap;
+}
+
+.toast-action:hover {
+  background: rgba(15, 23, 42, 0.06);
 }
 
 .toast-error {

@@ -1,6 +1,6 @@
 /**
- * Compact horizontal segment control for UI persona switching.
- * Only personas allowed for the JWT user are shown.
+ * UI persona geçişi için kompakt yatay segment kontrolü.
+ * Yalnızca JWT kullanıcısına izin verilen personelar gösterilir.
  */
 const PersonaSwitcher = ({ persona, onSelect, allowedPersonas }) => {
   const items = allowedPersonas?.length ? allowedPersonas : [];

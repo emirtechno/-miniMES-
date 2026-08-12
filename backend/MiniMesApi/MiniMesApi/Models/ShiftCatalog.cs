@@ -31,7 +31,7 @@ public static class ShiftCatalog
     }
 
     /// <summary>
-    /// Current shift occurrence window in UTC (A 06–14, B 14–22, C 22–06 overnight).
+    /// UTC'de güncel vardiya oluşum penceresi (A 06–14, B 14–22, C 22–06 gece).
     /// </summary>
     public static ShiftWindow ResolveWindowForUtc(DateTimeOffset timestampUtc)
     {
@@ -63,7 +63,7 @@ public static class ShiftCatalog
                 new DateTimeOffset(date.AddDays(1).AddHours(6), TimeSpan.Zero));
         }
 
-        // 00:00–05:59 → overnight Shift C that started previous calendar day 22:00
+        // 00:00–05:59 → önceki takvim günü 22:00'de başlayan gece vardiyası C
         return new ShiftWindow(
             ShiftC,
             new DateTimeOffset(date.AddDays(-1).AddHours(22), TimeSpan.Zero),

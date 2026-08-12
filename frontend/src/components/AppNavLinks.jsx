@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 
-/** Sidebar / mobile nav links — declared outside render to satisfy react-hooks/static-components. */
+/** Kenar çubuğu / mobil nav bağlantıları — react-hooks/static-components için render dışında tanımlı. */
 export default function AppNavLinks({ items, onNavigate }) {
   const location = useLocation();
 

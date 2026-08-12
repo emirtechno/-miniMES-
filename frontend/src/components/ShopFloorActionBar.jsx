@@ -30,7 +30,7 @@ const clampScrapQty = (value) => {
 };
 
 /**
- * Industrial HMI-style touch action bar for the operator panel.
+ * Operatör paneli için endüstriyel HMI tarzı dokunmatik eylem çubuğu.
  */
 const ShopFloorActionBar = ({
   shift,

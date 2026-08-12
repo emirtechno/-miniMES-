@@ -2,9 +2,11 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   advanceWorkOrder,
   createWorkOrder,
-  fetchBatches,
+  deleteWorkOrder,
   fetchWorkOrders,
   getApiErrorMessage,
+  restoreDeletedWorkOrder,
+  restoreWorkOrder,
 } from '../services/api';
 import { ACTIVE_STATION_DEFINITIONS, DEFAULT_STATION } from '../constants/stations';
 import { useNonOverlappingPolling } from './useNonOverlappingPolling';
@@ -13,16 +15,18 @@ const SAMPLE_PRODUCTS = [
   'Montaj Kiti A',
   'Elektronik Kart B',
   'Paketleme Ünitesi C',
-  'Final Kontrol Lotu D',
+  'Final Kontrol Ürünü D',
 ];
 
+// NEDEN: İş emri listesi + advance/arşiv/soft-delete tek hook'ta. Backend WO-only (lot/batch yok).
+// NASIL: scope=active + scope=history paralel çekilir; 8 sn poll; silince toast ile restore-deleted.
 export function useWorkOrders({
   isAuthenticated,
   canManageWorkOrders,
   notify,
 }) {
   const [workOrders, setWorkOrders] = useState([]);
-  const [batches, setBatches] = useState([]);
+  const [historyWorkOrders, setHistoryWorkOrders] = useState([]);
   const [workOrderForm, setWorkOrderForm] = useState({
     orderNo: '',
     product: '',
@@ -33,18 +37,13 @@ export function useWorkOrders({
 
   const loadWorkOrders = useCallback(async (signal) => {
     try {
-      const page = await fetchWorkOrders({ signal });
-      setWorkOrders(page.items);
-    } catch (err) {
-      if (err.name === 'CanceledError' || err.name === 'AbortError') return;
-      console.error(err);
-    }
-  }, []);
-
-  const loadBatches = useCallback(async (signal) => {
-    try {
-      const page = await fetchBatches({ signal });
-      setBatches(page.items);
+      // NEDEN: Aktif pano (Arşivlendi hariç) + geçmiş (yalnız Arşivlendi) ayrı tutulur — soft-delete listede yok.
+      const [activePage, historyPage] = await Promise.all([
+        fetchWorkOrders({ signal, scope: 'active' }),
+        fetchWorkOrders({ signal, scope: 'history' }),
+      ]);
+      setWorkOrders(activePage.items);
+      setHistoryWorkOrders(historyPage.items);
     } catch (err) {
       if (err.name === 'CanceledError' || err.name === 'AbortError') return;
       console.error(err);
@@ -55,13 +54,12 @@ export function useWorkOrders({
     if (!isAuthenticated) return undefined;
     const controller = new AbortController();
     loadWorkOrders(controller.signal);
-    loadBatches(controller.signal);
     return () => controller.abort();
-  }, [isAuthenticated, loadBatches, loadWorkOrders]);
+  }, [isAuthenticated, loadWorkOrders]);
 
   useNonOverlappingPolling(
     async (signal) => {
-      await Promise.all([loadBatches(signal), loadWorkOrders(signal)]);
+      await loadWorkOrders(signal);
     },
     {
       enabled: isAuthenticated,
@@ -121,6 +119,7 @@ export function useWorkOrders({
     }
   }, [canManageWorkOrders, loadWorkOrders, notify]);
 
+  // NEDEN: advance = Bekliyor→…→Arşivlendi tek adım; RowVersion iyimser kilit (409 olursa UI yeniler).
   const handleAdvanceWorkOrder = useCallback(async (order) => {
     if (!canManageWorkOrders) {
       notify('İş emri durumunu değiştirme yetkiniz yok.', 'error');
@@ -135,12 +134,61 @@ export function useWorkOrders({
     }
   }, [canManageWorkOrders, loadWorkOrders, notify]);
 
+  // NEDEN: Arşivlendi → Tamamlandı (geçmişten geri). Soft-delete geri alma handleUndoDeletedWorkOrder'da.
+  const handleRestoreWorkOrder = useCallback(async (order) => {
+    if (!canManageWorkOrders) {
+      notify('İş emri durumunu değiştirme yetkiniz yok.', 'error');
+      return;
+    }
+    try {
+      await restoreWorkOrder(order.id, order.rowVersion);
+      await loadWorkOrders();
+    } catch (err) {
+      notify(getApiErrorMessage(err, 'İş emri geçmişten geri alınamadı.'), 'error');
+      console.error(err);
+    }
+  }, [canManageWorkOrders, loadWorkOrders, notify]);
+
+  const handleUndoDeletedWorkOrder = useCallback(async (deleted) => {
+    try {
+      await restoreDeletedWorkOrder(deleted.id, deleted.rowVersion);
+      notify('İş emri geri alındı.', 'success');
+      await loadWorkOrders();
+    } catch (err) {
+      notify(getApiErrorMessage(err, 'İş emri geri alınamadı.'), 'error');
+      console.error(err);
+    }
+  }, [loadWorkOrders, notify]);
+
+  // NEDEN: Hard-delete yok — DELETE soft-delete (DeletedAt). Toast'taki "Geri al" → restore-deleted.
+  const handleDeleteWorkOrder = useCallback(async (order) => {
+    if (!canManageWorkOrders) {
+      notify('İş emri silme yetkiniz yok.', 'error');
+      return;
+    }
+    try {
+      const deleted = await deleteWorkOrder(order.id, order.rowVersion);
+      await loadWorkOrders();
+      notify('İş emri silindi', 'info', {
+        actionLabel: 'Geri al',
+        durationMs: 12000,
+        onAction: () => {
+          void handleUndoDeletedWorkOrder(deleted);
+        },
+      });
+    } catch (err) {
+      notify(getApiErrorMessage(err, 'İş emri silinemedi.'), 'error');
+      console.error(err);
+    }
+  }, [canManageWorkOrders, handleUndoDeletedWorkOrder, loadWorkOrders, notify]);
+
   return {
     workOrders,
-    batches,
+    historyWorkOrders,
     loadWorkOrders,
-    loadBatches,
     handleAdvanceWorkOrder,
+    handleRestoreWorkOrder,
+    handleDeleteWorkOrder,
     handleCreateSampleWorkOrder,
     creatingSample,
     workOrderForm: {

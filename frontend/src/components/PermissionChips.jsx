@@ -1,7 +1,7 @@
 import { getPermissionHint, getPermissionLabel } from '../constants/permissions';
 
 /**
- * Structured permission chips instead of raw comma-separated codes.
+ * Ham virgülle ayrılmış kodlar yerine yapılandırılmış yetki rozetleri.
  */
 const PermissionChips = ({ permissions = [], compact = false }) => {
   if (!permissions.length) {

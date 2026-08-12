@@ -17,10 +17,11 @@ import { fetchShiftCurrentOeeAll } from '../services/api';
 import { useMesHub } from '../hooks/useMesHub';
 import { ACTIVE_STATION_DEFINITIONS, DEFAULT_STATION, getStationDisplayName } from '../constants/stations';
 import { kpiFromShiftOee, mapShiftOeeByStation } from '../utils/telemetryAggregate';
+import { OEE_METRIC_TIPS } from '../constants/oeeMetricTips';
 
 const STICKY_SCROLL_OFFSET_PX = 12;
 
-/** Scroll a target inside `.mes-content` only (never window scrollIntoView). */
+/** Hedefi yalnızca `.mes-content` içinde kaydır (asla window scrollIntoView değil). */
 const scrollIntoMesContent = (target) => {
   if (!target) return;
   const scroller = target.closest('.mes-content')
@@ -47,7 +48,7 @@ const toneForOee = (value) => {
 };
 
 /**
- * Plant manager command center: factory-wide shift-window OEE and multi-line status timeline.
+ * Fabrika yönetici komuta merkezi: fabrika geneli vardiya penceresi OEE ve çok hatlı durum zaman çizelgesi.
  */
 const PlantOverviewPage = ({
   workOrders = [],
@@ -126,7 +127,9 @@ const PlantOverviewPage = ({
     [oeeByStation],
   );
 
-  const activeWo = workOrders.filter((order) => order.status !== 'Tamamlandı').length;
+  const activeWo = workOrders.filter(
+    (order) => order.status !== 'Tamamlandı' && order.status !== 'Arşivlendi',
+  ).length;
 
   return (
     <div className="flex flex-col gap-5">
@@ -150,21 +153,21 @@ const PlantOverviewPage = ({
         />
         <FactorySimulationToggle className="mb-4" />
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-xl border border-sky-200 bg-sky-50/70 p-4">
+          <div className="rounded-xl border border-sky-200 bg-sky-50/70 p-4" title={`${OEE_METRIC_TIPS.catalogOee} ${OEE_METRIC_TIPS.oee}`} style={{ cursor: 'help' }}>
             <div className="text-xs font-semibold uppercase tracking-wide text-sky-800">Ortalama OEE</div>
             <div className="font-display mt-1 text-3xl font-semibold text-sky-950">
               {plantAverage == null ? '—' : `%${plantAverage.toFixed(1)}`}
             </div>
           </div>
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4">
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4" title={OEE_METRIC_TIPS.goodScrap} style={{ cursor: 'help' }}>
             <div className="text-xs font-semibold uppercase tracking-wide text-emerald-800">Σ Sağlam (OK)</div>
             <div className="font-display mt-1 text-3xl font-semibold text-emerald-950">{plantTotals.good}</div>
           </div>
-          <div className="rounded-xl border border-red-200 bg-red-50/70 p-4">
+          <div className="rounded-xl border border-red-200 bg-red-50/70 p-4" title={OEE_METRIC_TIPS.goodScrap} style={{ cursor: 'help' }}>
             <div className="text-xs font-semibold uppercase tracking-wide text-red-800">Σ Fire (NOK)</div>
             <div className="font-display mt-1 text-3xl font-semibold text-red-950">{plantTotals.nok}</div>
           </div>
-          <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4">
+          <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4" title={OEE_METRIC_TIPS.openWorkOrders} style={{ cursor: 'help' }}>
             <div className="text-xs font-semibold uppercase tracking-wide text-amber-900">Açık İş Emri</div>
             <div className="font-display mt-1 text-3xl font-semibold text-amber-950">{activeWo}</div>
           </div>

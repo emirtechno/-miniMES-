@@ -1,7 +1,7 @@
 namespace MiniMesApi.DTOs;
 
 /// <summary>
-/// Aggregated MachineMetrics KPIs — single source of truth for dashboards.
+/// Toplanmış MachineMetrics KPI'ları — panolar için tek kaynak (SSOT).
 /// Actual = Σ ActualProductionCount, Good = Σ GoodProductionCount, Nok = Actual − Good.
 /// </summary>
 public sealed class TelemetrySummaryDto

@@ -5,10 +5,9 @@ using MiniMesApi.Models;
 
 namespace MiniMesApi.Services;
 
-/// <summary>
-/// Aggregates MachineMetrics / ScrapLogs for an operator ShiftSession.
-/// Prefers ShiftSessionId; falls back to station + StartedAt..end for legacy rows.
-/// </summary>
+// NEDEN: Operatör ShiftSession KPI'ları (adet, fire, downtime, OEE) MachineMetrics + ScrapLogs'tan üretilir.
+// ShiftSessionId tercih edilir; eski satırlar için istasyon + StartedAt..end zaman aralığına düşer.
+// NASIL: LoadMetrics/LoadScrap → OeeCalculator.CalculateFromWindow → ShiftSessionSummaryDto / board satırı.
 public static class ShiftSessionAggregator
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -42,9 +41,7 @@ public static class ShiftSessionAggregator
         };
     }
 
-    /// <summary>
-    /// Session-scoped OEE (A/P/Q + counts). Returns null when the session has no metrics yet.
-    /// </summary>
+    // NEDEN: Oturum kapsamlı OEE (A/P/Q + sayılar). Metrik yoksa null — UI “henüz veri yok” gösterebilir.
     public static async Task<OeeMetricDto?> BuildOeeAsync(
         MesDbContext context,
         ShiftSession session,
@@ -60,9 +57,8 @@ public static class ShiftSessionAggregator
         return OeeCalculator.CalculateFromWindow(metrics, session.StationId, session.ShiftCode);
     }
 
-    /// <summary>
-    /// Plant-wide Andon board: all non-ended sessions, one per station (latest StartedAt wins).
-    /// </summary>
+    // NEDEN: Fabrika geneli Andon board — bitmemiş oturumlar, istasyon başına en son StartedAt kazanır.
+    // NASIL: Status != Ended → GroupBy StationId → her oturum için BuildOeeAsync.
     public static async Task<IReadOnlyList<ShiftSessionBoardItemDto>> BuildBoardAsync(
         MesDbContext context,
         CancellationToken cancellationToken = default)
@@ -102,6 +98,7 @@ public static class ShiftSessionAggregator
         return board;
     }
 
+    // NEDEN: Vardiya kapanınca özet kolonlara + SummaryJson'a yazılır (sonradan metrik silinse bile KPI kalır).
     public static void ApplyPersistedSummary(ShiftSession session, ShiftSessionSummaryDto summary)
     {
         ArgumentNullException.ThrowIfNull(session);
@@ -124,6 +121,7 @@ public static class ShiftSessionAggregator
         }, JsonOptions);
     }
 
+    // NEDEN: Kapalı oturumda önce SummaryJson, yoksa kolon alanlarından DTO üret.
     public static ShiftSessionSummaryDto? FromPersisted(ShiftSession session)
     {
         ArgumentNullException.ThrowIfNull(session);
@@ -167,7 +165,7 @@ public static class ShiftSessionAggregator
             }
             catch (JsonException)
             {
-                // fall through to column fields
+                // JSON bozuksa kolon alanlarına düş
             }
         }
 
@@ -183,6 +181,7 @@ public static class ShiftSessionAggregator
         };
     }
 
+    // NEDEN: Önce ShiftSessionId ile etiketli metrikler; yoksa legacy zaman aralığı (eski satırlar).
     private static async Task<List<MachineMetric>> LoadMetricsAsync(
         MesDbContext context,
         ShiftSession session,
@@ -202,6 +201,7 @@ public static class ShiftSessionAggregator
             .ToListAsync(cancellationToken);
     }
 
+    // NEDEN: Operatörün girdiği ScrapLog miktarı oturum KPI'sında ayrı tutulur (OEE scrap'inden farklı kaynak).
     private static async Task<int> LoadScrapQuantityAsync(
         MesDbContext context,
         ShiftSession session,

@@ -14,7 +14,7 @@ namespace MiniMesApi.Models
         [StringLength(100)]
         public string Product { get; set; } = string.Empty;
 
-        /// <summary>Optional FK to Products catalog (nullable; Product string remains SSOT for display).</summary>
+        /// <summary>İsteğe bağlı Products katalog FK (nullable; görüntüleme SSOT'u Product string'dir).</summary>
         public int? ProductId { get; set; }
 
         public Product? ProductRef { get; set; }
@@ -25,16 +25,17 @@ namespace MiniMesApi.Models
 
         public int Quantity { get; set; }
 
-        /// <summary>Good units completed from telemetry (0 ≤ CompletedQuantity ≤ Quantity).</summary>
+        /// <summary>Telemetriden tamamlanan iyi adet (0 ≤ CompletedQuantity ≤ Quantity).</summary>
         public int CompletedQuantity { get; set; }
 
         [Required]
         [StringLength(30)]
         public string Status { get; set; } = "Bekliyor";
 
+        /// <summary>Soft-delete zaman damgası; null ise iş emri listelerde görünür.</summary>
+        public DateTimeOffset? DeletedAt { get; set; }
+
         [Timestamp]
         public byte[] RowVersion { get; set; } = [];
-
-        public ICollection<Batch> Lots { get; set; } = new List<Batch>();
     }
 }

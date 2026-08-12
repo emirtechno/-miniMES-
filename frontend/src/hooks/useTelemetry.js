@@ -14,10 +14,9 @@ import {
   summaryFromApi,
 } from '../utils/telemetryAggregate';
 
-/**
- * Machine Telemetry SSOT read model.
- * Backend OeeSimulation / PLC writes MachineMetrics; UI refreshes via poll + SignalR.
- */
+// NEDEN: Makine telemetrisi tek okuma modeli (SSOT). Backend OeeSimulation / PLC → MachineMetrics yazar;
+// UI poll + SignalR ile yeniler. metricsFeed App'ten bu panele merge edilmez (MachineMetricsPanel kendi poll'unu kullanır).
+// NASIL: fetchMachineMetrics (son tick'ler) + fetchTelemetrySummary (KPI) → byStation/plantKpi; hub oee/telemetry tick'te arka plan refresh.
 export function useTelemetry({
   isAuthenticated,
   autoRefresh,
@@ -57,7 +56,7 @@ export function useTelemetry({
     } catch (err) {
       if (err.name === 'CanceledError' || err.name === 'AbortError') return;
       setError(getApiErrorMessage(err, 'Telemetri özeti alınamadı.'));
-      // Fallback: aggregate locally from fetched page if summary fails mid-stream.
+      // NEDEN: Summary API ortada düşerse sayfadaki son tick'lerden yerel aggregate ile KPI'yı ayakta tut.
       try {
         const page = await fetchMachineMetrics({ signal, limit: 120 });
         setMetrics(page.items || []);
@@ -69,7 +68,7 @@ export function useTelemetry({
         setByStation(localByStation);
         setPlantKpi(aggregateMetrics(page.items || [], null));
       } catch {
-        // keep previous
+        // Öncekini koru
       }
     } finally {
       if (!background) setLoading(false);
@@ -83,6 +82,7 @@ export function useTelemetry({
     return () => controller.abort();
   }, [isAuthenticated, refresh]);
 
+  // NEDEN: Canlı yayın açıksa daha sık poll (6 sn); değilse 12 sn. Çakışmayan polling üst üste istek atmaz.
   useNonOverlappingPolling(
     (signal) => refresh(signal, { background: true }),
     {
@@ -93,6 +93,7 @@ export function useTelemetry({
     },
   );
 
+  // NEDEN: SignalR oeeUpdated / telemetryTick gelince anında arka plan yenileme (poll beklemeden).
   useMesHub({
     onOeeUpdated: () => {
       if (!isAuthenticated) return;

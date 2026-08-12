@@ -15,7 +15,6 @@ public sealed class CreateScrapDto
     public string? ReasonCode { get; init; }
 
     public int? WorkOrderId { get; init; }
-    public int? BatchId { get; init; }
     public int? ShiftSessionId { get; init; }
 }
 
@@ -26,7 +25,6 @@ public sealed class ScrapLogDto
     public int Quantity { get; init; }
     public string? ReasonCode { get; init; }
     public int? WorkOrderId { get; init; }
-    public int? BatchId { get; init; }
     public int? ShiftSessionId { get; init; }
     public string OperatorUserId { get; init; } = string.Empty;
     public DateTimeOffset RecordedAt { get; init; }

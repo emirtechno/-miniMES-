@@ -15,10 +15,10 @@ public sealed class SetSimulationEnabledDto
     public bool Enabled { get; set; }
 }
 
-/// <summary>Destructive demo reset — requires exact confirmation phrase.</summary>
+/// <summary>Yıkıcı demo sıfırlama — tam onay cümlesi gerekir.</summary>
 public sealed class ResetShopFloorDto
 {
-    /// <summary>Must be <c>SIFIRLA</c> (case-sensitive).</summary>
+    /// <summary>Tam olarak <c>SIFIRLA</c> olmalı (büyük/küçük harf duyarlı).</summary>
     [Required]
     [StringLength(32)]
     public string Confirmation { get; set; } = string.Empty;
@@ -36,6 +36,5 @@ public sealed class ShopFloorResetResultDto
     public int ShiftSessionsDeleted { get; init; }
     public int StationRuntimesReset { get; init; }
     public int WorkOrdersProgressCleared { get; init; }
-    public int BatchesProgressCleared { get; init; }
     public int UretimKayitlariDeleted { get; init; }
 }

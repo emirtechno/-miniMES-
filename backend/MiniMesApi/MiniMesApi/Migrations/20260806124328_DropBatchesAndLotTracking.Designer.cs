@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using MiniMesApi.Models;
 
@@ -11,9 +12,11 @@ using MiniMesApi.Models;
 namespace MiniMesApi.Migrations
 {
     [DbContext(typeof(MesDbContext))]
-    partial class MesDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260806124328_DropBatchesAndLotTracking")]
+    partial class DropBatchesAndLotTracking
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -215,7 +218,7 @@ namespace MiniMesApi.Migrations
                     b.HasIndex("Time", "Id")
                         .IsDescending();
 
-                    b.ToTable("Alarms", (string)null);
+                    b.ToTable("Alarms");
                 });
 
             modelBuilder.Entity("MiniMesApi.Models.ApplicationUser", b =>
@@ -337,7 +340,7 @@ namespace MiniMesApi.Migrations
                     b.HasIndex("EntityType", "EntityId", "OccurredAtUtc")
                         .IsDescending(false, false, true);
 
-                    b.ToTable("AuditLogs", (string)null);
+                    b.ToTable("AuditLogs");
                 });
 
             modelBuilder.Entity("MiniMesApi.Models.DowntimeEvent", b =>
@@ -402,7 +405,7 @@ namespace MiniMesApi.Migrations
                     b.HasIndex("StationId", "StartedAt", "Id")
                         .IsDescending(false, true, true);
 
-                    b.ToTable("DowntimeEvents", null, t =>
+                    b.ToTable("DowntimeEvents", t =>
                         {
                             t.HasCheckConstraint("CK_DowntimeEvents_Duration", "[DurationSeconds] IS NULL OR [DurationSeconds] >= 0");
 
@@ -477,7 +480,7 @@ namespace MiniMesApi.Migrations
                     b.HasIndex("StationId", "RecordedAt", "Id")
                         .IsDescending(false, true, true);
 
-                    b.ToTable("MachineMetrics", null, t =>
+                    b.ToTable("MachineMetrics", t =>
                         {
                             t.HasCheckConstraint("CK_MachineMetrics_Counts", "[ActualProductionCount] >= 0 AND [GoodProductionCount] >= 0 AND [GoodProductionCount] <= [ActualProductionCount]");
 
@@ -524,7 +527,7 @@ namespace MiniMesApi.Migrations
                     b.HasIndex("ProductCode")
                         .IsUnique();
 
-                    b.ToTable("Products", (string)null);
+                    b.ToTable("Products");
                 });
 
             modelBuilder.Entity("MiniMesApi.Models.ScrapLog", b =>
@@ -575,7 +578,7 @@ namespace MiniMesApi.Migrations
                     b.HasIndex("StationId", "RecordedAt", "Id")
                         .IsDescending(false, true, true);
 
-                    b.ToTable("ScrapLogs", null, t =>
+                    b.ToTable("ScrapLogs", t =>
                         {
                             t.HasCheckConstraint("CK_ScrapLogs_Quantity", "[Quantity] > 0");
                         });
@@ -684,7 +687,7 @@ namespace MiniMesApi.Migrations
 
                     b.HasIndex("UserId", "Status", "StartedAt");
 
-                    b.ToTable("ShiftSessions", null, t =>
+                    b.ToTable("ShiftSessions", t =>
                         {
                             t.HasCheckConstraint("CK_ShiftSessions_Status", "[Status] IN (N'Active', N'OnBreak', N'InSetup', N'Ended')");
                         });
@@ -731,7 +734,7 @@ namespace MiniMesApi.Migrations
                     b.HasIndex("ShiftSessionId", "OccurredAt", "Id")
                         .IsDescending(false, true, true);
 
-                    b.ToTable("ShiftSessionEvents", null, t =>
+                    b.ToTable("ShiftSessionEvents", t =>
                         {
                             t.HasCheckConstraint("CK_ShiftSessionEvents_FromStatus", "[FromStatus] IN (N'', N'Active', N'OnBreak', N'InSetup', N'Ended')");
 
@@ -756,7 +759,7 @@ namespace MiniMesApi.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("SimulationControls", null, t =>
+                    b.ToTable("SimulationControls", t =>
                         {
                             t.HasCheckConstraint("CK_SimulationControls_Singleton", "[Id] = 1");
                         });
@@ -794,7 +797,7 @@ namespace MiniMesApi.Migrations
 
                     b.HasKey("StationId");
 
-                    b.ToTable("StationRuntimes", null, t =>
+                    b.ToTable("StationRuntimes", t =>
                         {
                             t.HasCheckConstraint("CK_StationRuntimes_Mode", "[Mode] IN (N'Running', N'Paused', N'Down')");
                         });
@@ -856,7 +859,7 @@ namespace MiniMesApi.Migrations
                     b.HasIndex("IsDeleted", "UretimTarihi", "ID")
                         .IsDescending(false, true, true);
 
-                    b.ToTable("UretimKayitlari", null, t =>
+                    b.ToTable("UretimKayitlari", t =>
                         {
                             t.HasCheckConstraint("CK_UretimKayitlari_KaliteDurumu", "[KaliteDurumu] IN (N'OK', N'NOK', N'REWORK')");
                         });
@@ -917,7 +920,7 @@ namespace MiniMesApi.Migrations
 
                     b.HasIndex("ProductId");
 
-                    b.ToTable("WorkOrders", null, t =>
+                    b.ToTable("WorkOrders", t =>
                         {
                             t.HasCheckConstraint("CK_WorkOrders_CompletedQuantity", "[CompletedQuantity] >= 0 AND [CompletedQuantity] <= [Quantity]");
 

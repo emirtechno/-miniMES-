@@ -3,6 +3,9 @@ using MiniMesApi.Models;
 
 namespace MiniMesApi.Services;
 
+// NEDEN: OEE (Overall Equipment Effectiveness) tek formülle hesaplanır: A × P × Q.
+// Hem tek tick (Andon anlık) hem pencere toplamı (vardiya oturumu) aynı çekirdeği kullanır — tutarlı panolar.
+// NASIL: Availability = (planned−downtime)/planned; Performance = (ICT×actual)/operatingTime; Quality = good/actual; OEE = A×P×Q/10000.
 public static class OeeCalculator
 {
     public static OeeMetricDto Calculate(MachineMetric metric)
@@ -25,10 +28,9 @@ public static class OeeCalculator
             lastUpdated: metric.RecordedAt);
     }
 
-    /// <summary>
-    /// Aggregate MachineMetrics over a shift window into one OEE DTO.
-    /// Status/downtime reason comes from <paramref name="statusMetric"/> (typically absolute latest tick).
-    /// </summary>
+    // NEDEN: Vardiya oturumu / Andon board birden fazla MachineMetric satırını tek OEE'ye indirger.
+    // Durum/duruş nedeni statusMetric'ten (genelde en son tick) alınır; sayılar penceredeki tüm satırlardan toplanır.
+    // NASIL: planned/downtime/actual/good toplanır; ICT üretim ağırlıklı ortalamayla; CalculateCore'a verilir.
     public static OeeMetricDto CalculateFromWindow(
         IReadOnlyList<MachineMetric> metrics,
         string stationId,
@@ -80,6 +82,7 @@ public static class OeeCalculator
             actual += rowActual;
             good += rowGood;
             ictSum += metric.IdealCycleTimeSeconds;
+            // NEDEN: Ideal cycle time üretim yapan tick'lerde daha anlamlı; ağırlıklı ortalama kullanılır.
             if (rowActual > 0)
             {
                 ictWeighted += metric.IdealCycleTimeSeconds * rowActual;
@@ -120,6 +123,8 @@ public static class OeeCalculator
                 : lastUpdated);
     }
 
+    // NEDEN: A/P/Q formülü tek yerde — tek tick ve pencere toplamı aynı kuralları paylaşır.
+    // NASIL: downtime planned'ı aşamaz; good ≤ actual; sonuçlar 0–100'e clamp; OEE = A×P×Q/10000.
     private static OeeMetricDto CalculateCore(
         string stationId,
         double planned,

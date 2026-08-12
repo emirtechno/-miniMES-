@@ -73,7 +73,7 @@ if (jwt.Key.Length < 32)
 
 builder.Services.AddIdentityCore<ApplicationUser>(options =>
     {
-        // Factory-operator friendly: length + digit only (no symbol / case maze).
+        // NEDEN: Fabrika operatörü dostu parola — uzunluk + rakam yeterli (sembol/büyük-küçük harf labirenti yok).
         options.Password.RequiredLength = 6;
         options.Password.RequireDigit = true;
         options.Password.RequireLowercase = false;
@@ -91,6 +91,9 @@ builder.Services.AddIdentityCore<ApplicationUser>(options =>
     .AddDefaultTokenProviders()
     .AddErrorDescriber<TurkishIdentityErrorDescriber>();
 
+// NEDEN: Stateless JWT Bearer — React SPA her API çağrısında Authorization: Bearer gönderir.
+// NASIL: Issuer/Audience/Key doğrula; OnTokenValidated → kullanıcı aktif + security_stamp eşleşmeli (logout/rol değişiminde token ölür).
+// SignalR hub'ları query string access_token ile bağlanır (browser WebSocket header kısıtı).
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -141,6 +144,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             },
             OnMessageReceived = context =>
             {
+                // NEDEN: SignalR WebSocket'te Authorization header zor; /hubs için access_token query kullanılır.
                 var accessToken = context.Request.Query["access_token"];
                 var path = context.HttpContext.Request.Path;
                 if (!string.IsNullOrEmpty(accessToken) &&
@@ -169,6 +173,7 @@ builder.Services.Configure<ApiBehaviorOptions>(options =>
 });
 builder.Services.AddProblemDetails();
 builder.Services.AddAuthorizationBuilder()
+    // NEDEN: Varsayılan politika = giriş zorunlu; ince yetki permission claim'leriyle (JWT içinde).
     .SetFallbackPolicy(new AuthorizationPolicyBuilder()
         .RequireAuthenticatedUser()
         .Build())
@@ -267,6 +272,7 @@ if (!isTesting)
     {
         var db = scope.ServiceProvider.GetRequiredService<MesDbContext>();
         var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("DatabaseInitialization");
+        // NEDEN: Şema EF migrations ile uygulanır (EnsureCreated değil). Ardından admin bootstrap + runtime/sim seed.
         await db.Database.MigrateAsync();
         await IdentityBootstrapper.InitializeAsync(scope.ServiceProvider, builder.Configuration, logger);
         var runtimeService = scope.ServiceProvider.GetRequiredService<IStationRuntimeService>();
@@ -286,7 +292,8 @@ if (!isTesting)
             {
                 if (!await db.Alarms.AnyAsync())
                 {
-                    // Do not seed open Kritik/blocking alarms — SyncWithOpenAlarms would pause the station.
+                    // NEDEN: Açık Kritik/engelleyici alarm seed etme — SyncWithOpenAlarms istasyonu duraklatırdı.
+                    // NASIL: Örnek çözülmüş + onaylanmış alarmlar (demo geçmişi).
                     db.Alarms.AddRange(
                         new Alarm
                         {
@@ -310,7 +317,7 @@ if (!isTesting)
                     await db.SaveChangesAsync();
                 }
 
-                if (!await db.WorkOrders.AnyAsync() && !await db.Batches.AnyAsync())
+                if (!await db.WorkOrders.AnyAsync())
                 {
                     var wo1 = new WorkOrder
                     {
@@ -342,7 +349,7 @@ if (!isTesting)
                     var wo4 = new WorkOrder
                     {
                         OrderNo = "WO-2026-004",
-                        Product = "Final Kontrol Lotu D",
+                        Product = "Final Kontrol Ürünü D",
                         Station = StationCatalog.FinalInspection,
                         Quantity = 500,
                         CompletedQuantity = 0,
@@ -350,82 +357,7 @@ if (!isTesting)
                     };
                     db.WorkOrders.AddRange(wo1, wo2, wo3, wo4);
                     await db.SaveChangesAsync();
-
-                    db.Batches.AddRange(
-                        new Batch
-                        {
-                            LotNo = "LOT-2026-001",
-                            Product = "Montaj Kiti A",
-                            Station = StationCatalog.AssemblyLine1,
-                            Status = BatchStatuses.InProgress,
-                            TargetQuantity = 1000,
-                            ProducedQuantity = 0,
-                            WorkOrderId = wo1.Id,
-                            UpdatedAt = DateTimeOffset.UtcNow.AddHours(-1)
-                        },
-                        new Batch
-                        {
-                            LotNo = "LOT-2026-002",
-                            Product = "Elektronik Kart B",
-                            Station = StationCatalog.ElectronicsBoardAssembly,
-                            Status = BatchStatuses.InProgress,
-                            TargetQuantity = 1000,
-                            ProducedQuantity = 0,
-                            WorkOrderId = wo2.Id,
-                            UpdatedAt = DateTimeOffset.UtcNow.AddHours(-2)
-                        },
-                        new Batch
-                        {
-                            LotNo = "LOT-2026-003",
-                            Product = "Paketleme Ünitesi C",
-                            Station = StationCatalog.PackagingLine1,
-                            Status = BatchStatuses.Waiting,
-                            TargetQuantity = 800,
-                            ProducedQuantity = 0,
-                            WorkOrderId = wo3.Id,
-                            UpdatedAt = DateTimeOffset.UtcNow.AddMinutes(-45)
-                        },
-                        new Batch
-                        {
-                            LotNo = "LOT-2026-004",
-                            Product = "Final Kontrol Lotu D",
-                            Station = StationCatalog.FinalInspection,
-                            Status = BatchStatuses.Waiting,
-                            TargetQuantity = 500,
-                            ProducedQuantity = 0,
-                            WorkOrderId = wo4.Id,
-                            UpdatedAt = DateTimeOffset.UtcNow.AddHours(-1)
-                        }
-                    );
-                    await db.SaveChangesAsync();
-                    logger.LogInformation("İş emri ve parti/lot örnek verileri eklendi.");
-                }
-                else if (!await db.Batches.AnyAsync())
-                {
-                    db.Batches.AddRange(
-                        new Batch
-                        {
-                            LotNo = "LOT-2026-001",
-                            Product = "Montaj Kiti A",
-                            Station = StationCatalog.AssemblyLine1,
-                            Status = BatchStatuses.InProgress,
-                            TargetQuantity = 1000,
-                            ProducedQuantity = 0,
-                            UpdatedAt = DateTimeOffset.UtcNow.AddHours(-1)
-                        },
-                        new Batch
-                        {
-                            LotNo = "LOT-2026-002",
-                            Product = "Elektronik Kart B",
-                            Station = StationCatalog.ElectronicsBoardAssembly,
-                            Status = BatchStatuses.InProgress,
-                            TargetQuantity = 1000,
-                            ProducedQuantity = 0,
-                            UpdatedAt = DateTimeOffset.UtcNow.AddHours(-2)
-                        }
-                    );
-                    await db.SaveChangesAsync();
-                    logger.LogInformation("Parti/lot örnek verileri eklendi.");
+                    logger.LogInformation("İş emri örnek verileri eklendi.");
                 }
             }
             catch (Exception ex)

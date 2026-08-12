@@ -14,7 +14,7 @@ public sealed class SimulationController(
     IFactorySimulationControl simulationControl,
     IShopFloorResetService shopFloorReset) : ControllerBase
 {
-    /// <summary>Runtime factory-simulation gate (independent of operator shift).</summary>
+    /// <summary>Çalışma zamanı fabrika-simülasyon kapısı (operatör vardiyasından bağımsız).</summary>
     [HttpGet("status")]
     [Authorize(Policy = PolicyNames.MetricsRead)]
     public async Task<ActionResult<SimulationStatusDto>> GetStatus(CancellationToken cancellationToken)
@@ -36,8 +36,8 @@ public sealed class SimulationController(
     }
 
     /// <summary>
-    /// Clears shop-floor telemetry, sessions, alarms, and WO/lot progress counters.
-    /// Does not delete Identity users or product/station catalog. Confirm with "SIFIRLA".
+    /// Shop-floor telemetri, oturum, alarm ve WO ilerleme sayaçlarını temizler.
+    /// Identity kullanıcıları ile ürün/istasyon kataloğunu silmez. Onay: "SIFIRLA".
     /// </summary>
     [HttpPost("reset-shop-floor")]
     [Authorize(Policy = PolicyNames.SimulationControl)]

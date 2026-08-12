@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-/// <summary>Legacy traceability Users table — dropped; Identity uses AspNetUsers.</summary>
+/// <summary>Eski izlenebilirlik Users tablosu — düşürüldü; Identity AspNetUsers kullanır.</summary>
 [Obsolete("Legacy Traceability Users table removed. Use ApplicationUser / AspNetUsers.")]
 public class User
 {

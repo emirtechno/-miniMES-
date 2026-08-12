@@ -1,6 +1,6 @@
 /**
- * Client-side aggregation helpers mirroring backend TelemetryAggregator.
- * Prefer API /MachineMetrics/summary when available; use these for local ticks.
+ * İstemci tarafı toplama yardımcıları — backend TelemetryAggregator ile aynı mantık.
+ * Mümkünse API /MachineMetrics/summary tercih et; yerel tick'ler için bunları kullan.
  */
 export const emptyStationKpi = (stationId = null) => ({
   stationId,
@@ -59,7 +59,7 @@ export const buildStationChartFromKpis = (byStation = {}) => Object.entries(bySt
   NOK: kpi.nok || 0,
 }));
 
-/** Map /Oee/shift-current row → station KPI shape used by overview cards. */
+/** /Oee/shift-current satırını overview kartlarının istasyon KPI şekline eşle. */
 export const kpiFromShiftOee = (metric, stationId = null) => {
   const actual = Number(metric?.totalProduction) || 0;
   const good = Number(metric?.goodProduction) || 0;
@@ -77,7 +77,7 @@ export const kpiFromShiftOee = (metric, stationId = null) => {
   };
 };
 
-/** Map ShiftSession.summary (live or persisted) → operator KPI cards. */
+/** ShiftSession.summary (canlı veya kalıcı) → operatör KPI kartları. */
 export const kpiFromSessionSummary = (summary, stationId = null) => {
   if (!summary) return emptyStationKpi(stationId);
   const actual = Number(summary.actualCount) || 0;
@@ -96,7 +96,7 @@ export const kpiFromSessionSummary = (summary, stationId = null) => {
   };
 };
 
-/** Index shift-current rows by stationId. */
+/** shift-current satırlarını stationId ile indeksle. */
 export const mapShiftOeeByStation = (rows = []) => {
   const map = {};
   for (const metric of rows || []) {

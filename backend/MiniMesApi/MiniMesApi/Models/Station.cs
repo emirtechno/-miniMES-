@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-/// <summary>Legacy traceability station table — dropped; use <see cref="MiniMesApi.Models.StationCatalog"/>.</summary>
+/// <summary>Eski izlenebilirlik istasyon tablosu — düşürüldü; <see cref="MiniMesApi.Models.StationCatalog"/> kullanın.</summary>
 [Obsolete("Legacy Traceability Stations table removed. Use StationCatalog string ids.")]
 public class Station
 {

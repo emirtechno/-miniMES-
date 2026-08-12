@@ -14,8 +14,6 @@ namespace MiniMesApi.Models
 
         public DbSet<WorkOrder> WorkOrders { get; set; }
 
-        public DbSet<Batch> Batches { get; set; }
-
         public DbSet<Product> Products { get; set; }
         public DbSet<MachineMetric> MachineMetrics { get; set; }
         public DbSet<ScrapLog> ScrapLogs { get; set; }
@@ -94,14 +92,11 @@ namespace MiniMesApi.Models
             {
                 entity.HasIndex(order => order.OrderNo).IsUnique();
                 entity.HasIndex(order => order.ProductId);
+                entity.HasIndex(order => order.DeletedAt);
                 entity.Property(order => order.RowVersion).IsRowVersion();
                 entity.HasOne(order => order.ProductRef)
                     .WithMany(product => product.WorkOrders)
                     .HasForeignKey(order => order.ProductId)
-                    .OnDelete(DeleteBehavior.SetNull);
-                entity.HasMany(order => order.Lots)
-                    .WithOne(batch => batch.WorkOrder)
-                    .HasForeignKey(batch => batch.WorkOrderId)
                     .OnDelete(DeleteBehavior.SetNull);
                 entity.ToTable(table =>
                 {
@@ -113,29 +108,7 @@ namespace MiniMesApi.Models
                         "[CompletedQuantity] >= 0 AND [CompletedQuantity] <= [Quantity]");
                     table.HasCheckConstraint(
                         "CK_WorkOrders_Status",
-                        "[Status] IN (N'Bekliyor', N'Devam Ediyor', N'Tamamlandı')");
-                });
-            });
-
-            modelBuilder.Entity<Batch>(entity =>
-            {
-                entity.HasIndex(batch => batch.WorkOrderId);
-                entity.HasIndex(batch => new { batch.Station, batch.Status });
-                entity.HasOne(batch => batch.ProductRef)
-                    .WithMany(product => product.Batches)
-                    .HasForeignKey(batch => batch.ProductId)
-                    .OnDelete(DeleteBehavior.SetNull);
-                entity.ToTable(table =>
-                {
-                    table.HasCheckConstraint(
-                        "CK_Batches_TargetQuantity",
-                        "[TargetQuantity] > 0");
-                    table.HasCheckConstraint(
-                        "CK_Batches_ProducedQuantity",
-                        "[ProducedQuantity] >= 0");
-                    table.HasCheckConstraint(
-                        "CK_Batches_Status",
-                        "[Status] IN (N'Bekliyor', N'İşlemde', N'Tamamlandı')");
+                        "[Status] IN (N'Bekliyor', N'Devam Ediyor', N'Tamamlandı', N'Arşivlendi')");
                 });
             });
 
@@ -147,10 +120,6 @@ namespace MiniMesApi.Models
                 entity.HasOne(log => log.WorkOrder)
                     .WithMany()
                     .HasForeignKey(log => log.WorkOrderId)
-                    .OnDelete(DeleteBehavior.SetNull);
-                entity.HasOne(log => log.Batch)
-                    .WithMany()
-                    .HasForeignKey(log => log.BatchId)
                     .OnDelete(DeleteBehavior.SetNull);
                 entity.HasOne(log => log.ShiftSession)
                     .WithMany()
@@ -188,15 +157,10 @@ namespace MiniMesApi.Models
                     .HasFilter("[Status] <> N'Ended'")
                     .HasDatabaseName("IX_ShiftSessions_UserId_Open");
                 entity.HasIndex(session => session.ActiveWorkOrderId);
-                entity.HasIndex(session => session.ActiveBatchId);
                 entity.Property(session => session.SummaryJson).HasMaxLength(4000);
                 entity.HasOne(session => session.ActiveWorkOrder)
                     .WithMany()
                     .HasForeignKey(session => session.ActiveWorkOrderId)
-                    .OnDelete(DeleteBehavior.SetNull);
-                entity.HasOne(session => session.ActiveBatch)
-                    .WithMany()
-                    .HasForeignKey(session => session.ActiveBatchId)
                     .OnDelete(DeleteBehavior.SetNull);
                 entity.ToTable(table =>
                 {

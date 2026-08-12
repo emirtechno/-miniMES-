@@ -1,6 +1,6 @@
 /**
- * Vestel brand mark — bold geometric "V".
- * Lucide-compatible: accepts `size` and `className` (uses currentColor).
+ * Vestel markası — kalın geometrik "V".
+ * Lucide uyumlu: `size` ve `className` alır (currentColor kullanır).
  */
 export default function VestelMark({ size = 24, className, title = 'Vestel', ...props }) {
   return (

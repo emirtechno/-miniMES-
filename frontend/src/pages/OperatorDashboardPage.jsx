@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { Activity, ClipboardList, History, Package, Radio } from 'lucide-react';
 import OperatorShiftWidget from '../components/OperatorShiftWidget';
 import ShopFloorActionBar from '../components/ShopFloorActionBar';
-import TraceabilityPanel from '../components/TraceabilityPanel';
 import FactorySimulationToggle from '../components/FactorySimulationToggle';
 import CardHeader from '../components/CardHeader';
 import { useShiftSession } from '../context/ShiftSessionContext';
@@ -12,13 +11,13 @@ import { getShiftLabel } from '../constants/shifts';
 import { useNonOverlappingPolling } from '../hooks/useNonOverlappingPolling';
 import { useMesHub } from '../hooks/useMesHub';
 import { emptyStationKpi, kpiFromSessionSummary } from '../utils/telemetryAggregate';
+import { OEE_METRIC_TIPS } from '../constants/oeeMetricTips';
 
 const OperatorDashboardPage = ({
   currentUser,
   notify,
   recentTicks = [],
   workOrders = [],
-  batches = [],
   liveStreaming = false,
 }) => {
   const {
@@ -67,7 +66,7 @@ const OperatorDashboardPage = ({
     },
   });
 
-  // Operator KPIs are session-scoped (not catalog /Oee/shift-current).
+  // Operatör KPI'ları oturum kapsamlıdır (katalog /Oee/shift-current değil).
   const kpi = useMemo(() => {
     if (shift.active) {
       return kpiFromSessionSummary(shift.summary, shift.stationId || stationId);
@@ -85,14 +84,11 @@ const OperatorDashboardPage = ({
     [recentTicks, stationId],
   );
 
+  const isActiveBoardOrder = (order) =>
+    order.status !== 'Tamamlandı' && order.status !== 'Arşivlendi';
   const activeOrder = workOrders.find(
-    (order) => order.station === stationId && order.status !== 'Tamamlandı',
-  ) || workOrders.find((order) => order.status !== 'Tamamlandı');
-
-  const stationBatches = useMemo(
-    () => batches.filter((batch) => batch.station === stationId),
-    [batches, stationId],
-  );
+    (order) => order.station === stationId && isActiveBoardOrder(order),
+  ) || workOrders.find(isActiveBoardOrder);
 
   return (
     <div className="flex flex-col gap-5">
@@ -127,7 +123,7 @@ const OperatorDashboardPage = ({
           <span className="inline-flex items-center gap-2 font-semibold">
             <Radio size={16} className={liveStreaming ? 'animate-pulse' : ''} />
             {liveStreaming
-              ? 'Vardiya aktif — lot/OEE senkron. Telemetri motoru aşağıda ayrı kontrol edilir.'
+              ? 'Vardiya aktif — WO/OEE senkron. Telemetri motoru aşağıda ayrı kontrol edilir.'
               : 'Vardiya kapalı — “Vardiya Başlat” ile oturum açın (KPI sıfırdan başlar).'}
           </span>
           {liveStreaming && (
@@ -138,19 +134,19 @@ const OperatorDashboardPage = ({
         </div>
         <FactorySimulationToggle className="mb-4" />
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-xl border border-[color:var(--color-line)] bg-slate-50 p-4">
+          <div className="rounded-xl border border-[color:var(--color-line)] bg-slate-50 p-4" title="Seçili / atanmış istasyon. Vardiya açıkken değiştirilemez." style={{ cursor: 'help' }}>
             <div className="text-xs font-semibold uppercase tracking-wide text-[color:var(--color-muted)]">İstasyon</div>
             <div className="font-display mt-1 text-2xl font-semibold">{getStationDisplayName(stationId)}</div>
           </div>
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4">
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4" title={`${OEE_METRIC_TIPS.sessionOee} ${OEE_METRIC_TIPS.goodScrap}`} style={{ cursor: 'help' }}>
             <div className="text-xs font-semibold uppercase tracking-wide text-emerald-800">Oturum Σ Sağlam</div>
             <div className="font-display mt-1 text-3xl font-semibold text-emerald-950">{kpi.good}</div>
           </div>
-          <div className="rounded-xl border border-red-200 bg-red-50/70 p-4">
+          <div className="rounded-xl border border-red-200 bg-red-50/70 p-4" title={`${OEE_METRIC_TIPS.sessionOee} ${OEE_METRIC_TIPS.goodScrap}`} style={{ cursor: 'help' }}>
             <div className="text-xs font-semibold uppercase tracking-wide text-red-800">Oturum Σ Fire</div>
             <div className="font-display mt-1 text-3xl font-semibold text-red-950">{kpi.nok}</div>
           </div>
-          <div className={`rounded-xl border p-4 ${shift.active ? 'border-sky-200 bg-sky-50/80' : 'border-[color:var(--color-line)] bg-slate-50'}`}>
+          <div className={`rounded-xl border p-4 ${shift.active ? 'border-sky-200 bg-sky-50/80' : 'border-[color:var(--color-line)] bg-slate-50'}`} title={OEE_METRIC_TIPS.sessionYield} style={{ cursor: 'help' }}>
             <div className="text-xs font-semibold uppercase tracking-wide text-[color:var(--color-muted)]">Oturum · Verim</div>
             <div className="mt-1 flex flex-wrap items-center gap-2">
               <span className={shift.active ? 'mes-pill-ok' : 'mes-pill-neutral'}>
@@ -223,16 +219,11 @@ const OperatorDashboardPage = ({
         )}
       </section>
 
-      <TraceabilityPanel
-        batches={stationBatches}
-        subtitle={`${getStationDisplayName(stationId)} lotları (shop-floor). Tam izlenebilirlik: Kalite.`}
-      />
-
       <section className="mes-surface p-5">
         <CardHeader
           icon={History}
           title="Son PLC Tick’leri"
-          subtitle="MachineMetrics batch satırları (Gerçekleşen / Sağlam / Duruş)"
+          subtitle="MachineMetrics tick satırları (Gerçekleşen / Sağlam / Duruş)"
           actions={(
             <span className="inline-flex items-center gap-1 text-xs text-[color:var(--color-muted)]">
               <Activity size={13} />
@@ -251,7 +242,7 @@ const OperatorDashboardPage = ({
                   <span className="ml-2 text-xs text-[color:var(--color-muted)]">duruş {tick.downtimeSeconds}sn</span>
                 </span>
                 <span className={scrap > 0 ? 'mes-pill-nok' : 'mes-pill-ok'}>
-                  {scrap > 0 ? `Fire ${scrap}` : 'OK batch'}
+                  {scrap > 0 ? `Fire ${scrap}` : 'OK tick'}
                 </span>
               </li>
             );

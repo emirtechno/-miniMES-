@@ -10,7 +10,7 @@ namespace MiniMesApi.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            // Drop Montaj_Hatti_02 / _03 from live tables so they no longer appear after catalog removal.
+            // Katalog kaldırıldıktan sonra görünmesin diye Montaj_Hatti_02/_03 canlı tablolardan silinir.
             migrationBuilder.Sql("""
                 DECLARE @retired TABLE (StationId nvarchar(100) NOT NULL PRIMARY KEY);
                 INSERT INTO @retired (StationId) VALUES (N'Montaj_Hatti_02'), (N'Montaj_Hatti_03');
@@ -122,7 +122,7 @@ namespace MiniMesApi.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            // Data removal is intentionally not reversed.
+            // Veri silme kasıtlı olarak geri alınmaz.
         }
     }
 }

@@ -100,7 +100,7 @@ const screenSections = [
     path: '/kalite',
     who: 'Yönetici / IT',
     body: [
-      'İş emirleri (WO), lot/izlenebilirlik, alarm listesi, fire içeren telemetri satırları.',
+      'İş emirleri (WO), alarm listesi, fire içeren telemetri satırları.',
       'Fire = Actual − Good > 0 olan MachineMetrics tick’leri (barkod tek tek sayılmaz).',
       'Alarmlarda Onayla / Çöz-Kapat (yetki: alarms.manage).',
     ],
@@ -352,7 +352,7 @@ const OperatorGuidePage = () => (
       </h2>
       <ul className="mt-3 space-y-2 text-sm">
         <li>
-          <Link to="/kalite" className="underline">Kalite Raporları</Link>: iş emri tahtası, lot izlenebilirlik,
+          <Link to="/kalite" className="underline">Kalite Raporları</Link>: iş emri tahtası,
           plant Σ Gerçekleşen / Sağlam / Fire, alarm takibi, fire tick tablosu.
         </li>
         <li>

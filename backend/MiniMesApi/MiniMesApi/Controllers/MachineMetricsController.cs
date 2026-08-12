@@ -33,7 +33,7 @@ namespace MiniMesApi.Controllers
         }
 
         /// <summary>
-        /// Plant / station KPI summary aggregated from MachineMetrics (SSOT).
+        /// Fabrika / istasyon KPI özeti — MachineMetrics'ten toplanır (SSOT).
         /// </summary>
         [HttpGet("summary")]
         public async Task<ActionResult<IReadOnlyList<TelemetrySummaryDto>>> GetSummary(
@@ -51,7 +51,7 @@ namespace MiniMesApi.Controllers
                 query = query.Where(metric => metric.StationId == stationId);
             }
 
-            // Cap aggregation window to recent telemetry to keep summaries responsive.
+            // Özetleri hızlı tutmak için toplama penceresini son telemetriyle sınırla.
             var metrics = await query
                 .OrderByDescending(metric => metric.RecordedAt)
                 .Take(string.IsNullOrWhiteSpace(stationId) ? 2000 : 500)
@@ -133,7 +133,7 @@ namespace MiniMesApi.Controllers
         }
 
         /// <summary>
-        /// PLC ingest — append-only MachineMetrics row (application SSOT write path).
+        /// PLC ingest — yalnızca ekleme (append-only) MachineMetrics satırı (uygulama SSOT yazım yolu).
         /// </summary>
         [HttpPost]
         [Authorize(Policy = PolicyNames.ProductionWrite)]
@@ -153,7 +153,7 @@ namespace MiniMesApi.Controllers
         }
 
         /// <summary>
-        /// Operator scrap — ScrapLog + MachineMetrics tick (Actual=qty, Good=0). Does not advance WO/lot good.
+        /// Operatör fire kaydı — ScrapLog + MachineMetrics tick (Actual=adet, Good=0). WO iyi adedini ilerletmez.
         /// </summary>
         [HttpPost("scrap")]
         [Authorize(Policy = PolicyNames.ProductionWrite)]
@@ -174,20 +174,10 @@ namespace MiniMesApi.Controllers
             if (request.WorkOrderId is int workOrderId)
             {
                 var woExists = await _context.WorkOrders.AsNoTracking()
-                    .AnyAsync(order => order.Id == workOrderId, cancellationToken);
+                    .AnyAsync(order => order.Id == workOrderId && order.DeletedAt == null, cancellationToken);
                 if (!woExists)
                 {
                     return Problem(statusCode: StatusCodes.Status400BadRequest, title: "Geçersiz iş emri.");
-                }
-            }
-
-            if (request.BatchId is int batchId)
-            {
-                var batchExists = await _context.Batches.AsNoTracking()
-                    .AnyAsync(batch => batch.Id == batchId, cancellationToken);
-                if (!batchExists)
-                {
-                    return Problem(statusCode: StatusCodes.Status400BadRequest, title: "Geçersiz lot.");
                 }
             }
 
@@ -226,7 +216,7 @@ namespace MiniMesApi.Controllers
                 return BadRequest(new ValidationProblemDetails(ex.Errors));
             }
 
-            // Prefer ingest-resolved session id when client omitted it.
+            // NEDEN: İstemci ShiftSessionId göndermediyse ingest'in çözdüğü oturum kimliğini kullan.
             shiftSessionId ??= metricDto.ShiftSessionId;
 
             var scrap = new ScrapLog
@@ -235,7 +225,6 @@ namespace MiniMesApi.Controllers
                 Quantity = request.Quantity,
                 ReasonCode = string.IsNullOrWhiteSpace(request.ReasonCode) ? null : request.ReasonCode.Trim(),
                 WorkOrderId = request.WorkOrderId,
-                BatchId = request.BatchId,
                 ShiftSessionId = shiftSessionId,
                 OperatorUserId = operatorId,
                 RecordedAt = DateTimeOffset.UtcNow,
@@ -269,7 +258,6 @@ namespace MiniMesApi.Controllers
                 Quantity = scrap.Quantity,
                 ReasonCode = scrap.ReasonCode,
                 WorkOrderId = scrap.WorkOrderId,
-                BatchId = scrap.BatchId,
                 ShiftSessionId = scrap.ShiftSessionId,
                 OperatorUserId = scrap.OperatorUserId,
                 RecordedAt = scrap.RecordedAt,

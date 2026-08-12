@@ -5,10 +5,9 @@ using MiniMesApi.Models;
 
 namespace MiniMesApi.Services;
 
-/// <summary>
-/// Destructive demo reset for shop-floor telemetry / sessions.
-/// Keeps Identity users, products, stations catalog, and simulation gate.
-/// </summary>
+// NEDEN: Demo / eğitim için shop-floor telemetri ve oturumları yıkıcı sıfırlar.
+// Identity kullanıcıları, ürünler, istasyon kataloğu ve simülasyon kapısı korunur.
+// NASIL: ConfirmationPhrase "SIFIRLA" (controller); FK-güvenli sırada ExecuteDelete; runtime Paused; WO CompletedQuantity=0.
 public interface IShopFloorResetService
 {
     Task<ShopFloorResetResultDto> ResetAsync(string requestedBy, CancellationToken cancellationToken = default);
@@ -22,8 +21,7 @@ public sealed class ShopFloorResetService(MesDbContext db) : IShopFloorResetServ
         string requestedBy,
         CancellationToken cancellationToken = default)
     {
-        // EnableRetryOnFailure requires user-initiated transactions to run inside the
-        // strategy returned by CreateExecutionStrategy (retriable unit).
+        // NEDEN: EnableRetryOnFailure, kullanıcı transaction'larının CreateExecutionStrategy içinde çalışmasını ister.
         var strategy = db.Database.CreateExecutionStrategy();
         return await strategy.ExecuteAsync(
             () => ResetInTransactionAsync(requestedBy, cancellationToken));
@@ -39,8 +37,9 @@ public sealed class ShopFloorResetService(MesDbContext db) : IShopFloorResetServ
 
         try
         {
-            // Immediate deletes in FK-safe order — never one SaveChanges over the whole graph.
-            // DowntimeEvents / ScrapLogs reference Alarm + MachineMetric + ShiftSession (SetNull).
+            // NEDEN: FK-güvenli sırada anında sil — tüm grafa tek SaveChanges yok.
+            // DowntimeEvents / ScrapLogs → Alarm + MachineMetric + ShiftSession (SetNull) referansları.
+            // NASIL: Downtime → Scrap → ShiftSessionEvents → Alarms → Metrics → Uretim → Sessions → Runtime reset → WO progress clear.
             var downtimeEvents = await WipeAsync(db.DowntimeEvents, cancellationToken);
             var scrapLogs = await WipeAsync(db.ScrapLogs, cancellationToken);
             var shiftSessionEvents = await WipeAsync(db.ShiftSessionEvents, cancellationToken);
@@ -52,7 +51,6 @@ public sealed class ShopFloorResetService(MesDbContext db) : IShopFloorResetServ
             var now = DateTimeOffset.UtcNow;
             var runtimes = await ResetStationRuntimesAsync(now, cancellationToken);
             var workOrders = await ClearWorkOrderProgressAsync(cancellationToken);
-            var batches = await ClearBatchProgressAsync(cancellationToken);
 
             if (tx is not null)
                 await tx.CommitAsync(cancellationToken);
@@ -69,7 +67,6 @@ public sealed class ShopFloorResetService(MesDbContext db) : IShopFloorResetServ
                 ShiftSessionsDeleted = sessions,
                 StationRuntimesReset = runtimes,
                 WorkOrdersProgressCleared = workOrders,
-                BatchesProgressCleared = batches,
                 UretimKayitlariDeleted = uretim
             };
         }
@@ -102,9 +99,7 @@ public sealed class ShopFloorResetService(MesDbContext db) : IShopFloorResetServ
         }
     }
 
-    /// <summary>
-    /// SQL Server: ExecuteDelete (immediate). InMemory tests: RemoveRange + SaveChanges per table.
-    /// </summary>
+    // NEDEN: SQL Server → ExecuteDelete (anında); InMemory testler → RemoveRange + SaveChanges tablo başına.
     private async Task<int> WipeAsync<TEntity>(
         DbSet<TEntity> set,
         CancellationToken cancellationToken)
@@ -121,6 +116,7 @@ public sealed class ShopFloorResetService(MesDbContext db) : IShopFloorResetServ
         return rows.Count;
     }
 
+    // NEDEN: Runtime'ı Paused + "Shop-floor reset" yap; anomali cooldown sıfırlanır (hemen yeni alarm açılabilir).
     private async Task<int> ResetStationRuntimesAsync(DateTimeOffset now, CancellationToken cancellationToken)
     {
         if (db.Database.IsRelational())
@@ -148,9 +144,9 @@ public sealed class ShopFloorResetService(MesDbContext db) : IShopFloorResetServ
         return runtimes.Count;
     }
 
+    // NEDEN: WO satırlarını silme — sadece CompletedQuantity=0 (plan korunur). ExecuteUpdate RowVersion'ı atlar (sim worker çakışması).
     private async Task<int> ClearWorkOrderProgressAsync(CancellationToken cancellationToken)
     {
-        // ExecuteUpdate bypasses RowVersion; tracked updates can collide with the sim worker.
         if (db.Database.IsRelational())
         {
             return await db.WorkOrders
@@ -168,26 +164,5 @@ public sealed class ShopFloorResetService(MesDbContext db) : IShopFloorResetServ
         if (workOrders.Count > 0)
             await db.SaveChangesAsync(cancellationToken);
         return workOrders.Count;
-    }
-
-    private async Task<int> ClearBatchProgressAsync(CancellationToken cancellationToken)
-    {
-        if (db.Database.IsRelational())
-        {
-            return await db.Batches
-                .Where(batch => batch.ProducedQuantity != 0)
-                .ExecuteUpdateAsync(
-                    setters => setters.SetProperty(batch => batch.ProducedQuantity, 0),
-                    cancellationToken);
-        }
-
-        var batches = await db.Batches
-            .Where(batch => batch.ProducedQuantity != 0)
-            .ToListAsync(cancellationToken);
-        foreach (var batch in batches)
-            batch.ProducedQuantity = 0;
-        if (batches.Count > 0)
-            await db.SaveChangesAsync(cancellationToken);
-        return batches.Count;
     }
 }

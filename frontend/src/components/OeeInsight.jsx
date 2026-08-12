@@ -13,7 +13,7 @@ const downtimeTurkish = {
 };
 
 /**
- * Plain-Turkish insight under OEE gauges explaining *why* values look the way they do.
+ * OEE göstergelerinin altında değerlerin neden böyle göründüğünü açıklayan sade Türkçe yorum.
  */
 const OeeInsight = ({ metric }) => {
   const insight = useMemo(() => {

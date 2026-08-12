@@ -43,16 +43,13 @@ public class ShiftSession
     public int? ActiveWorkOrderId { get; set; }
     public WorkOrder? ActiveWorkOrder { get; set; }
 
-    public int? ActiveBatchId { get; set; }
-    public Batch? ActiveBatch { get; set; }
-
     public DateTimeOffset StartedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? EndedAt { get; set; }
 
-    /// <summary>Set when status becomes OnBreak; cleared on resume/end.</summary>
+    /// <summary>Status OnBreak olunca set edilir; resume/end'de temizlenir.</summary>
     public DateTimeOffset? BreakStartedAt { get; set; }
 
-    /// <summary>Set when status becomes InSetup; cleared on resume/end.</summary>
+    /// <summary>Status InSetup olunca set edilir; resume/end'de temizlenir.</summary>
     public DateTimeOffset? SetupStartedAt { get; set; }
 
     [Required]
@@ -62,19 +59,19 @@ public class ShiftSession
     [StringLength(80)]
     public string? BreakReason { get; set; }
 
-    /// <summary>Persisted on end-shift; null while session is open.</summary>
+    /// <summary>Vardiya bitiminde kalıcı; oturum açıkken null.</summary>
     public int? GoodCount { get; set; }
 
     public int? NokCount { get; set; }
 
-    /// <summary>Sum of ScrapLogs.Quantity for this session.</summary>
+    /// <summary>Bu oturum için ScrapLogs.Quantity toplamı.</summary>
     public int? ScrapEntered { get; set; }
 
     public double? DowntimeSeconds { get; set; }
 
     public double? OeePercent { get; set; }
 
-    /// <summary>Optional JSON snapshot of end-shift summary (actual, duration, etc.).</summary>
+    /// <summary>İsteğe bağlı vardiya-bitiş özeti JSON anlık görüntüsü (actual, süre vb.).</summary>
     [StringLength(4000)]
     public string? SummaryJson { get; set; }
 

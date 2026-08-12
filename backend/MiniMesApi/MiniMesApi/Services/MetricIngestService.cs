@@ -5,10 +5,9 @@ using MiniMesApi.Models;
 
 namespace MiniMesApi.Services;
 
-/// <summary>
-/// Single write path for MachineMetrics: normalize → save → lot sync → anomaly → SignalR.
-/// Used by PLC/API ingest and OeeSimulationService.
-/// </summary>
+// NEDEN: Makine metriği yazmanın tek kapısı. PLC/API ve OEE simülasyonu buradan geçer;
+// böylece lot/iş emri ilerlemesi, anomali alarmı ve SignalR yayını her kaynakta aynı sırayla çalışır.
+// NASIL: validate → normalize → DB kaydet → ProductionProgressSync (WO iyi adet) → TelemetryAnomaly → SignalR (OEE + telemetry).
 public interface IMetricIngestService
 {
     Task<MachineMetricDto> IngestAsync(CreateMachineMetricDto dto, CancellationToken cancellationToken = default);
@@ -38,9 +37,10 @@ public sealed class MetricIngestService(
         }
 
         var recordedAt = dto.RecordedAt ?? DateTimeOffset.UtcNow;
-        // Andon / shift-current boards use the catalog clock window. Always stamp catalog
-        // ShiftCode from RecordedAt — never override with operator-selected session code.
-        // Operator KPIs bind via ShiftSessionId instead.
+        // NEDEN: Andon / vardiya-katalog panoları saate göre pencere kullanır. ShiftCode her zaman
+        // RecordedAt'tan katalog koduyla basılır — operatörün seçtiği oturum kodu ile ezilmez.
+        // Operatör KPI'ları bunun yerine ShiftSessionId üzerinden bağlanır.
+        // NASIL: ShiftCatalog.ResolveForUtc(recordedAt) → ShiftCode; açık oturum varsa ShiftSessionId doldurulur.
         var shiftCode = ShiftCatalog.ResolveForUtc(recordedAt);
         var openSession = await context.ShiftSessions.AsNoTracking()
             .Where(session => session.StationId == dto.StationId
@@ -72,6 +72,8 @@ public sealed class MetricIngestService(
         context.MachineMetrics.Add(metric);
         await context.SaveChangesAsync(cancellationToken);
 
+        // NEDEN: İyi üretim adedi iş emri CompletedQuantity'ye yansır (WO-only; lot/batch yok).
+        // NASIL: progressSync.ApplyGoodUnitsAsync → ardından anomali eşiği kontrolü → canlı panolara OEE + telemetry push.
         await progressSync.ApplyGoodUnitsAsync(metric.StationId, metric.GoodProductionCount, cancellationToken);
         await anomalyService.EvaluateAndRaiseAsync(metric, cancellationToken);
 

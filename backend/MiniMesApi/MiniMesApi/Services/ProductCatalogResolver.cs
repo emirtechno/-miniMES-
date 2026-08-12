@@ -6,8 +6,8 @@ namespace MiniMesApi.Services;
 public static class ProductCatalogResolver
 {
     /// <summary>
-    /// Light lookup: match Products by ProductCode or ProductName (case-insensitive).
-    /// Does not create rows — seeding is migration-owned.
+    /// Hafif arama: Products'ta ProductCode veya ProductName eşleşmesi (büyük/küçük harf duyarsız).
+    /// Satır oluşturmaz — seed migration'a aittir.
     /// </summary>
     public static async Task<int?> ResolveProductIdAsync(
         MesDbContext context,

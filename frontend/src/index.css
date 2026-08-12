@@ -150,7 +150,7 @@
     @apply !h-3.5 !w-3.5;
   }
 
-  /* Wide desktop: single horizontal row — title | personas | actions */
+  /* Geniş masaüstü: tek yatay satır — başlık | personalar | aksiyonlar */
   @media (min-width: 1100px) {
     .mes-topbar {
       @apply flex-nowrap gap-x-4 py-2;

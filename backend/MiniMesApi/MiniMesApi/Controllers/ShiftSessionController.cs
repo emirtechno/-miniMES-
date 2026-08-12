@@ -121,7 +121,7 @@ public class ShiftSessionController(
                 .Take(take)
                 .ToListAsync(cancellationToken);
 
-        // Prefer session-tagged ticks when any exist.
+        // Oturum etiketli tick varsa onları tercih et (legacy zaman aralığına düşmeden).
         if (ticks.Any(metric => metric.ShiftSessionId == session.Id))
         {
             ticks = ticks.Where(metric => metric.ShiftSessionId == session.Id).ToList();
@@ -170,20 +170,10 @@ public class ShiftSessionController(
         if (request.ActiveWorkOrderId is int woId)
         {
             var woExists = await context.WorkOrders.AsNoTracking()
-                .AnyAsync(order => order.Id == woId, cancellationToken);
+                .AnyAsync(order => order.Id == woId && order.DeletedAt == null, cancellationToken);
             if (!woExists)
             {
                 return Problem(statusCode: StatusCodes.Status400BadRequest, title: "Geçersiz iş emri.");
-            }
-        }
-
-        if (request.ActiveBatchId is int batchId)
-        {
-            var batchExists = await context.Batches.AsNoTracking()
-                .AnyAsync(batch => batch.Id == batchId, cancellationToken);
-            if (!batchExists)
-            {
-                return Problem(statusCode: StatusCodes.Status400BadRequest, title: "Geçersiz lot.");
             }
         }
 
@@ -211,7 +201,6 @@ public class ShiftSessionController(
                 ? null
                 : request.SecondaryOperatorUserId.Trim(),
             ActiveWorkOrderId = request.ActiveWorkOrderId,
-            ActiveBatchId = request.ActiveBatchId,
             StartedAt = now,
             Status = ShiftSessionStatuses.Active,
             CreatedBy = ResolveDisplayName(),
@@ -237,7 +226,7 @@ public class ShiftSessionController(
             details: $"Station={session.StationId};Shift={session.ShiftCode};WO={session.ActiveWorkOrderId}",
             cancellationToken: cancellationToken);
 
-        // Active shift must drive StationRuntime → Running when nothing blocks production.
+        // Aktif vardiya, üretimi engelleyen bir şey yoksa StationRuntime → Running yapmalı.
         await runtimeService.HealRuntimeForStationAsync(session.StationId, cancellationToken);
 
         logger.LogInformation(
@@ -265,73 +254,82 @@ public class ShiftSessionController(
         [FromBody] ShiftDowntimeDto request,
         CancellationToken cancellationToken)
     {
-        var session = await FindOwnedActiveAsync(id, cancellationToken);
-        if (session is null) return NotFound();
+        // Ön kontrol — asıl yazma CreateExecutionStrategy içinde (retry + transaction uyumu).
+        if (await FindOwnedActiveAsync(id, cancellationToken) is null) return NotFound();
 
-        await using var transaction = context.Database.IsRelational()
-            ? await context.Database.BeginTransactionAsync(cancellationToken)
-            : null;
+        Alarm? alarm = null;
+        ShiftSession? session = null;
 
-        var fromStatus = session.Status;
-        var now = DateTimeOffset.UtcNow;
-        session.Status = ShiftSessionStatuses.OnBreak;
-        session.BreakReason = request.ReasonCode;
-        session.BreakStartedAt = now;
-        session.SetupStartedAt = null;
-        session.UpdatedAt = now;
-        session.UpdatedBy = ResolveDisplayName();
-
-        var mode = request.Emergency ? StationRuntimeModes.Down : StationRuntimeModes.Paused;
-        await runtimeService.PauseAsync(
-            session.StationId,
-            $"Duruş: {request.ReasonName ?? request.ReasonCode}",
-            mode,
-            cancellationToken);
-
-        var alarm = new Alarm
+        // NEDEN: EnableRetryOnFailure varken BeginTransaction yalnızca execution strategy içinde güvenli.
+        var strategy = context.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(async () =>
         {
-            Title = request.Emergency
-                ? $"ARIZA / ACİL — {request.ReasonName ?? request.ReasonCode}"
-                : $"Duruş Bildirimi — {request.ReasonName ?? request.ReasonCode}",
-            Station = session.StationId,
-            Severity = request.Emergency ? "Kritik" : (request.IsPlanned ? "Uyarı" : "Yüksek"),
-            Description = $"Operatör {session.OperatorName} duruş kaydı oluşturdu.",
-            Time = now,
-            Status = "Açık",
-            ShiftSessionId = session.Id
-        };
-        context.Alarms.Add(alarm);
-        await context.SaveChangesAsync(cancellationToken);
+            session = await FindOwnedActiveAsync(id, cancellationToken)
+                ?? throw new InvalidOperationException("Aktif vardiya oturumu bulunamadı.");
 
-        await downtimeEvents.CloseOpenForSessionAsync(session.Id, now, cancellationToken);
-        await downtimeEvents.OpenAsync(
-            session.StationId,
-            request.ReasonCode,
-            request.ReasonName,
-            request.IsPlanned,
-            request.Emergency,
-            DowntimeEventSources.Operator,
-            session.Id,
-            alarm.Id,
-            cancellationToken);
+            await using var transaction = context.Database.IsRelational()
+                ? await context.Database.BeginTransactionAsync(cancellationToken)
+                : null;
 
-        await AddTransitionAsync(
-            session.Id,
-            fromStatus,
-            ShiftSessionStatuses.OnBreak,
-            request.ReasonCode,
-            request.Emergency ? "Emergency downtime" : "Operator downtime",
-            cancellationToken);
+            var fromStatus = session.Status;
+            var now = DateTimeOffset.UtcNow;
+            session.Status = ShiftSessionStatuses.OnBreak;
+            session.BreakReason = request.ReasonCode;
+            session.BreakStartedAt = now;
+            session.SetupStartedAt = null;
+            session.UpdatedAt = now;
+            session.UpdatedBy = ResolveDisplayName();
 
-        if (transaction is not null)
-        {
-            await transaction.CommitAsync(cancellationToken);
-        }
+            var mode = request.Emergency ? StationRuntimeModes.Down : StationRuntimeModes.Paused;
+            await runtimeService.PauseAsync(
+                session.StationId,
+                $"Duruş: {request.ReasonName ?? request.ReasonCode}",
+                mode,
+                cancellationToken);
 
-        await realtime.AlarmCreatedAsync(AlarmToDto(alarm), cancellationToken);
+            alarm = new Alarm
+            {
+                Title = request.Emergency
+                    ? $"ARIZA / ACİL — {request.ReasonName ?? request.ReasonCode}"
+                    : $"Duruş Bildirimi — {request.ReasonName ?? request.ReasonCode}",
+                Station = session.StationId,
+                Severity = request.Emergency ? "Kritik" : (request.IsPlanned ? "Uyarı" : "Yüksek"),
+                Description = $"Operatör {session.OperatorName} duruş kaydı oluşturdu.",
+                Time = now,
+                Status = "Açık",
+                ShiftSessionId = session.Id
+            };
+            context.Alarms.Add(alarm);
+            await context.SaveChangesAsync(cancellationToken);
 
-        var summary = await ShiftSessionAggregator.BuildAsync(context, session, cancellationToken);
-        var dto = await ToDtoAsync(session, cancellationToken, summary);
+            await downtimeEvents.CloseOpenForSessionAsync(session.Id, now, cancellationToken);
+            await downtimeEvents.OpenAsync(
+                session.StationId,
+                request.ReasonCode,
+                request.ReasonName,
+                request.IsPlanned,
+                request.Emergency,
+                DowntimeEventSources.Operator,
+                session.Id,
+                alarm.Id,
+                cancellationToken);
+
+            await AddTransitionAsync(
+                session.Id,
+                fromStatus,
+                ShiftSessionStatuses.OnBreak,
+                request.ReasonCode,
+                request.Emergency ? "Emergency downtime" : "Operator downtime",
+                cancellationToken);
+
+            if (transaction is not null)
+                await transaction.CommitAsync(cancellationToken);
+        });
+
+        await realtime.AlarmCreatedAsync(AlarmToDto(alarm!), cancellationToken);
+
+        var summary = await ShiftSessionAggregator.BuildAsync(context, session!, cancellationToken);
+        var dto = await ToDtoAsync(session!, cancellationToken, summary);
         await realtime.ShiftUpdatedAsync(dto, cancellationToken);
         return Ok(dto);
     }
@@ -339,66 +337,74 @@ public class ShiftSessionController(
     [HttpPost("{id:int}/setup")]
     public async Task<ActionResult<ShiftSessionDto>> Setup(int id, CancellationToken cancellationToken)
     {
-        var session = await FindOwnedActiveAsync(id, cancellationToken);
-        if (session is null) return NotFound();
+        if (await FindOwnedActiveAsync(id, cancellationToken) is null) return NotFound();
 
-        await using var transaction = context.Database.IsRelational()
-            ? await context.Database.BeginTransactionAsync(cancellationToken)
-            : null;
+        Alarm? alarm = null;
+        ShiftSession? session = null;
 
-        var fromStatus = session.Status;
-        var now = DateTimeOffset.UtcNow;
-        session.Status = ShiftSessionStatuses.InSetup;
-        session.BreakReason = DowntimeReasonCatalog.Changeover;
-        session.SetupStartedAt = now;
-        session.BreakStartedAt = null;
-        session.UpdatedAt = now;
-        session.UpdatedBy = ResolveDisplayName();
-
-        await runtimeService.PauseAsync(session.StationId, "Setup / model değişimi", StationRuntimeModes.Paused, cancellationToken);
-
-        var alarm = new Alarm
+        // NEDEN: EnableRetryOnFailure varken BeginTransaction yalnızca execution strategy içinde güvenli.
+        var strategy = context.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(async () =>
         {
-            Title = "Model Değişimi / Setup",
-            Station = session.StationId,
-            Severity = "Uyarı",
-            Description = $"Setup timer başlatıldı — {session.OperatorName}",
-            Time = now,
-            Status = "Açık",
-            ShiftSessionId = session.Id
-        };
-        context.Alarms.Add(alarm);
-        await context.SaveChangesAsync(cancellationToken);
+            session = await FindOwnedActiveAsync(id, cancellationToken)
+                ?? throw new InvalidOperationException("Aktif vardiya oturumu bulunamadı.");
 
-        await downtimeEvents.CloseOpenForSessionAsync(session.Id, now, cancellationToken);
-        await downtimeEvents.OpenAsync(
-            session.StationId,
-            DowntimeReasonCatalog.Changeover,
-            DowntimeReasonCatalog.DisplayName(DowntimeReasonCatalog.Changeover),
-            isPlanned: true,
-            isEmergency: false,
-            DowntimeEventSources.Operator,
-            session.Id,
-            alarm.Id,
-            cancellationToken);
+            await using var transaction = context.Database.IsRelational()
+                ? await context.Database.BeginTransactionAsync(cancellationToken)
+                : null;
 
-        await AddTransitionAsync(
-            session.Id,
-            fromStatus,
-            ShiftSessionStatuses.InSetup,
-            DowntimeReasonCatalog.Changeover,
-            "Setup / changeover",
-            cancellationToken);
+            var fromStatus = session.Status;
+            var now = DateTimeOffset.UtcNow;
+            session.Status = ShiftSessionStatuses.InSetup;
+            session.BreakReason = DowntimeReasonCatalog.Changeover;
+            session.SetupStartedAt = now;
+            session.BreakStartedAt = null;
+            session.UpdatedAt = now;
+            session.UpdatedBy = ResolveDisplayName();
 
-        if (transaction is not null)
-        {
-            await transaction.CommitAsync(cancellationToken);
-        }
+            await runtimeService.PauseAsync(session.StationId, "Setup / model değişimi", StationRuntimeModes.Paused, cancellationToken);
 
-        await realtime.AlarmCreatedAsync(AlarmToDto(alarm), cancellationToken);
+            alarm = new Alarm
+            {
+                Title = "Model Değişimi / Setup",
+                Station = session.StationId,
+                Severity = "Uyarı",
+                Description = $"Setup timer başlatıldı — {session.OperatorName}",
+                Time = now,
+                Status = "Açık",
+                ShiftSessionId = session.Id
+            };
+            context.Alarms.Add(alarm);
+            await context.SaveChangesAsync(cancellationToken);
 
-        var summary = await ShiftSessionAggregator.BuildAsync(context, session, cancellationToken);
-        var dto = await ToDtoAsync(session, cancellationToken, summary);
+            await downtimeEvents.CloseOpenForSessionAsync(session.Id, now, cancellationToken);
+            await downtimeEvents.OpenAsync(
+                session.StationId,
+                DowntimeReasonCatalog.Changeover,
+                DowntimeReasonCatalog.DisplayName(DowntimeReasonCatalog.Changeover),
+                isPlanned: true,
+                isEmergency: false,
+                DowntimeEventSources.Operator,
+                session.Id,
+                alarm.Id,
+                cancellationToken);
+
+            await AddTransitionAsync(
+                session.Id,
+                fromStatus,
+                ShiftSessionStatuses.InSetup,
+                DowntimeReasonCatalog.Changeover,
+                "Setup / changeover",
+                cancellationToken);
+
+            if (transaction is not null)
+                await transaction.CommitAsync(cancellationToken);
+        });
+
+        await realtime.AlarmCreatedAsync(AlarmToDto(alarm!), cancellationToken);
+
+        var summary = await ShiftSessionAggregator.BuildAsync(context, session!, cancellationToken);
+        var dto = await ToDtoAsync(session!, cancellationToken, summary);
         await realtime.ShiftUpdatedAsync(dto, cancellationToken);
         return Ok(dto);
     }
@@ -411,7 +417,7 @@ public class ShiftSessionController(
 
         var actor = ResolveDisplayName();
         var fromStatus = session.Status;
-        // Operator hold alarms (duruş/setup) were created by this flow — clear them so resume can succeed.
+        // Bu akışın açtığı operatör hold alarmlarını (duruş/setup) temizle ki resume başarılı olsun.
         await runtimeService.ClearOperatorHoldAlarmsAsync(session.StationId, actor, cancellationToken);
 
         if (await runtimeService.HasOpenBlockingAlarmAsync(session.StationId, cancellationToken))
@@ -440,7 +446,7 @@ public class ShiftSessionController(
             notes: "Resume production",
             cancellationToken);
 
-        // Force Running for Active shift when clear of blocking alarms (also heals Active+Paused desync).
+        // Engelleyici alarm yokken Active vardiyayı Running'e zorla (Active+Paused uyumsuzluğunu da düzeltir).
         var mode = await runtimeService.HealRuntimeForStationAsync(session.StationId, cancellationToken);
         if (mode != StationRuntimeModes.Running)
         {
@@ -571,7 +577,6 @@ public class ShiftSessionController(
             SecondaryOperatorName = session.SecondaryOperatorName,
             SecondaryOperatorUserId = session.SecondaryOperatorUserId,
             ActiveWorkOrderId = session.ActiveWorkOrderId,
-            ActiveBatchId = session.ActiveBatchId,
             StartedAt = session.StartedAt,
             EndedAt = session.EndedAt,
             BreakStartedAt = session.BreakStartedAt,
@@ -603,7 +608,7 @@ public class ShiftSessionController(
 }
 
 /// <summary>
-/// Andon board reads (MetricsRead only — not AND'd with ProductionWrite on <see cref="ShiftSessionController"/>).
+/// Andon board okumaları (yalnız MetricsRead — <see cref="ShiftSessionController"/> üzerindeki ProductionWrite ile AND edilmez).
 /// </summary>
 [Route("api/ShiftSession")]
 [ApiController]

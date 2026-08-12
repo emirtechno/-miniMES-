@@ -5,8 +5,8 @@ import CardHeader from '../components/CardHeader';
 import { ACTIVE_STATION_DEFINITIONS } from '../constants/stations';
 
 /**
- * System administration — users/roles and manual/test alarm tools.
- * Kept separate from Quality Reports (lot / WO / scrap ops).
+ * Sistem yönetimi — kullanıcı/rol ve manuel/test alarm araçları.
+ * Kalite Raporları'ndan (iş emri / fire) ayrı tutulur.
  */
 const AdminPage = ({
   permissions = {},

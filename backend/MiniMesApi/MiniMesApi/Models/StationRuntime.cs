@@ -27,7 +27,7 @@ public class StationRuntime
     public string? PauseReason { get; set; }
 
     /// <summary>
-    /// Persisted anomaly-alarm cooldown gate (survives restart; multi-instance without Redis).
+    /// Kalıcı anomali-alarm cooldown kapısı (restart sonrası da yaşar; Redis olmadan çoklu instance).
     /// </summary>
     public DateTimeOffset? NextAnomalyAllowedAt { get; set; }
 

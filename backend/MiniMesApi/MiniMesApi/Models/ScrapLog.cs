@@ -20,9 +20,6 @@ public class ScrapLog
     public int? WorkOrderId { get; set; }
     public WorkOrder? WorkOrder { get; set; }
 
-    public int? BatchId { get; set; }
-    public Batch? Batch { get; set; }
-
     public int? ShiftSessionId { get; set; }
     public ShiftSession? ShiftSession { get; set; }
 

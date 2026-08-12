@@ -22,20 +22,20 @@ namespace MiniMesApi.Models
         [StringLength(20)]
         public string ShiftCode { get; set; } = ShiftCatalog.ShiftA;
 
-        /// <summary>Operator ShiftSession that owns this tick (null for legacy / no open session).</summary>
+        /// <summary>Bu tick'in sahibi operatör ShiftSession (legacy / açık oturum yoksa null).</summary>
         public int? ShiftSessionId { get; set; }
 
         public double IdealCycleTimeSeconds { get; set; }
         public int ActualProductionCount { get; set; }
         public int GoodProductionCount { get; set; }
 
-        /// <summary>Optional physical gauge (°C). Null for legacy rows.</summary>
+        /// <summary>İsteğe bağlı fiziksel gösterge (°C). Eski satırlarda null.</summary>
         public double? Temperature { get; set; }
 
-        /// <summary>Optional spindle/line RPM. Null for legacy rows.</summary>
+        /// <summary>İsteğe bağlı mil/hat RPM. Eski satırlarda null.</summary>
         public double? Rpm { get; set; }
 
-        /// <summary>Optional vibration (mm/s). Null for legacy rows.</summary>
+        /// <summary>İsteğe bağlı titreşim (mm/s). Eski satırlarda null.</summary>
         public double? Vibration { get; set; }
 
         public DateTimeOffset RecordedAt { get; set; } = DateTimeOffset.UtcNow;

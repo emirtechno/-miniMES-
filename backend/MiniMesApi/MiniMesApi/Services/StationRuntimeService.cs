@@ -3,24 +3,20 @@ using MiniMesApi.Models;
 
 namespace MiniMesApi.Services;
 
+// NEDEN: Her istasyonun anlık “çalışıyor / durakladı / arızalı” durumu Andon ve simülasyon için tek kaynak.
+// Alarm, mola, setup ve resume kuralları burada toplanır — UI ve OEE tick'i aynı Mode'u görür.
+// NASIL: StationRuntime satırı Mode + PauseReason; Heal her tick'te vardiya + engelleyici alarm ile hizalar.
 public interface IStationRuntimeService
 {
     Task<StationRuntime> GetOrCreateAsync(string stationId, CancellationToken cancellationToken = default);
     Task<IReadOnlyDictionary<string, StationRuntime>> GetAllAsync(CancellationToken cancellationToken = default);
     Task PauseForAlarmAsync(string stationId, string title, string severity, CancellationToken cancellationToken = default);
     Task RefreshAfterAlarmResolvedAsync(string stationId, CancellationToken cancellationToken = default);
-    /// <summary>
-    /// Resume when no blocking alarms remain and the station is not OnBreak/InSetup.
-    /// </summary>
+    // NEDEN: Engelleyici alarm kalmadıysa ve mola/setup yoksa otomatik Running'e dön.
     Task<bool> TryAutoResumeAfterClearAsync(string stationId, CancellationToken cancellationToken = default);
-    /// <summary>
-    /// Per-tick heal: Active shift + no blocking alarms → Running;
-    /// OnBreak/InSetup → Paused; open blocking alarm → Paused/Down.
-    /// </summary>
+    // NEDEN: Her sim tick'inde: aktif vardiya + engelleyici yok → Running; mola/setup → Paused; açık engelleyici → Paused/Down.
     Task<string> HealRuntimeForStationAsync(string stationId, CancellationToken cancellationToken = default);
-    /// <summary>
-    /// Close operator-initiated downtime/setup hold alarms so resume can proceed.
-    /// </summary>
+    // NEDEN: Operatörün açtığı duruş/setup hold alarmlarını kapat ki resume ilerleyebilsin.
     Task<int> ClearOperatorHoldAlarmsAsync(string stationId, string resolvedBy, CancellationToken cancellationToken = default);
     Task PauseAsync(string stationId, string reason, string mode, CancellationToken cancellationToken = default);
     Task<bool> TryResumeAsync(string stationId, CancellationToken cancellationToken = default);
@@ -38,7 +34,7 @@ public sealed class StationRuntimeService(MesDbContext context) : IStationRuntim
             .ToListAsync(cancellationToken);
         var missing = StationCatalog.Active.Where(id => !existing.Contains(id, StringComparer.OrdinalIgnoreCase)).ToList();
 
-        // Catalog-known legacy (Test_Ve_Paketleme) and fully removed ids (Montaj_Hatti_02/03) drop from live runtime.
+        // Katalogda bilinen eski (Test_Ve_Paketleme) ve tamamen kaldırılan id'ler (Montaj_Hatti_02/03) canlı runtime'dan düşer.
         var retired = existing.Where(id => !StationCatalog.IsActive(id)).ToList();
 
         foreach (var stationId in missing)
@@ -64,9 +60,8 @@ public sealed class StationRuntimeService(MesDbContext context) : IStationRuntim
         await context.SaveChangesAsync(cancellationToken);
     }
 
-    /// <summary>
-    /// Align StationRuntime with open blocking alarms (e.g. after seed or restart).
-    /// </summary>
+    // NEDEN: Seed/restart sonrası StationRuntime'ı açık engelleyici alarmlarla hizala.
+    // NASIL: Her aktif istasyonda engelleyici varsa ve Mode=Running ise PauseForAlarmAsync çağır.
     public async Task SyncWithOpenAlarmsAsync(CancellationToken cancellationToken = default)
     {
         await EnsureSeededAsync(cancellationToken);
@@ -126,6 +121,7 @@ public sealed class StationRuntimeService(MesDbContext context) : IStationRuntim
     {
         if (!IsBlocking(title, severity)) return;
 
+        // NEDEN: Kritik/Acil/ARIZA → Down; diğer engelleyiciler → Paused (Andon etiketi farklı).
         var mode = string.Equals(severity, "Kritik", StringComparison.OrdinalIgnoreCase)
             || ContainsAny(title, "Acil", "Emergency", "ARIZA")
             ? StationRuntimeModes.Down
@@ -162,7 +158,7 @@ public sealed class StationRuntimeService(MesDbContext context) : IStationRuntim
             return false;
         }
 
-        // Keep intentional operator holds (mola / setup); otherwise restore production.
+        // NEDEN: Bilinçli operatör hold'ları (mola / setup) korunur; aksi halde üretime dön.
         var openShift = await context.ShiftSessions.AsNoTracking()
             .Where(session => session.StationId == stationId
                 && session.Status != ShiftSessionStatuses.Ended)
@@ -178,6 +174,8 @@ public sealed class StationRuntimeService(MesDbContext context) : IStationRuntim
         return await TryResumeAsync(stationId, cancellationToken);
     }
 
+    // NEDEN: Simülasyon her tick'te runtime'ı vardiya + alarm gerçeğiyle “iyileştirir”.
+    // NASIL: engelleyici → pause/down; OnBreak/InSetup → Paused; aksi halde TryResume → Running.
     public async Task<string> HealRuntimeForStationAsync(string stationId, CancellationToken cancellationToken = default)
     {
         var openShift = await context.ShiftSessions.AsNoTracking()
@@ -228,7 +226,7 @@ public sealed class StationRuntimeService(MesDbContext context) : IStationRuntim
             return runtime.Mode;
         }
 
-        // Active shift (or no intentional hold) + no blocking alarms → Running.
+        // NEDEN: Aktif vardiya (veya bilinçli hold yok) + engelleyici alarm yok → Running.
         if (runtime.Mode != StationRuntimeModes.Running)
         {
             await TryResumeAsync(stationId, cancellationToken);
@@ -316,6 +314,7 @@ public sealed class StationRuntimeService(MesDbContext context) : IStationRuntim
         return open.Any(alarm => IsBlocking(alarm.Title, alarm.Severity));
     }
 
+    // NEDEN: Operatör “Duruş Bildirimi / Setup / ARIZA” alarmları resume öncesi otomatik kapanır.
     internal static bool IsOperatorHoldAlarm(string? title)
     {
         return ContainsAny(
@@ -326,6 +325,8 @@ public sealed class StationRuntimeService(MesDbContext context) : IStationRuntim
             "ARIZA / ACİL");
     }
 
+    // NEDEN: Kritik severity veya başlıkta Duruş/Setup/Acil/anomali → üretim tick'i engellenir.
+    // NASIL: Severity=="Kritik" veya başlık anahtar kelimeleri (Yüksek Sıcaklık, Düşük RPM, …).
     internal static bool IsBlocking(string? title, string? severity)
     {
         if (string.Equals(severity, "Kritik", StringComparison.OrdinalIgnoreCase))

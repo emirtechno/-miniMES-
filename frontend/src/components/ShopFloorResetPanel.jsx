@@ -7,7 +7,7 @@ import { useNotify } from '../context/NotificationContext';
 const CONFIRM_WORD = 'SIFIRLA';
 
 /**
- * Admin danger-zone: wipe telemetry / sessions so Andon OEE can rebuild cleanly.
+ * Admin tehlike bölgesi: telemetri/oturumları silerek Andon OEE'nin temiz yeniden kurulmasını sağlar.
  */
 const ShopFloorResetPanel = () => {
   const { notify, confirm } = useNotify();
@@ -22,7 +22,7 @@ const ShopFloorResetPanel = () => {
     }
 
     const ok = await confirm(
-      'Tüm shop-floor telemetrisi, vardiya oturumları, alarmlar ve WO/lot ilerleme sayaçları silinecek. Kullanıcılar ve ürün kataloğu kalır. Emin misiniz?',
+      'Tüm shop-floor telemetrisi, vardiya oturumları, alarmlar ve WO ilerleme sayaçları silinecek. Kullanıcılar ve ürün kataloğu kalır. Emin misiniz?',
     );
     if (!ok) return;
 
@@ -51,7 +51,7 @@ const ShopFloorResetPanel = () => {
       />
       <p className="mes-helper mt-0">
         Silinenler: MachineMetrics, ScrapLogs, Alarmlar, ShiftSession’lar, DowntimeEvents,
-        üretim kayıtları; WO/lot ilerleme sayaçları 0’lanır. Sonra Operatör Panelinden yeni oturum açın —
+        üretim kayıtları; WO ilerleme sayaçları 0’lanır. Sonra Operatör Panelinden yeni oturum açın —
         sim daha gerçekçi OEE üretecek şekilde ayarlıdır.
       </p>
       <div className="mt-3 flex flex-wrap items-end gap-2">

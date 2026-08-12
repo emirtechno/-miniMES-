@@ -18,21 +18,6 @@ public sealed class CreateWorkOrderDto
 
     [Range(1, int.MaxValue)]
     public int Quantity { get; init; }
-
-    /// <summary>When true, creates an initial open lot linked to this work order.</summary>
-    public bool CreateInitialLot { get; init; } = true;
-
-    [Range(1, int.MaxValue)]
-    public int? LotTargetQuantity { get; init; }
-}
-
-public sealed class WorkOrderLotSummaryDto
-{
-    public int Id { get; init; }
-    public string LotNo { get; init; } = string.Empty;
-    public string Status { get; init; } = string.Empty;
-    public int TargetQuantity { get; init; }
-    public int ProducedQuantity { get; init; }
 }
 
 public sealed class WorkOrderDto
@@ -46,7 +31,6 @@ public sealed class WorkOrderDto
     public double ProgressPercent { get; init; }
     public string Status { get; init; } = string.Empty;
     public string RowVersion { get; init; } = string.Empty;
-    public IReadOnlyList<WorkOrderLotSummaryDto> Lots { get; init; } = [];
 }
 
 public sealed class AdvanceWorkOrderDto
